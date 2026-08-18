@@ -526,6 +526,49 @@ Neither transport has ever completed a session, because that needs an adapter.
 - **A moving vehicle.** The performance timer was armed and correctly refused;
   it has never completed a run against real road speed.
 
+## Round 10 — the BLE package swap, 2026-08-18
+
+`flutter_blue_plus` was replaced with `universal_ble`. That rewrites the layer
+between the app and the OS radio, and the unit tests for it run against a fake
+platform — so the one thing they cannot establish is that the real platform
+channel works. This is what was checked on the device.
+
+**The first attempt was worthless and is recorded because of it.**
+`adb install -r -g app-debug.apk` printed
+`Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE …]` and **exited 0**. The exit code
+was believed, the app was launched, and the logcat collected showed
+`flutter_blue_plus_version=2.3.12` — because the running app was still the
+previous build. A verification that would have signed off a dependency
+migration was, in fact, a test of yesterday's binary. The device held a
+Play-signed build; rebuilding `--release` with the same key installed over it
+cleanly, with no uninstall and no data loss, and exercised the shipping path
+rather than the debug one.
+
+What the corrected run establishes:
+
+- Zero `[FBP-Android]` lines in logcat — the old package is genuinely gone from
+  the running binary, rather than merely absent from the source tree.
+- `BLE_GAP : SCAN_START :: appName: com.cbstudio.telltale` in the system log —
+  the new package really opened the radio through the platform channel.
+- A named peripheral (`WIN_DESKTOP`) rendered with its name; unnamed
+  peripherals rendered as `未命名裝置 (<address>)` rather than being dropped.
+  This is the fallback the fake platform also covers, confirmed against real
+  advertisements.
+- Signal bars varied across entries, so RSSI is arriving and not defaulting.
+- No duplicated rows, despite the new package emitting one event per
+  advertisement rather than an accumulated list.
+- No Flutter exception in logcat during scan.
+
+What it does not establish: **nothing was connected to.** Scanning exercises
+discovery, permissions and the radio; `connect()`, service discovery, the
+notify/indicate branch and the MTU request were exercised only against the
+fake platform. The first real ELM327 BLE adapter remains the test that matters.
+
+Also compiled on the two platforms that have no device coverage at all, purely
+to establish that the new dependency builds there: `flutter build macos --debug`
+→ `Telltale.app`, `flutter build ios --no-codesign --debug` → `Runner.app`.
+Compilation is not verification, and neither has ever been run.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of
