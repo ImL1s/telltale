@@ -1,7 +1,7 @@
 name: torque_obd
 description: "Telltale — real-time vehicle telemetry over ELM327"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.0
@@ -43,10 +43,16 @@ dependencies:
   #
   # Pinned to a commit rather than a branch so the dependency cannot move
   # underneath a build. Fork: https://github.com/ImL1s/flutter_classic_bluetooth
+  #
+  # 0703821 migrated the fork to Flutter's Built-in Kotlin. Before it, every
+  # build of this app printed "Future versions of Flutter will fail to build if
+  # your app uses plugins that apply KGP" — a deadline, not a style note.
   flutter_classic_bluetooth:
     git:
       url: https://github.com/ImL1s/flutter_classic_bluetooth.git
-      ref: f04ef9d
+      # Quoted: this SHA is all digits, and YAML would otherwise parse it as an
+      # integer — pub then rejects it with "The 'ref' field ... must be a string".
+      ref: "0703821"
   # Pinned below the current 13.x on purpose: that line pulls
   # permission_handler_android 14.x, whose AAR metadata demands compileSdk >= 37,
   # and Android Gradle Plugin 9.1.0 — the version Flutter 3.47 ships — caps out
