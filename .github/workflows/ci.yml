@@ -1,0 +1,254 @@
+# Verification CI for Telltale.
+#
+# This repo is the app on its own — the same source that ships on Google Play,
+# with nothing held back. So the checks here are the ones that decide whether a
+# build is honest, not a subset kept for show.
+#
+# One check is unusual and is the point of the whole file: the `oracle` job runs
+# the test suite against an ELM327 simulator that nobody on this project wrote.
+# Every other test in this repository is our parser against our simulator, and
+# both sides carry the same reading of J1979 — so a misreading agrees with
+# itself and goes green. The oracle is the only place that cannot happen.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # pubspec.yaml requires `sdk: ^3.13.0` and `flutter: ">=3.47.0"`. This pin is
+  # mandatory, not stylistic.
+  FLUTTER_VERSION: "3.47.0"
+
+jobs:
+  app:
+    name: analyze, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          # AGP 9.1.0 (android/settings.gradle.kts) needs JDK 17+.
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter analyze
+
+      # The two oracle files self-skip here — no simulator is listening on
+      # 35000 in this job — so this run ends in `~12`. The `oracle` job below is
+      # what actually exercises those twelve, and refuses to pass if they skip.
+      # No count is asserted here on purpose: pinning one turns every added test
+      # into a CI failure, which trains people to edit the number rather than
+      # read it.
+      - run: flutter test
+
+      # android/key.properties is gitignored, so this falls back to debug
+      # signing automatically and needs no secrets. It is the step that catches
+      # the AGP / compileSdk / plugin-metadata class of breakage, which no unit
+      # test can see.
+      - run: flutter build apk --debug
+
+  privacy:
+    name: the two privacy policies agree
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # There are two copies of the privacy policy and that is the defect.
+      # PRIVACY.md is what a reader of this repo sees; docs/privacy.html is the
+      # URL registered with Google Play, so it is the authoritative one. They
+      # have already drifted once — different "last updated" dates, and the
+      # Markdown's English half was missing the children's-data and payment
+      # clauses that the served page has. A reader in English was looking at a
+      # policy with holes in it.
+      #
+      # Merging them would mean picking one audience to serve worse. Failing
+      # loudly when they disagree costs nothing and catches the same drift.
+      - name: Compare sections and dates
+        run: |
+          python3 - <<'PY'
+          import re, sys
+
+          md = open('PRIVACY.md', encoding='utf-8').read()
+          html = open('docs/privacy.html', encoding='utf-8').read()
+
+          problems = []
+
+          # 1. Dates. Four of them, and they must all say the same day.
+          zh_md = re.search(r'最後更新：(.+)', md)
+          en_md = re.search(r'Last updated: (.+)', md)
+          zh_html = re.search(r'最後更新：([^<]+)', html)
+          en_html = re.search(r'Last updated: ([^<]+)', html)
+          if not all([zh_md, en_md, zh_html, en_html]):
+              problems.append('a "last updated" line is missing from one of the files')
+          else:
+              def norm(m):
+                  t = m.group(1).strip()
+                  # 2026 年 8 月 18 日  ->  2026-8-18 ; 18 August 2026 -> same
+                  cjk = re.match(r'(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日', t)
+                  if cjk:
+                      return tuple(int(g) for g in cjk.groups())
+                  months = ['january','february','march','april','may','june','july',
+                            'august','september','october','november','december']
+                  eng = re.match(r'(\d{1,2}) (\w+) (\d{4})', t)
+                  if eng:
+                      d, mth, y = eng.groups()
+                      return (int(y), months.index(mth.lower()) + 1, int(d))
+                  return t
+              dates = {norm(zh_md), norm(en_md), norm(zh_html), norm(en_html)}
+              if len(dates) != 1:
+                  problems.append(f'the four "last updated" dates disagree: {sorted(dates)}')
+
+          # 2. Section lists, per language half. The one-sentence summary is a
+          #    lede paragraph in HTML and a heading in Markdown; that is a
+          #    formatting choice in each format, not a missing section.
+          LEDE = {'一句話版本', 'In one sentence'}
+
+          def halves(text, split_on, find):
+              zh, en = text.split(split_on, 1)
+              return [s for s in find(zh) if s not in LEDE], \
+                     [s for s in find(en) if s not in LEDE]
+
+          md_zh, md_en = halves(md, '# Telltale Privacy Policy',
+                                lambda t: re.findall(r'^## (.+)$', t, re.M))
+          html_zh, html_en = halves(html, '<h1>Telltale Privacy Policy</h1>',
+                                    lambda t: re.findall(r'<h2>(.+?)</h2>', t))
+
+          if md_zh != html_zh:
+              problems.append(f'Chinese sections differ:\n  PRIVACY.md   {md_zh}\n  privacy.html {html_zh}')
+          if md_en != html_en:
+              problems.append(f'English sections differ:\n  PRIVACY.md   {md_en}\n  privacy.html {html_en}')
+          if len(md_zh) != len(md_en):
+              problems.append(f'PRIVACY.md halves are not the same policy:\n  zh {md_zh}\n  en {md_en}')
+          if len(html_zh) != len(html_en):
+              problems.append(f'privacy.html halves are not the same policy:\n  zh {html_zh}\n  en {html_en}')
+
+          if problems:
+              print('The two privacy policies have drifted. docs/privacy.html is the')
+              print('authoritative one — it is the URL Google Play holds.\n')
+              for p in problems:
+                  print(' - ' + p)
+              sys.exit(1)
+          print(f'OK: {len(md_zh)} sections, identical across both files and both languages.')
+          PY
+
+  oracle:
+    name: third-party ELM327 simulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Without this guard the job is decoration. A skipped test prints a
+      # summary indistinguishable from a passing one and `flutter test` exits 0
+      # either way — so an oracle that never reached the simulator would report
+      # exactly the same green as one that passed.
+      - name: Install the skip guard
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/assert_no_skips.py" <<'PY'
+          import json, sys
+
+          report, expected = sys.argv[1], int(sys.argv[2])
+          passed = skipped = failed = 0
+          with open(report, encoding="utf-8", errors="replace") as fh:
+              for line in fh:
+                  line = line.strip()
+                  if not line.startswith("{"):
+                      continue
+                  try:
+                      event = json.loads(line)
+                  except ValueError:
+                      continue
+                  if event.get("type") != "testDone" or event.get("hidden"):
+                      continue
+                  if event.get("skipped"):
+                      skipped += 1
+                  elif event.get("result") == "success":
+                      passed += 1
+                  else:
+                      failed += 1
+
+          print(f"oracle results: passed={passed} skipped={skipped} failed={failed}")
+          if failed:
+              sys.exit("FAIL: an oracle test failed.")
+          if skipped:
+              sys.exit(f"FAIL: {skipped} oracle test(s) skipped -- the simulator was "
+                       "not reachable or not recognised. A skipped oracle is not a "
+                       "passing oracle.")
+          if passed != expected:
+              sys.exit(f"FAIL: expected {expected} oracle tests, {passed} ran.")
+          print("OK: every oracle test really ran.")
+          PY
+
+      - name: Ircama ELM327-emulator
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/elmvenv"
+          # ELM327-emulator's build backend still imports pkg_resources, which
+          # setuptools >= 81 no longer ships. Measured 2026-08-18: a plain
+          # `pip install ELM327-emulator` exits 1 with
+          # `ModuleNotFoundError: No module named 'pkg_resources'`.
+          "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet "setuptools<81" wheel
+          "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet --no-build-isolation ELM327-emulator
+
+          # -b is required: without a batch file this CLI exits the moment its
+          # stdin sees EOF, which is exactly what a background CI step gives it.
+          "$RUNNER_TEMP/elmvenv/bin/python" -m elm -n 35000 -s car \
+            -b "$RUNNER_TEMP/elm_batch.log" > "$RUNNER_TEMP/elm.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/elm.pid"
+
+          # Wait for LISTEN only. Deliberately NOT a TCP connect probe: this
+          # emulator serves one client at a time, so a throwaway probe makes the
+          # test's own AT@1 handshake fail, which silently skips every test
+          # instead of failing.
+          for _ in $(seq 1 30); do
+            ss -ltn | grep -q ':35000' && break
+            sleep 1
+          done
+
+          flutter test test/emulator_integration_test.dart --reporter json \
+            > "$RUNNER_TEMP/ircama.json" || true
+          python3 "$RUNNER_TEMP/assert_no_skips.py" "$RUNNER_TEMP/ircama.json" 5
+
+      - name: Stop the emulator
+        if: always()
+        run: |
+          # Kill by recorded PID. Never `pkill -f <pattern>` — the pattern would
+          # match this very command line.
+          [ -f "$RUNNER_TEMP/elm.pid" ] && kill "$(cat "$RUNNER_TEMP/elm.pid")" 2>/dev/null || true
+
+      - name: Emulator log on failure
+        if: failure()
+        run: tail -80 "$RUNNER_TEMP/elm.log" 2>/dev/null || true

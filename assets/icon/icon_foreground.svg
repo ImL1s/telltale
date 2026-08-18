@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Android adaptive-icon foreground: the same gauge, no ground.
+
+    Adaptive icons are masked to an arbitrary shape by the launcher and may be
+    scaled and parallaxed, so only the central ~66% of the canvas is guaranteed
+    visible. The gauge is therefore scaled to 0.60 about the centre, which keeps
+    it inside that safe zone with margin for the bloom.
+  -->
+  <defs>
+    <linearGradient id="sweep" x1="18%" y1="92%" x2="88%" y2="14%">
+      <stop offset="0%" stop-color="#0E4F49"/>
+      <stop offset="45%" stop-color="#1FA795"/>
+      <stop offset="100%" stop-color="#4BEAD3"/>
+    </linearGradient>
+    <filter id="bloom" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <filter id="markerBloom" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <g transform="translate(512 512) scale(0.60) translate(-512 -512)">
+    <path d="M 279 745 A 330 330 0 1 1 745 745"
+          fill="none" stroke="#1B2431" stroke-width="96" stroke-linecap="round"/>
+
+    <g stroke="#5D6A7A" stroke-linecap="round" opacity="0.75">
+      <line x1="330" y1="694" x2="356" y2="668" stroke-width="13"/>
+      <line x1="245" y1="475" x2="281" y2="484" stroke-width="13"/>
+      <line x1="343" y1="286" x2="369" y2="312" stroke-width="13"/>
+      <line x1="512" y1="219" x2="512" y2="256" stroke-width="13"/>
+      <line x1="681" y1="286" x2="655" y2="312" stroke-width="13"/>
+      <line x1="779" y1="475" x2="743" y2="484" stroke-width="13"/>
+      <line x1="694" y1="694" x2="668" y2="668" stroke-width="13"/>
+    </g>
+
+    <path d="M 279 745 A 330 330 0 1 1 760 294"
+          fill="none" stroke="url(#sweep)" stroke-width="120"
+          stroke-linecap="round" filter="url(#bloom)" opacity="0.55"/>
+    <path d="M 279 745 A 330 330 0 1 1 760 294"
+          fill="none" stroke="url(#sweep)" stroke-width="96" stroke-linecap="round"/>
+
+    <line x1="707" y1="340" x2="812" y2="248"
+          stroke="#F2F7FF" stroke-width="46" stroke-linecap="round"
+          filter="url(#markerBloom)" opacity="0.6"/>
+    <line x1="707" y1="340" x2="812" y2="248"
+          stroke="#F2F7FF" stroke-width="26" stroke-linecap="round"/>
+  </g>
+</svg>

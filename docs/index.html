@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telltale — 車輛即時遙測 / Real-time vehicle telemetry</title>
+<meta name="description" content="Telltale — real-time vehicle telemetry and fault diagnosis over an ELM327 OBD2 adapter. Android / iOS / macOS, GPL-3.0.">
+<style>
+  :root { --bg:#ffffff; --fg:#14181d; --muted:#5b6672; --rule:#e3e7ec; --accent:#0f766e; --card:#f6f8fa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14181d; --fg:#e8edf2; --muted:#9aa6b2; --rule:#2a3138; --accent:#5eead4; --card:#1c2229; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+         "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width:40rem; margin:0 auto; padding:2rem 1.25rem 5rem; }
+  h1 { font-size:2rem; margin:0 0 .25rem; }
+  .sub { color:var(--muted); margin:0 0 2.5rem; }
+  blockquote { margin:2rem 0; padding:1rem 1.25rem; background:var(--card);
+    border-left:3px solid var(--accent); border-radius:0 6px 6px 0; font-size:1.05rem; }
+  ul { padding-left:1.2rem; }
+  li { margin:.4rem 0; }
+  a { color:var(--accent); }
+  nav { margin-top:2.5rem; padding-top:1.5rem; border-top:1px solid var(--rule); }
+  nav a { display:inline-block; margin-right:1.25rem; }
+  .lang { margin:0 0 2.5rem; padding-bottom:1rem; border-bottom:1px solid var(--rule);
+    color:var(--muted); font-size:.9rem; }
+  .lang a { margin-right:.75rem; }
+  hr.split { margin:4rem 0 3rem; border:0; border-top:1px solid var(--rule); }
+</style>
+</head>
+<body>
+<main>
+  <p class="lang"><a href="#zh">繁體中文</a><a href="#en">English</a></p>
+
+  <section id="zh">
+  <h1>Telltale</h1>
+  <p class="sub">即時車輛遙測與故障診斷，透過 ELM327 轉接器讀取 OBD2。<br>
+  Android / iOS / macOS · GPL-3.0</p>
+
+  <blockquote><strong>一個看起來合理的錯數字，比沒有數字更糟。</strong></blockquote>
+
+  <p>診斷 App 的輸出會被人拿著扳手去執行。一個顯示 −40 °C 的水溫錶會被當成感測器壞掉；
+  一句「沒有故障碼」會讓人開走一台其實有問題的車。所以這裡的每一條規則都是為了讓
+  「不確定」看起來像不確定，而不是像一個答案。</p>
+
+  <ul>
+    <li>回應解析用白名單 —— 只接受整行都是 hex byte pair 的行</li>
+    <li>多 ECU 給出兩個答案時，兩個都不採用</li>
+    <li>「已回應的控制器沒有故障碼」不會被寫成「這台車沒有故障碼」</li>
+    <li>凍結幀的致因碼是閘門 —— 讀不到就什麼都不顯示，不會給你一份全零的假紀錄</li>
+    <li>推算值標明來源，輸入缺一個就整條顯示不可用</li>
+  </ul>
+
+  <nav>
+    <a href="https://github.com/ImL1s/telltale">原始碼 (GitHub)</a>
+    <a href="https://github.com/ImL1s/telltale/releases">下載 APK</a>
+    <a href="privacy.html">隱私權政策</a>
+    <a href="https://github.com/ImL1s/telltale/issues">回報問題</a>
+  </nav>
+  </section>
+
+  <hr class="split">
+
+  <section id="en" lang="en">
+  <h1>Telltale</h1>
+  <p class="sub">Real-time vehicle telemetry and fault diagnosis over an ELM327 OBD2 adapter.<br>
+  Android / iOS / macOS · GPL-3.0</p>
+
+  <blockquote><strong>A plausible wrong number is worse than no number.</strong></blockquote>
+
+  <p>People act on what a diagnostic app tells them, with a spanner in hand. A coolant gauge
+  reading −40&nbsp;°C gets read as a dead sensor; "no fault codes" sends somebody away in a car
+  that has them. So every rule here exists to make uncertainty <em>look</em> like uncertainty
+  instead of like an answer.</p>
+
+  <ul>
+    <li>Responses are parsed by whitelist — a line is accepted only if the whole of it is hex byte pairs</li>
+    <li>When two ECUs answer at once, neither answer is used</li>
+    <li>"The controllers that replied have no fault codes" is never rendered as "this car has no fault codes"</li>
+    <li>The freeze-frame cause code is a gate: no cause, no frame, nothing shown — rather than a precise and entirely fictional record of all zeroes</li>
+    <li>Derived values carry their provenance, and the whole strip goes unavailable if one input is missing</li>
+  </ul>
+
+  <nav>
+    <a href="https://github.com/ImL1s/telltale">Source (GitHub)</a>
+    <a href="https://github.com/ImL1s/telltale/releases">Download APK</a>
+    <a href="privacy.html">Privacy policy</a>
+    <a href="https://github.com/ImL1s/telltale/issues">Report a problem</a>
+  </nav>
+  </section>
+</main>
+</body>
+</html>

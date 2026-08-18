@@ -1,0 +1,12 @@
+# Copy to `android/key.properties` and fill in. Both this directory's
+# .gitignore and the repository root exclude the real file and any *.jks or
+# *.keystore, so credentials stay out of version control.
+#
+# Create a keystore with:
+#   keytool -genkey -v -keystore ~/torque-release.jks \
+#           -keyalg RSA -keysize 2048 -validity 10000 -alias torque
+#
+storeFile=/absolute/path/to/torque-release.jks
+storePassword=
+keyAlias=torque
+keyPassword=

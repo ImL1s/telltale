@@ -1,0 +1,197 @@
+# Publishes a signed APK to GitHub Releases.
+#
+# The README's first promise is that you can build this yourself and use it.
+# That promise is thin if the only ready-made binary costs money, so this
+# workflow exists to hand a working APK to people who cannot or will not run a
+# Flutter toolchain. The Play listing buys convenience and supports the work; it
+# does not buy features, and nothing here is held back from this build.
+#
+# THE KEY USED HERE IS NOT THE GOOGLE PLAY UPLOAD KEY, and must never be.
+# Two separate signing lineages, deliberately:
+#
+#   Google Play   CN=Torque OBD2 ...          never leaves the maintainer's machine
+#   GitHub        CN=Telltale Community Build lives in this repo's Actions secrets
+#
+# The consequence is real and worth stating plainly in the release notes: an APK
+# from here cannot update a Play install, and a Play update cannot replace an APK
+# from here. Android will refuse with a signature mismatch. That is the correct
+# behaviour — if the two shared a key, anything that compromised CI could publish
+# a replacement for a store install.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (must already exist)"
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: "3.47.0"
+
+jobs:
+  apk:
+    name: signed APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Nothing is published from a tree that has not passed. A release build is
+      # the one artifact where "the tests were probably fine" is not good enough,
+      # because it is the only one that reaches somebody else's car.
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Restore the community signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.COMMUNITY_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.COMMUNITY_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.COMMUNITY_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::COMMUNITY_KEYSTORE_BASE64 is not set. Without it this"
+            echo "::error::job would fall back to debug signing, and a debug-signed"
+            echo "::error::APK published as a release is indistinguishable from the"
+            echo "::error::real thing once it leaves the runner. Refusing."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/community.jks
+          # Absolute path on purpose. `key.properties` is read from the Android
+          # rootProject (android/), but `storeFile` is resolved by `file()`
+          # inside android/app/build.gradle.kts, which is a *subproject* — so a
+          # relative path is interpreted against android/app/, not android/.
+          # An absolute path cannot be read the wrong way by either.
+          cat > android/key.properties <<EOF
+          storeFile=${GITHUB_WORKSPACE}/android/community.jks
+          storePassword=${KEYSTORE_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          keyPassword=${KEYSTORE_PASSWORD}
+          EOF
+          chmod 600 android/key.properties android/community.jks
+          # Prove the key really loaded before spending a build on it: an
+          # unreadable keystore fails much later and much less legibly.
+          keytool -list -keystore android/community.jks \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
+          echo "signing key loaded"
+
+      # One universal APK rather than per-ABI splits. Splits are a third the
+      # size, but they also mean a person sideloading has to know which of four
+      # files matches their phone, and picking wrong gives an install error with
+      # no explanation. One file that always works is the right default for an
+      # audience that is here because they did not want to build it themselves.
+      - run: flutter build apk --release
+
+      - name: Describe what was built
+        id: describe
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -f "$APK"
+          echo "sha256=$(sha256sum "$APK" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "$APK" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+          # Publish the signing certificate's fingerprint. It is what lets
+          # somebody confirm that a later download came from the same key as the
+          # one they already trusted, without taking this file's word for it.
+          #
+          # Best-effort: apksigner's location is a property of the runner image,
+          # not of this project, and a release must not fail to publish because
+          # a convenience line could not be computed.
+          FP="unavailable on this runner"
+          BUILD_TOOLS=$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/* 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$BUILD_TOOLS" ] && [ -x "$BUILD_TOOLS/apksigner" ]; then
+            FP=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" \
+                   | grep -i 'SHA-256 digest' | head -1 | awk '{print $NF}') || FP="unavailable"
+          fi
+          echo "fingerprint=$FP" >> "$GITHUB_OUTPUT"
+
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "telltale-${TAG}.apk"
+
+          cat > notes.md <<EOF
+          Telltale ${{ steps.describe.outputs.version }}
+
+          **English** | 繁體中文 below
+
+          A ready-made APK for anyone who would rather not run a Flutter
+          toolchain. Same source, same features as the Google Play build —
+          nothing is held back.
+
+          | | |
+          |---|---|
+          | File | \`telltale-${TAG}.apk\` (${{ steps.describe.outputs.size }}) |
+          | SHA-256 | \`${{ steps.describe.outputs.sha256 }}\` |
+          | Signing certificate | \`${{ steps.describe.outputs.fingerprint }}\` |
+
+          **This build is signed with the community key, not the Google Play
+          key.** It therefore cannot update — and cannot be updated by — an
+          install that came from the Play Store; Android will refuse with a
+          signature mismatch. Uninstall one before installing the other. The two
+          keys are separate on purpose: sharing them would let anything that
+          compromised CI publish a replacement for a store install.
+
+          Verify before installing:
+
+          \`\`\`
+          sha256sum telltale-${TAG}.apk
+          \`\`\`
+
+          ---
+
+          給不想自己架 Flutter 環境的人的現成 APK。原始碼相同、功能與 Google Play
+          版完全一致，沒有閹割。
+
+          **這份是社群簽章金鑰簽的，不是 Google Play 的上架金鑰。** 所以它無法用來更新
+          從 Play 商店安裝的版本，反之亦然 —— Android 會以簽章不符拒絕。要換過去請先解除
+          安裝。兩把金鑰刻意分開：共用的話，任何入侵 CI 的人就能發布一個能取代商店安裝的版本。
+
+          安裝前請先核對 SHA-256。
+          EOF
+
+          gh release create "$TAG" "telltale-${TAG}.apk" \
+            --title "Telltale ${TAG}" \
+            --notes-file notes.md \
+            --verify-tag || \
+          gh release upload "$TAG" "telltale-${TAG}.apk" --clobber
+
+      - name: Shred the signing material
+        if: always()
+        run: rm -f android/key.properties android/community.jks

@@ -1,0 +1,19 @@
+gradle-wrapper.jar
+/.gradle
+/captures/
+/gradlew
+/gradlew.bat
+/local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+
+# Remember to never publicly share your keystore.
+# See https://flutter.dev/to/reference-keystore
+key.properties
+**/*.keystore
+**/*.jks
+
+# Passwords for the community/CI signing key. The keystore itself is already
+# covered by **/*.jks above; this is the file that unlocks it, and nothing else
+# in here matches its name. Committed once, it is in the history forever.
+ci-signing.properties

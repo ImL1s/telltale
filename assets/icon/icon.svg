@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Torque OBD2 app icon.
+
+    Deliberately the same geometry as the in-app DialGauge: a 270° sweep opening
+    at the bottom, starting lower-left at 135°, with a thin bright marker
+    crossing the track rather than a needle radiating from the hub. The icon and
+    the interface are then unmistakably the same object rather than two
+    unrelated drawings of "a gauge".
+  -->
+  <defs>
+    <!-- Ground: a near-black lifted very slightly toward the top-left, so the
+         tile has depth without reading as a gradient. -->
+    <radialGradient id="ground" cx="30%" cy="22%" r="95%">
+      <stop offset="0%" stop-color="#16202B"/>
+      <stop offset="55%" stop-color="#0A0F16"/>
+      <stop offset="100%" stop-color="#05070B"/>
+    </radialGradient>
+
+    <!-- Runs along the lit portion of the arc: dim at the low end, full aqua at
+         the tip, matching GaugeHue.aqua. -->
+    <linearGradient id="sweep" x1="18%" y1="92%" x2="88%" y2="14%">
+      <stop offset="0%" stop-color="#0E4F49"/>
+      <stop offset="45%" stop-color="#1FA795"/>
+      <stop offset="100%" stop-color="#4BEAD3"/>
+    </linearGradient>
+
+    <filter id="bloom" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <filter id="markerBloom" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="228" fill="url(#ground)"/>
+
+  <!-- Hairline rim, the same trick the app's cards use to separate a surface
+       from the ground on a near-black background. -->
+  <rect x="4" y="4" width="1016" height="1016" rx="225"
+        fill="none" stroke="#2A3644" stroke-width="8" opacity="0.55"/>
+
+  <g>
+    <!-- Unlit track. -->
+    <path d="M 279 745 A 330 330 0 1 1 745 745"
+          fill="none" stroke="#1B2431" stroke-width="96" stroke-linecap="round"/>
+
+    <!-- Tick marks, at the same 7-major cadence as the widget. -->
+    <g stroke="#5D6A7A" stroke-linecap="round" opacity="0.75">
+      <line x1="330" y1="694" x2="356" y2="668" stroke-width="13"/>
+      <line x1="245" y1="475" x2="281" y2="484" stroke-width="13"/>
+      <line x1="343" y1="286" x2="369" y2="312" stroke-width="13"/>
+      <line x1="512" y1="219" x2="512" y2="256" stroke-width="13"/>
+      <line x1="681" y1="286" x2="655" y2="312" stroke-width="13"/>
+      <line x1="779" y1="475" x2="743" y2="484" stroke-width="13"/>
+      <line x1="694" y1="694" x2="668" y2="668" stroke-width="13"/>
+    </g>
+
+    <!-- Lit portion: ~68% of the sweep. Bloom underneath, crisp stroke on top. -->
+    <path d="M 279 745 A 330 330 0 1 1 760 294"
+          fill="none" stroke="url(#sweep)" stroke-width="120"
+          stroke-linecap="round" filter="url(#bloom)" opacity="0.55"/>
+    <path d="M 279 745 A 330 330 0 1 1 760 294"
+          fill="none" stroke="url(#sweep)" stroke-width="96" stroke-linecap="round"/>
+
+    <!-- Value marker crossing the track. -->
+    <line x1="707" y1="340" x2="812" y2="248"
+          stroke="#F2F7FF" stroke-width="46" stroke-linecap="round"
+          filter="url(#markerBloom)" opacity="0.6"/>
+    <line x1="707" y1="340" x2="812" y2="248"
+          stroke="#F2F7FF" stroke-width="26" stroke-linecap="round"/>
+  </g>
+</svg>
