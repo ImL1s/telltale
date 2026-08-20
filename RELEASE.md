@@ -149,6 +149,32 @@ $ADB install -r -g build/app/outputs/flutter-apk/app-release.apk
 
 只有使用者當下明講「這次跳過實機驗證」才能跳過這一節。
 
+## 5.5 你裝的那個 APK，不是使用者會拿到的那個
+
+第 5 節那條 `flutter build apk --release` 產出的東西，**跟 Play 發給測試人員的
+產物是兩個不同的檔案**，差在兩個地方，兩個都可能自己壞掉：
+
+**一、簽章。** 這個 App 開了 **Play App Signing**，所以有兩把金鑰：
+
+| | 憑證 | 誰持有 | 用在哪 |
+|---|---|---|---|
+| 上架金鑰 | `CN=Torque OBD2`，SHA-256 `36:21:33:C0:…:A5:79` | `android/torque-release.jks`，本機 | 簽署**上傳**的 AAB，以及本機 build 的 APK |
+| 應用程式簽署金鑰 | 另一組，見 Play Console → 設定 → 應用程式完整性 | Google | 簽署**發下去**的 APK |
+
+對 Android 來說，這兩把金鑰簽出來的是**兩個不同的應用程式**。手機上裝著本機
+build（`installerPackageName=null`）時，從內部測試軌道更新會被以簽章不符拒絕；
+反過來也一樣。唯一的路是先 `adb uninstall`，而那會連 App 資料一起帶走 ——
+自訂 PID、儀表板配置、車輛設定。**這個代價要使用者自己決定，不要替他按下去。**
+
+**二、封裝。** 本機出的是一個 universal APK；Play 收的是 AAB，再由 Play 依裝置
+切成 split APK 發下去。ABI 拆分、密度拆分、資源縮減都只發生在後者。所以本機
+那顆 APK 能跑，證明的是程式碼會跑，**不是**使用者下載到的那組 split 會跑。
+
+實務上的取捨：日常迭代裝本機 release APK（不掉資料、快），但**正式送審之前，
+至少要從內部測試軌道實際安裝一次走過第 5 節的流程** —— 那是唯一一次你摸到的
+是使用者真正會拿到的產物。那一次的 uninstall 成本，換的是整批 split 封裝的
+唯一一次驗證。
+
 ## 6. 兩個 repo：公開那邊已經無法用 `git subtree push` 同步
 
 這個工作區是私有 repo；公開的 `ImL1s/telltale` 只有 `app/` 的內容，放在它的

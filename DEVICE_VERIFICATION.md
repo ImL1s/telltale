@@ -569,6 +569,46 @@ to establish that the new dependency builds there: `flutter build macos --debug`
 → `Telltale.app`, `flutter build ios --no-codesign --debug` → `Runner.app`.
 Compilation is not verification, and neither has ever been run.
 
+## Round 11 — the internal-test build on the device, 2026-08-20
+
+`1.0.1+2` went to the Play internal testing track. This round is about getting
+that same code onto the phone, and it turned up a fact about signing that has
+nothing to do with the code and blocks the obvious way of doing it.
+
+**Play App Signing means the store's build and a local build are different
+applications to Android.** The upload key
+(`CN=Torque OBD2`, SHA-256 `36:21:33:C0:04:BE:E5:E4:F4:58:F7:7D:4A:5D:19:99:48:A3:C5:CD:B9:F0:86:8B:E2:7D:6F:5D:91:09:A5:79`)
+signs what is *uploaded*; Google re-signs with a separate app signing key before
+delivery. The device holds a sideloaded build — `installerPackageName=null`,
+signed with the upload key — so a build fetched from the internal-test track
+cannot install over it. Android rejects it as a signature mismatch, and the only
+way through is an uninstall, which takes the app's data with it: saved PID
+definitions, dashboard layout, vehicle profile. **That cost is the user's to
+accept, not the build's to impose**, so this round took the other route.
+
+Rebuilt `--release` locally (same source, same `1.0.1+2`, signed with the upload
+key) and installed over the existing build:
+
+- `apksigner verify --print-certs` on the fresh APK → `CN=Torque OBD2`, digest
+  `362133c0…9109a579`, byte-identical to the upload key Play holds. Checked
+  **before** installing: the previous `app-release.apk` on disk was left
+  community-signed by the release-workflow test, and installing that would have
+  failed for a reason that looks exactly like this round's real one.
+- `adb install -r -g` → `Success`, **and then** `dumpsys package` →
+  `versionCode=2 versionName=1.0.1`, `lastUpdateTime` six seconds old. The exit
+  code was not the evidence; round 10 is the reason why.
+- `dataDir` unchanged and no uninstall — app data survived the update.
+- Launched: `ResumedActivity: …com.cbstudio.telltale/.MainActivity`. Logcat over
+  the launch: zero `flutter_blue_plus` lines, zero `FATAL`, zero `E/flutter`.
+
+**No UI walkthrough this round.** The phone is locked with a secure lockscreen
+and unlocking it is not something an agent should do; the app was launched
+through `am start` and reached its resumed state behind the lock, which
+establishes that it starts, not that any screen renders correctly. Round 10's
+screen-by-screen evidence is the most recent of that kind, and it was taken on
+`1.0.0+1` — the two builds differ only by the version bump and the release
+metadata, but that is an argument, not an observation.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of
