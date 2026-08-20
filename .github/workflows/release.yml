@@ -165,7 +165,9 @@ jobs:
           > **Pre-release.** What has been verified, and what has not:
           >
           > - Every screen walked against the built-in demo simulator, and the
-          >   protocol layer run against two third-party ELM327 simulators in CI.
+          >   protocol layer run in CI against an ELM327 simulator this project did
+          >   not write — plus a second one, on the private side, whose server
+          >   cannot be published.
           > - **Never connected to a real vehicle.** Bluetooth LE is verified as
           >   far as scanning and permissions; no ELM327 adapter of any kind has
           >   been connected to this build.
@@ -176,8 +178,9 @@ jobs:
           > 匯出紀錄 exports a verbatim transcript of everything the adapter said;
           > an issue with that file attached is the most useful thing you can send.
           >
-          > **預發行版本。** 每個畫面都對內建模擬器走過，協定層在 CI 裡跑過兩個
-          > 第三方 ELM327 模擬器，但**從未連過真車** —— 藍牙 LE 只驗到掃描與權限，
+          > **預發行版本。** 每個畫面都對內建模擬器走過，協定層在 CI 裡跑過一個
+          > 第三方 ELM327 模擬器（私有端還有第二個，它的 server 無法公開），
+          > 但**從未連過真車** —— 藍牙 LE 只驗到掃描與權限，
           > 沒有連過任何一顆 ELM327 轉接器。有轉接器又有車的話，這就是該試的版本；
           > 出問題請到「設定 → 匯出紀錄」把逐字紀錄存下來，附在 issue 裡送回來。
 
