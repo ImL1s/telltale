@@ -6,6 +6,29 @@ which therefore does not always move in step with the name.
 
 Dates are the date the build was made, not the date it reached anyone.
 
+## 1.0.3+4 — 2026-08-20
+
+Three defects found by driving the app on a phone against real Bluetooth
+hardware behaving badly. All three were true statements that a person standing
+at a car could do nothing with.
+
+### Fixed
+
+- **A raw Dart exception is no longer shown to the driver.** Connecting to a
+  peripheral that accepts the link and then answers nothing produced
+  `TimeoutException after 0:00:10.000000: Future not completed` on screen. The
+  message now names the two causes worth checking — an adapter on a switched
+  socket has no power until the ignition is on, and another app may be holding
+  the link. The exception itself is kept in the transcript, which is where it
+  is useful.
+- **A recording under a kilobyte is no longer labelled `0 KB`.** A failed
+  handshake is a few hundred bytes, so the recording with the most diagnostic
+  value in it was the one displayed as empty — directly beneath a sentence
+  promising it had been kept. Nobody exports a file the app has called empty.
+- **A BLE scan that finds nothing says so.** Previously the panel returned to
+  exactly its pre-tap state, at the moment somebody is wondering whether the
+  app or the adapter is broken.
+
 ## 1.0.2+3 — 2026-08-20
 
 Both fixes are failures that only show up where nobody can watch them: a car,

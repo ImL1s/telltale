@@ -24,8 +24,9 @@ Android 的 versionCode 完全由 `pubspec.yaml` 第 4 行的 `version: x.y.z+N`
 grep '^version:' pubspec.yaml
 ```
 
-截至 2026-08-20，**versionCode 1、2 已被 Google Play 消耗，3 已用於 GitHub 的
-`v1.0.2-beta.1`**（社群金鑰，沒上 Play，但版本號一樣不該重用）。Play 不接受
+截至 2026-08-20，**versionCode 1、2 已被 Google Play 消耗，3 與 4 已用於 GitHub
+的 `v1.0.2-beta.1` 與 `v1.0.3-beta.1`**（社群金鑰，沒上 Play，但版本號一樣不該
+重用）。Play 不接受
 重複的 versionCode，上傳會直接被擋下，訊息是 `Version code N has already been
 used`。每次發版都要先在 Play Console 重讀已使用的最大值；`+N` 必須更大，不能
 重用、不能倒退。
