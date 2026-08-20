@@ -7,6 +7,9 @@
 順序是有意義的：**第 1 步一定要在 build 之前**，第 5 節那道閘門一定要在上傳
 之前。中間的步驟可以查著做，那兩個不行。
 
+以下相對路徑與指令都以 `app/` 為工作目錄；從 repository 根目錄開始時先執行
+`cd app`。
+
 ---
 
 ## 1. 先把 `pubspec.yaml` 的 `version:` 往上帶
@@ -15,19 +18,19 @@
 
 `android/app/build.gradle.kts` 的 `versionCode = flutter.versionCode`，也就是說
 Android 的 versionCode 完全由 `pubspec.yaml` 第 4 行的 `version: x.y.z+N` 那個
-`+N` 決定。今天它是：
-
-```
-version: 1.0.0+1
-```
-
-而 **versionCode 1 已經被 Google Play 消耗掉了** —— 它已在內部測試軌道發布，
-並掛在正式版草稿上。Play 不接受重複的 versionCode，上傳會直接被擋下，訊息是
-`Version code 1 has already been used`。所以下一次發版的 `+N` **至少是 `+2`**，
-而且只能往上，不能重用、不能倒退。
+`+N` 決定。不要從這份文件猜目前版本，先讀工作樹：
 
 ```bash
-# 例：1.0.0+1 → 1.0.1+2
+grep '^version:' pubspec.yaml
+```
+
+截至 2026-08-18，**versionCode 1 與 2 都已被 Google Play 消耗掉**。Play 不接受
+重複的 versionCode，上傳會直接被擋下，訊息是 `Version code N has already been
+used`。每次發版都要先在 Play Console 重讀已使用的最大值；`+N` 必須更大，不能
+重用、不能倒退。
+
+```bash
+# 2026-08-18 之後的下一版範例：1.0.1+2 → 1.0.2+3
 ```
 
 版本名（`+` 左邊）是給使用者看的，versionCode（`+` 右邊）是給 Play 排序用的，
@@ -105,7 +108,8 @@ release 打包任務丟 `GradleException` 而不是靜靜退回 debug 金鑰。�
 （見 `SPEC_DEVIATIONS.md` §5）。原始碼修好了，那個已上傳的產物沒有：按下送審就會把整個
 置換要避免的違規原封不動送出去，被一個按鈕原地復活。
 
-**現況（2026-08-18）**：正式版的有效草稿已換成 **2 (1.0.1)**，由置換後的原始碼建置、
+**歷史快照（2026-08-18；每次送審前都要重新讀 Play Console）**：正式版的有效草稿
+已換成 **2 (1.0.1)**，由置換後的原始碼建置、
 以 Play 上架金鑰（`CN=Torque OBD2`）簽署，讀 bundle 自己的資訊清單確認過是 versionCode 2。
 舊的 1 (1.0.0) 仍列在版本清單裡，但不再是會被送出的那一份。
 

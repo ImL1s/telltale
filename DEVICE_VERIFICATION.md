@@ -692,6 +692,44 @@ different deaths, and only the last of those is likely in a car. All three are
 covered by the same mechanism — the file is already on disk before they happen
 — but none of them has been triggered here.
 
+## Round 14 — a real GATT peripheral, built rather than bought, 2026-08-20
+
+Round 10 verified BLE as far as scanning: the radio really opened, real
+advertisements really arrived. Everything after that — connect, service
+discovery, the CCCD subscribe, notifications — had only ever run against a
+scripted fake platform, and it is exactly the region that changed when the BLE
+package was replaced. I had written that closing it needed hardware I do not
+have. That was a conclusion, not a measurement, and it was wrong.
+
+A Mac has a radio. `tool/ble_test_rig/` now advertises Nordic UART from it and
+forwards every write to Ircama's ELM327-emulator over TCP, returning each reply
+as notifications — so both ends of the conversation are code this project did
+not write. Verified from a clean machine state (venv and bundle deleted first,
+because a rig that only works where it was built is not a rig): the emulator
+listens, the peripheral advertises.
+
+Two macOS behaviours had to be found the hard way, and both are recorded in the
+rig's README because each one looks like a different bug than it is:
+
+- **CoreBluetooth aborts instead of failing.** Any process without
+  `NSBluetoothAlwaysUsageDescription` in an `Info.plist` dies with `SIGABRT`,
+  no traceback, nothing on stderr. The reason exists only in
+  `~/Library/Logs/DiagnosticReports/*.ips` under `"namespace":"TCC"`. A bare
+  `python3` has no `Info.plist`, so every attempt died silently.
+- **A bundle alone does not help.** TCC attributes the request to the
+  *responsible* process — the terminal, for anything run from a shell. Launching
+  the same interpreter through LaunchServices (`open -n -a`) makes the bundle
+  responsible for itself, and the identical script then works. Proof it is the
+  mechanism and not luck: the first successful run scanned 27 real peripherals.
+
+**What still blocks the end-to-end run: a Mac's central cannot see its own
+peripheral.** CoreBluetooth does not loop back — an independent `bleak` client
+on the same machine reported `NOT FOUND` against a peripheral that was
+demonstrably advertising. A second device has to be the central, and the
+obvious one is the phone, which is locked with a secure lockscreen. So the rig
+is built, verified as far as this machine can verify it, and one unlocked phone
+away from closing the last gap in the BLE path.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of

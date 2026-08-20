@@ -70,8 +70,10 @@ python3 -m venv /tmp/elmvenv
 # Measured 2026-08-20: 80.10.2 has it, 81.0.0 still has it, 82.0.0 does not.
 # It can also appear to work on a machine that already has the wheel cached —
 # same day: succeeds from cache, fails under --no-cache-dir.
-/tmp/elmvenv/bin/pip install "setuptools<82" wheel
-/tmp/elmvenv/bin/pip install --no-build-isolation ELM327-emulator
+/tmp/elmvenv/bin/pip install setuptools==80.10.2 wheel==0.45.1
+env -u GITHUB_RUN_NUMBER /tmp/elmvenv/bin/pip install \
+  --no-build-isolation ELM327-emulator==3.0.5
+/tmp/elmvenv/bin/pip check
 
 # -b matters: without it the CLI exits as soon as stdin sees EOF
 /tmp/elmvenv/bin/python -m elm -n 35000 -s car -b /tmp/elm_batch.out &
@@ -85,6 +87,16 @@ The second suite's simulator lives on a branch of the private repository and is
 not distributable from here. Its 7 tests will skip for you and run in CI on the
 private side. If you are changing freeze-frame handling, say so in the pull
 request and it will be run against that oracle before merge.
+
+### Bluetooth LE, without an adapter
+
+`tool/ble_test_rig/` advertises a real Nordic UART peripheral from a Mac and
+puts the same third-party ELM327 emulator behind it, so a phone running the app
+can be taken through a real GATT connect, discovery, subscribe and notification
+stream with no hardware and no car. Its README explains the two macOS traps
+that make it look broken when it is not — and the one that makes it look
+working when it is not: a Mac cannot see its own peripheral, so scanning from
+the same machine finds nothing and proves nothing.
 
 **Why two, and why third-party at all.** Every other test in this suite is
 ultimately this project's parser checked against this project's simulator —
