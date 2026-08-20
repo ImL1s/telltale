@@ -920,6 +920,51 @@ with — which is the failure this whole repository is organised against, arrivi
 by a door nobody had checked because reaching it needs real hardware behaving
 badly.
 
+## Round 20 — an ELM327 answered, 2026-08-20
+
+Every round since the package swap has ended on the same sentence: no ELM327
+has ever replied to this app. That was true, and it was also a failure of
+imagination — the rig had been aimed at BLE because BLE was the untested
+transport, and the app has a Wi-Fi transport that speaks TCP to any host on the
+network. Ircama's ELM327-emulator listens on 35000. The phone and this Mac are
+on the same subnet.
+
+Phone `192.168.1.139` → `192.168.1.135:35000`, on the real network, against an
+ELM327 implementation this project did not write:
+
+- **The handshake completed.** `AUTO, ISO 15765-4 (CAN 11/500)` — the protocol
+  was detected, not assumed.
+- **8 PIDs/s**, against the demo's 81. Real latency, over real Wi-Fi.
+- **`單筆模式`, not fastMode.** The app tried a batched request and fell back.
+  The emulator's own log shows what it saw:
+  `Unknown request: '0104110B10050F', header=7E0` — the batch, unrecognised.
+  The fallback is not a guess about this emulator; it is the app reacting to
+  being refused.
+- **13.3 V** from `ATRV`, and six live gauges with derived figures behind them.
+- **VIN `WP0ZZZ99ZTS390000`** over Mode 09, reassembled from multiple frames.
+
+**And the fault-code screen refused to lie.** This emulator does not model
+functional addressing, so the app's correct request — `ATSH 7DF` then `03` —
+gets nothing. Its log confirms the app addressed it properly:
+`Unknown request: '0101', header=7DF`. The screen said:
+
+> **無法確認** — 車輛沒有回應 Mode 03 查詢，因此無法確認是否有已儲存的故障碼。
+> 這與「沒有故障碼」不是同一件事。
+
+…and the same for Modes 07 and 0A, each naming why it could not tell "the
+vehicle does not support this" from "this connection did not read it". The
+heading read 無法確認 rather than 共 0 筆.
+
+`REVIEW_LOG.md` lists "DTC 讀取失敗顯示無故障碼" as a HIGH defect and calls it
+a false all-clear on a diagnostic screen. This is that fix, on a phone, against
+a third-party implementation, refusing to give the answer that would have been
+comfortable.
+
+What is still untested, and it is now a short list: a real ELM327's timing, a
+clone's quirks, `SEARCHING...` on a physical bus, a link that drops when the
+engine cranks, and every PID formula against an ECU rather than a simulator's
+canned values.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of
