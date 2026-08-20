@@ -1,0 +1,27 @@
+# Complete runtime closure for CPython 3.14 on Linux x86_64.
+# ELM327-emulator is sdist-only; every other package must be a wheel.
+--only-binary=:all:
+--no-binary=ELM327-emulator
+
+ELM327-emulator==3.0.5 \
+    --hash=sha256:c4527894abd613f36c87ecba47b6b4ea91fd2b123509fd71d9e49ab41e656d87
+python-daemon==3.1.2 \
+    --hash=sha256:b906833cef63502994ad48e2eab213259ed9bb18d54fa8774dcba2ff7864cec6
+PyYAML==6.0.3 \
+    --hash=sha256:c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5
+obd==0.7.3 \
+    --hash=sha256:f26da700f13683a27855e6a439db72f7025fff6f1fd47ad4c6c33089d9fe7cab
+pyserial==3.5 \
+    --hash=sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0
+Pint==0.24.4 \
+    --hash=sha256:aa54926c8772159fcf65f82cc0d34de6768c151b32ad1deb0331291c38fe7659
+platformdirs==4.11.3 \
+    --hash=sha256:5ed065d443751de711da036041a7a214122efc4a4de393b3f4137ba5576540e7
+typing_extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+flexcache==0.3 \
+    --hash=sha256:d43c9fea82336af6e0115e308d9d33a185390b8346a017564611f1466dcd2e32
+flexparser==0.4 \
+    --hash=sha256:3738b456192dcb3e15620f324c447721023c0293f6af9955b481e91d00179846
+lockfile==0.12.2 \
+    --hash=sha256:6c3cb24f344923d30b2785d5ad75182c8ea7ac1b6171b08657258ec7429d50fa

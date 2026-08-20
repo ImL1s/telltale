@@ -35,15 +35,15 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           # AGP 9.1.0 (android/settings.gradle.kts) needs JDK 17+.
           java-version: "17"
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -67,12 +67,42 @@ jobs:
       # test can see.
       - run: flutter build apk --debug
 
+  apple:
+    name: Apple compile gates
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Neither of these has ever been run on a device, and compiling is not
+      # running. What it does catch is the failure that reaches iOS and macOS
+      # users first anyway: a dependency that does not build there at all. The
+      # BLE package was replaced without either platform being compiled for
+      # days, and a plugin that silently dropped iOS support would have been
+      # invisible until somebody tried to ship one.
+      - name: Build iOS without code signing
+        run: flutter build ios --no-codesign
+
+      - name: Build macOS debug
+        run: flutter build macos --debug
+
   privacy:
     name: the two privacy policies agree
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # There are two copies of the privacy policy and that is the defect.
       # PRIVACY.md is what a reader of this repo sees; docs/privacy.html is the
@@ -160,9 +190,16 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # The lockfile's hashes name cp314 wheels, so the interpreter is part
+          # of the pin — a runner's default python3 is not 3.14.
+          python-version: "3.14.4"
+          architecture: x64
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -217,11 +254,24 @@ jobs:
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/elmvenv"
           # ELM327-emulator's build backend still imports pkg_resources, which
-          # setuptools 82 removed (measured 2026-08-20: 81.0.0 still has it). Measured 2026-08-18: a plain
-          # `pip install ELM327-emulator` exits 1 with
+          # setuptools 82 removed (measured 2026-08-20: 81.0.0 still has it), so
+          # a plain `pip install ELM327-emulator` exits 1 with
           # `ModuleNotFoundError: No module named 'pkg_resources'`.
-          "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet "setuptools<82" wheel
-          "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet --no-build-isolation ELM327-emulator
+          #
+          # Both installs are hash-pinned. This job fetches and runs code from
+          # PyPI on every push, and the whole point of the oracle is that it is
+          # a fixed second opinion — a range would let a yanked-and-replaced
+          # release quietly change what the app is being checked against.
+          "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet --require-hashes \
+            --requirement "$GITHUB_WORKSPACE/.github/requirements/elm327-build.lock"
+          # Upstream rewrites its own version string when GITHUB_RUN_NUMBER is
+          # set, so inside Actions the reviewed sdist stops calling itself 3.0.5.
+          env -u GITHUB_RUN_NUMBER "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet \
+            --no-build-isolation --require-hashes \
+            --requirement "$GITHUB_WORKSPACE/.github/requirements/elm327-py314-linux-x86_64.lock"
+          test "$("$RUNNER_TEMP/elmvenv/bin/python" -c \
+            'import importlib.metadata as m; print(m.version("ELM327-emulator"))')" = "3.0.5"
+          "$RUNNER_TEMP/elmvenv/bin/pip" check
 
           # -b is required: without a batch file this CLI exits the moment its
           # stdin sees EOF, which is exactly what a background CI step gives it.

@@ -1,0 +1,6 @@
+# Build frontend for the sdist-only ELM327-emulator package.
+# Keep below setuptools 82 because upstream imports pkg_resources.
+--only-binary=:all:
+
+setuptools==80.10.2 \
+    --hash=sha256:95b30ddfb717250edb492926c92b5221f7ef3fbcc2b07579bcd4a27da21d0173
