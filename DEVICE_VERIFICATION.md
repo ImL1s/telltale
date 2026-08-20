@@ -799,6 +799,45 @@ What remains is one device that can see the peripheral. On a phone that means
 an unlock and an uninstall — the uninstall takes saved PIDs, dashboard layout
 and vehicle profile with it, which is why it has not been done unasked.
 
+## Round 17 — the real GATT path, on a phone, 2026-08-20
+
+The phone was unlocked, so the region rounds 10 and 14 could not reach finally
+ran on real hardware: `1.0.2+3`, installed over the previous build with the
+upload key so no data was lost, and verified as versionCode 3 by `dumpsys`
+rather than by `adb install` saying `Success` — which it also said, five
+minutes earlier, while installing 1.0.1+2 from a stale build.
+
+**The rig was not what closed it.** The Mac advertised — `isAdvertising: True`,
+asked of CoreBluetooth rather than inferred from `start()` returning `None`,
+which is not a signal at all — and the phone scanned 30+ real peripherals
+including a Windows desktop, an Android tablet and a smart door lock. It never
+saw `TelltaleELM`. An Apple peripheral advertised from a UI-less process is not
+reliably visible to a non-Apple central, and nothing here disproved that.
+
+**What closed it was one of the peripherals already on screen.** Every device in
+that scan is a real GATT server. Tapping `WIN_DESKTOP` — plainly not an ELM327
+— exercised the whole untested region against real hardware:
+
+- **connect** succeeded,
+- **service discovery** succeeded and found a writable/notifiable pair, because
+  the app moved on to the handshake rather than reporting no UART service,
+- **the subscribe** succeeded and `ATZ` went out over a real characteristic,
+- `ATZ` timed out (a desktop does not answer AT commands), `ATE0` was reported
+  `已中止`, and the screen showed `ELM327 初始化（上次嘗試）2 / 14` with the
+  failing step named.
+
+The wording held up where it matters: **初始化未通過，轉接器可能不相容** — a
+claim about the adapter, hedged, with no assertion about any vehicle. Beneath it
+the export was offered with 「這次嘗試的完整往返紀錄留著了。帶回來比一句訊息有用。」
+No crash, no Flutter exception, no frozen UI, and the adapter was remembered with
+直接連線 / 忘記 offered on return.
+
+What this does not establish: no ELM327 answered. Clone timing, `SEARCHING...`
+on a physical bus, a link dropping when the engine cranks, and every PID formula
+against a real ECU remain untested. But "connect, discover and subscribe have
+never run outside a fake platform" — true since the package swap — is no longer
+true.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of

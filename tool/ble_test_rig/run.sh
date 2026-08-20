@@ -119,12 +119,12 @@ open -n -a "$APP" --args -u "$HERE/bridge.py" "${RIG_SECONDS:-900}"
 # on the first run of a freshly created venv, where the imports are slower —
 # and the peripheral had in fact started a second later.
 for _ in {1..40}; do
-  grep -q advertising /tmp/ble_bridge.log 2>/dev/null && break
+  grep -q isAdvertising /tmp/ble_bridge.log 2>/dev/null && break
   grep -q FATAL /tmp/ble_bridge.log 2>/dev/null && break
   sleep 1
 done
-grep -q advertising /tmp/ble_bridge.log 2>/dev/null \
-  || { echo "the peripheral did not start; see /tmp/ble_bridge.log" >&2; exit 1; }
+grep -q "isAdvertising: True" /tmp/ble_bridge.log 2>/dev/null \
+  || { echo "the peripheral is not advertising; see /tmp/ble_bridge.log" >&2; exit 1; }
 
 echo
 echo "advertising as TelltaleELM for ${RIG_SECONDS:-900}s."

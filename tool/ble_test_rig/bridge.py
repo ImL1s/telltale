@@ -110,7 +110,15 @@ async def main():
     server.read_request_func = lambda characteristic, **kw: characteristic.value
 
     ok = await server.start()
-    log(f"advertising TelltaleELM: {ok}")
+    # `start()` returning None is not evidence of anything — ask CoreBluetooth
+    # itself. A peripheral that failed to advertise otherwise looks identical
+    # to one that is advertising and simply cannot be seen from here.
+    log(f"start() returned: {ok}")
+    try:
+        pm = server.peripheral_manager_delegate.peripheral_manager
+        log(f"isAdvertising: {bool(pm.isAdvertising())}")
+    except Exception as exc:
+        log(f"could not read isAdvertising: {exc}")
     seconds = int(sys.argv[1]) if len(sys.argv) > 1 else 600
     await asyncio.sleep(seconds)
     await server.stop()
