@@ -98,6 +98,30 @@ class ObdConnectionState {
   }
 }
 
+/// Turns an exception thrown while connecting into a sentence for a driver.
+///
+/// `'$e'` used to reach the screen directly. Measured on a phone, 2026-08-20,
+/// against a BLE peripheral that accepts a GATT connection and then answers
+/// nothing:
+///
+///     TimeoutException after 0:00:10.000000: Future not completed
+///
+/// One branch away, a failed handshake says 轉接器可能不相容 — something a
+/// person at a car can act on. This path had no equivalent, so anything that
+/// was not a `TransportException` arrived verbatim.
+///
+/// The raw text is not discarded: `_failAttempt` writes it into the transcript,
+/// which is where a maintainer reads it. This decides only what the driver sees.
+String describeConnectException(Object error) {
+  if (error is TimeoutException) {
+    return '轉接器接受了連線，但在時限內沒有回應。'
+        '通常是它還沒通電 —— 多數 OBD 插座要電門轉到 ON 才供電；'
+        '也可能是它正被另一個 App 連著，先關掉那個再試。';
+  }
+  return '連線在建立過程中失敗了。請確認轉接器已通電、就在附近，'
+      '然後再試一次。完整的錯誤留在下方的紀錄裡。';
+}
+
 class ObdSession extends Notifier<ObdConnectionState> {
   Elm327Client? _client;
   PollingEngine? _engine;
@@ -834,10 +858,11 @@ class ObdSession extends Notifier<ObdConnectionState> {
     Elm327Client client,
     String why, {
     String prefix = '連線失敗',
+    String? detail,
   }) async {
     // Before the teardown reads it. The sentence on screen is what the user
     // gets; this is what somebody can act on afterwards.
-    _attemptTranscript?.recordNote('$prefix：$why', DateTime.now());
+    _attemptTranscript?.recordNote('$prefix：${detail ?? why}', DateTime.now());
     if (_superseded(generation)) {
       // This attempt's own client, not the shared teardown: whoever superseded
       // it has already torn down and published, and `_teardown()` here would
@@ -935,7 +960,14 @@ class ObdSession extends Notifier<ObdConnectionState> {
     } on TransportException catch (e) {
       return _failAttempt(generation, client, e.message);
     } on Object catch (e) {
-      return _failAttempt(generation, client, '$e');
+      // The sentence and the evidence go to different readers: the driver gets
+      // something to act on, the transcript keeps the exception verbatim.
+      return _failAttempt(
+        generation,
+        client,
+        describeConnectException(e),
+        detail: '$e',
+      );
     }
 
     if (_superseded(generation)) {

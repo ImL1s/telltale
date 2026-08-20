@@ -880,6 +880,46 @@ where the guide says it will be.
 
 Still not established, and now the only thing left: no ELM327 has answered.
 
+## Round 19 — a Dart exception, on screen, in a car park, 2026-08-20
+
+Still hunting the rig on the phone: connect to each unnamed peripheral and
+watch `/tmp/ble_bridge.log` for a GATT write. One of them accepted the
+connection and then answered nothing — and the screen said:
+
+    TimeoutException after 0:00:10.000000: Future not completed
+
+That is `'$e'` from `obd_session.dart`, reaching a person. One branch away, a
+failed handshake says 轉接器可能不相容, which somebody can act on; the connect
+path had no equivalent, so anything that was not a `TransportException` arrived
+verbatim.
+
+It needed exactly this to find: a peripheral that accepts a GATT link and stays
+silent. The demo transport connects instantly, the fake platform in the unit
+tests throws typed errors, and a real ELM327 answers. Nothing in the suite
+produces a bare `TimeoutException` at connect.
+
+Fixed as two audiences rather than by deleting anything:
+
+| reader | gets |
+|---|---|
+| the driver | 轉接器接受了連線，但在時限內沒有回應… plus the two causes worth checking |
+| whoever reads the transcript later | `TimeoutException after 0:00:10.000000: Future not completed`, verbatim |
+
+`_failAttempt` takes a `detail`, and the transcript records that instead of the
+sentence. Both halves are tested: the screen text must not contain the class
+name or the message, and the transcript must.
+
+Verified on the phone by reconnecting to the same peripheral through 直接連線 —
+which also exercised the remembered-adapter path, connecting without a scan.
+
+**Three defects in one sitting, all the same shape.** `0 KB` for a 178-byte
+recording, a blank panel after an empty scan, and a raw exception on screen:
+each was true, and none of them was an answer. The app was telling somebody
+standing at a car something technically correct that they could do nothing
+with — which is the failure this whole repository is organised against, arriving
+by a door nobody had checked because reaching it needs real hardware behaving
+badly.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of
