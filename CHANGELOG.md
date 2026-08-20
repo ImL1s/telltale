@@ -6,6 +6,20 @@ which therefore does not always move in step with the name.
 
 Dates are the date the build was made, not the date it reached anyone.
 
+## Unreleased
+
+### Fixed
+
+- **A crash no longer takes the recording with it.** The snapshot that lets a
+  session be read after the app dies was written only by the pause and
+  teardown handlers, so it covered the app being backgrounded and then killed
+  — and covered nothing at all when the process died in the foreground.
+  Measured on a Pixel 9: home then `am force-stop` left the recording intact
+  and offered on the next launch; `am crash` from the foreground left nothing.
+  The second is the app crashing in a car, which is the session most worth
+  sending back. A live session now writes every 30 seconds, and only when
+  there are new bytes to write, so the most a crash can cost is one interval.
+
 ## 1.0.1+2 — 2026-08-18
 
 Published to Google Play's internal testing track, replacing 1.0.0+1, and

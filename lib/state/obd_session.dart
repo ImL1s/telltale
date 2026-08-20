@@ -1002,6 +1002,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
       batteryVoltage: client.batteryVoltage,
       clearError: true,
     );
+    _startPeriodicSnapshots();
     return true;
   }
 
@@ -1166,6 +1167,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // deliberate disconnect, a link that dropped, the provider being disposed.
     // The recording is worth keeping in all of them, and this is the one place
     // that does not have to enumerate them.
+    _stopPeriodicSnapshots();
     unawaited(_saveTranscriptSnapshot());
     final chained = _drainTeardown(_teardownDraining);
     _teardownDraining = chained;
@@ -1193,6 +1195,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // is still the last thing that happened — but it may not replace a
     // recording that came off an adapter.
     final fromRealHardware = _sessionTransport != TransportKind.demo;
+    // Stamped here rather than in the timer, so a save from the pause or
+    // teardown handler also silences the next tick.
+    _lastSavedMark = transcript.recorded;
 
     // Serialised, the same way teardown already is.
     //
@@ -1217,6 +1222,52 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// The tail of the snapshot queue. `TranscriptStore.save` never throws, so
   /// this cannot be poisoned by a failed write.
   Future<void> _savingSnapshot = Future<void>.value();
+
+  /// How often a live session writes its recording to disk.
+  ///
+  /// Thirty seconds is the answer to a measurement rather than a guess. On a
+  /// Pixel 9, 2026-08-20: backgrounding the app and then force-stopping it left
+  /// the recording intact, because `onPause` ran — but `am crash` from the
+  /// foreground left **nothing**, because no handler runs at all. The app
+  /// crashing in a car is precisely the session somebody needs to send back,
+  /// and it was the one with no record. So the snapshot is no longer only a
+  /// farewell: the most a crash can now cost is one interval.
+  ///
+  /// Not shorter, because the file is a few hundred kilobytes and this runs
+  /// while the same phone is driving gauges off a 20 Hz stream. Not longer,
+  /// because thirty seconds of a fault-code scan is most of the scan.
+  Duration snapshotInterval = const Duration(seconds: 30);
+
+  Timer? _snapshotTimer;
+
+  /// [ObdTranscript.recorded] as of the last write, so a tick with nothing new
+  /// to say writes nothing. Updated by every path that saves, not just the
+  /// timer's — otherwise the first tick after a pause rewrites what the pause
+  /// handler has already put there.
+  int _lastSavedMark = -1;
+
+  void _startPeriodicSnapshots() {
+    _snapshotTimer?.cancel();
+    // A new session has a new transcript counting from zero, and the mark left
+    // by the previous session's final save is a number from a different count.
+    // They are very unlikely to collide, and "very unlikely" is a worse reason
+    // to skip a write than "impossible" is.
+    _lastSavedMark = -1;
+    _snapshotTimer = Timer.periodic(snapshotInterval, (_) {
+      // The background is the pause handler's job, and it has already written
+      // once. A backgrounded session is also not adding anything.
+      if (!_foreground) return;
+      final record = exportableRecord;
+      if (record == null) return;
+      if (record.transcript.recorded == _lastSavedMark) return;
+      unawaited(_saveTranscriptSnapshot());
+    });
+  }
+
+  void _stopPeriodicSnapshots() {
+    _snapshotTimer?.cancel();
+    _snapshotTimer = null;
+  }
 
   /// Where a recording goes so it survives the app being killed.
   @visibleForTesting

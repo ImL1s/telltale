@@ -21,7 +21,11 @@
    走真的網路、真的 socket、真的協定協商，比 Demo 接近上車：
 
    ```bash
-   python3 -m venv /tmp/elmvenv && /tmp/elmvenv/bin/pip install ELM327-emulator
+   python3 -m venv /tmp/elmvenv
+   /tmp/elmvenv/bin/pip install setuptools==80.10.2 wheel==0.45.1
+   env -u GITHUB_RUN_NUMBER /tmp/elmvenv/bin/pip install \
+     --no-build-isolation ELM327-emulator==3.0.5
+   /tmp/elmvenv/bin/pip check
    # -b 是必要的：沒有批次檔，這個 CLI 的 stdin 一 EOF 就自己結束
    /tmp/elmvenv/bin/python -m elm -n 35000 -s car -b /tmp/elm_batch.out &
    ipconfig getifaddr en0
@@ -261,6 +265,17 @@ vLinker 這類會回報 STN 晶片的。）
 檔案，會回你「無法儲存文字，建議改為儲存連結」。這是那個按鈕的限制，不是匯出
 失敗；同一次分享送到 Gmail 是一個 176 KB 的 `.txt` 附件，正常得很。
 （實測：Galaxy S25 Ultra，One UI 快速分享。）
+
+### App 自己死掉的話
+
+紀錄不會跟著消失。連線期間每 30 秒會自動存一份到手機上，所以就算 App 當掉、
+被系統關掉、或手機直接沒電，**最多只丟失最近 30 秒**。下次打開 App，連線畫面
+最上面就會出現「上一次連線的紀錄」，按「匯出」一樣送得出來，檔名會多一個
+`-recovered` 讓你分得出來。
+
+那份自動存的紀錄只有一份，會被下一次連線覆蓋 —— 但**模擬器的紀錄永遠不會蓋掉
+真車的紀錄**。所以車上出了狀況、回家想確認 App 有沒有壞而點了 Demo 模擬器，
+車上那份還在。
 
 「手動指令」只接受唯讀查詢（`ATI`、`ATDPN`、`ATRV`、`0100`、`03` 之類）。
 清除故障碼不能從這裡送 —— 那個要走故障碼畫面的按鈕，所有安全檢查都在那裡。

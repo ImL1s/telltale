@@ -656,6 +656,42 @@ handling, real GPU behaviour and the Samsung skin are all untested by it, and
 the transport was Demo — no socket, no protocol negotiation, no adapter. It
 closes the "does 1.0.1+2 render and navigate" question and nothing beyond it.
 
+## Round 13 — the recording did not survive a crash, 2026-08-20
+
+The transcript export was walked in round 12 and worked. This round asked the
+question that one does not: **what happens when the app dies without being
+asked to?** — which is the situation the whole snapshot mechanism exists for,
+and which had never been triggered on any device.
+
+Two deaths, on the emulator, `1.0.1+2`, Demo transport, snapshot cleared first
+so nothing could be mistaken for a leftover:
+
+| how it died | before this round |
+|---|---|
+| home, then `am force-stop` | **recording intact.** Offered on the next launch, 138 KB, top of the connect screen, exports as `torque-obd-…-recovered.txt` |
+| `am crash` from the foreground | **nothing.** `FATAL EXCEPTION`, `has died: fg TOP`, and the next launch offered no recording at all |
+
+The second is the app crashing in a car. It is the session most worth sending
+back, and it was the only one with no record — because the snapshot was written
+by the pause and teardown handlers, and a foreground crash runs neither.
+
+Fixed: a live session now writes every 30 seconds, and only when the transcript
+has grown since the last write. `ObdTranscript.recorded` counts entries ever
+recorded including the ones the ring buffer dropped, so a long session does not
+stop saving at the point it has the most to say. Three tests, one of them
+mutation-checked — removing the single line that starts the timer turns the
+first one red.
+
+Re-run on the device after the fix, same `am crash` from the foreground: the
+next launch offered **142 KB, stamped 14:13**, the minute of the crash. The
+most a crash can now cost is one interval.
+
+What this does not establish: the emulator's `am crash` raises an exception on
+the main thread. A native crash, an OOM kill, or a battery reaching zero are
+different deaths, and only the last of those is likely in a car. All three are
+covered by the same mechanism — the file is already on disk before they happen
+— but none of them has been triggered here.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of

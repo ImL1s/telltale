@@ -217,10 +217,10 @@ jobs:
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/elmvenv"
           # ELM327-emulator's build backend still imports pkg_resources, which
-          # setuptools >= 81 no longer ships. Measured 2026-08-18: a plain
+          # setuptools 82 removed (measured 2026-08-20: 81.0.0 still has it). Measured 2026-08-18: a plain
           # `pip install ELM327-emulator` exits 1 with
           # `ModuleNotFoundError: No module named 'pkg_resources'`.
-          "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet "setuptools<81" wheel
+          "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet "setuptools<82" wheel
           "$RUNNER_TEMP/elmvenv/bin/pip" install --quiet --no-build-isolation ELM327-emulator
 
           # -b is required: without a batch file this CLI exits the moment its

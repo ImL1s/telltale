@@ -65,11 +65,12 @@ To run the first suite yourself:
 ```bash
 python3 -m venv /tmp/elmvenv
 # Two steps, not one. ELM327-emulator ships as an sdist whose build backend
-# imports pkg_resources, which setuptools >= 81 no longer provides, so a plain
+# imports pkg_resources, which setuptools 82 removed, so a plain
 # `pip install ELM327-emulator` fails with `No module named 'pkg_resources'`.
-# It can appear to work on a machine that already has the wheel cached —
-# measured 2026-08-20: succeeds from cache, fails under --no-cache-dir.
-/tmp/elmvenv/bin/pip install "setuptools<81" wheel
+# Measured 2026-08-20: 80.10.2 has it, 81.0.0 still has it, 82.0.0 does not.
+# It can also appear to work on a machine that already has the wheel cached —
+# same day: succeeds from cache, fails under --no-cache-dir.
+/tmp/elmvenv/bin/pip install "setuptools<82" wheel
 /tmp/elmvenv/bin/pip install --no-build-isolation ELM327-emulator
 
 # -b matters: without it the CLI exits as soon as stdin sees EOF

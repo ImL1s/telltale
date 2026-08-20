@@ -106,6 +106,14 @@ class ObdTranscript {
   /// How many were discarded to stay within [maxEntries].
   int get dropped => _dropped;
 
+  /// How many entries have ever been recorded, including the dropped ones.
+  ///
+  /// The periodic snapshot asks this to decide whether there is anything new
+  /// worth writing. `entries.length` cannot answer it: once the ring buffer is
+  /// full that number stops moving, and a long session would stop being saved
+  /// at exactly the point it has the most to say.
+  int get recorded => _entries.length + _dropped;
+
   bool get isEmpty => _entries.isEmpty;
 
   void _add(TranscriptEntry entry) {
