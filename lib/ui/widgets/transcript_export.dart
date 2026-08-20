@@ -21,6 +21,16 @@ import '../../core/theme/app_theme.dart';
 import 'panel.dart';
 import '../../state/obd_session.dart';
 
+/// How big a stored recording is, in a unit that does not read as "empty".
+///
+/// `bytes / 1024` rounded to zero decimals renders anything under 512 bytes as
+/// `0 KB`, and a failed handshake — the reset, the timeout, the step it died on
+/// — is a few hundred bytes. That is the most diagnostic recording this app
+/// produces, and it was the one being offered as nothing. Nobody exports a file
+/// the app has just called empty.
+String formatTranscriptSize(int bytes) =>
+    bytes < 1024 ? '$bytes 位元組' : '${(bytes / 1024).round()} KB';
+
 /// Writes the transcript to a file and hands it to the share sheet.
 ///
 /// A file rather than a text share: these run to hundreds of kilobytes and
@@ -190,7 +200,7 @@ class RecoveredTranscriptPanel extends ConsumerWidget {
             Text(
               '${at.year}/${two(at.month)}/${two(at.day)} '
               '${two(at.hour)}:${two(at.minute)} 留下的，'
-              '${(stored.bytes / 1024).toStringAsFixed(0)} KB。'
+              '${formatTranscriptSize(stored.bytes)}。'
               'App 被系統關掉或手機沒電時，紀錄還是留下來了。',
               style: context.texts.bodySmall,
             ),

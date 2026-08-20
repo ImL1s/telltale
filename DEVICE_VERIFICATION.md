@@ -838,6 +838,48 @@ against a real ECU remain untested. But "connect, discover and subscribe have
 never run outside a fake platform" — true since the package swap — is no longer
 true.
 
+## Round 18 — the phone, with everything that does not need an adapter, 2026-08-20
+
+Same session, same unlocked phone, `1.0.2+3`. Round 12's screen-by-screen pass
+was on an emulator; this is the Samsung, at its own resolution, under One UI.
+
+**A defect, found the moment the screen was read rather than assumed.** The
+connect screen offered the recording from the failed BLE attempt as **0 KB**.
+`(bytes / 1024).toStringAsFixed(0)` renders anything under 512 bytes as zero,
+and a failed handshake is a few hundred bytes — so the recording with the most
+diagnostic value in it was the one displayed as nothing, directly under a
+sentence promising it had been kept. Nobody exports a file the app has just
+called empty. Fixed, and verified against the *same stored recording*, which
+now reads `178 位元組`.
+
+What else ran, all against the Demo transport:
+
+- Dashboard live at **81 PIDs/s** — higher than the emulator's 77, which is
+  what real silicon should look like.
+- A full fault-code scan: VIN over multiple frames, the freeze frame gated on
+  `P0301` with twelve named values and the explicit note that two more had no
+  conversion formula, the MIL state, readiness monitors.
+
+**The crash-recovery rule and the simulator-precedence rule, both on hardware,
+in one sequence.** `am crash` from the foreground — `FATAL EXCEPTION`,
+`has died: fg TOP` — and the next launch still offered the recording. And it
+offered the *right* one: the Demo session had been running for over forty
+seconds, well past a snapshot interval, but the timestamp stayed at 16:10, the
+BLE attempt. A simulator session did not overwrite a recording made from real
+hardware.
+
+That is exactly the scenario `FIELD_GUIDE.md` describes — something goes wrong
+at the car, you get home, you tap Demo to check whether the app itself is
+broken — and it had never been run. Now it has, in that order, on the phone.
+
+**The share sheet, on One UI.** `torque-obd-…-recovered.txt`, one item, with a
+TXT icon — the `text/plain` MIME type is being declared rather than inferred,
+which is the thing `transcript_export.dart` says it fixed. The Quick Share
+「儲存」 button the field guide warns about sits second in the row, exactly
+where the guide says it will be.
+
+Still not established, and now the only thing left: no ELM327 has answered.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of
