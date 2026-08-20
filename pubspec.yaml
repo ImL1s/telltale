@@ -82,6 +82,12 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Drives the app on a real device through programmatic widget events rather
+  # than the system input layer, which is what makes the BLE path testable at
+  # all: `adb shell input` cannot reach an app behind a secure lockscreen, and
+  # every phone that is a useful BLE test target has one.
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 

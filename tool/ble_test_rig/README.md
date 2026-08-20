@@ -49,6 +49,35 @@ not the bundle. The interpreter has to be launched through LaunchServices —
 without it, `open` hands the arguments to an already-running instance and the
 new script never starts, leaving an empty log that reads exactly like a crash.
 
+## Driving the app without touching it
+
+`adb shell input` cannot reach an app behind a secure lockscreen, and every
+phone that is a useful BLE target has one. So the app side is driven by an
+integration test, which injects widget events directly:
+
+```bash
+# on the machine with the rig
+./run.sh
+# on the machine with the phone attached
+cd app && flutter test integration_test/ble_rig_test.dart -d <device-id>
+```
+
+It opens the Bluetooth LE section, scans, connects to `TelltaleELM`, and waits
+for the handshake to reach the dashboard. A run that never finds the peripheral
+**fails** rather than skipping: a green result that never connected to anything
+is indistinguishable from one that did, which is the shape of evidence this
+project refuses everywhere else.
+
+Two things that will stop it before it starts, both met here: with more than
+one device attached, the tool's log reader can attach to the wrong one — set
+`ANDROID_SERIAL` as well as `-d`. And a debug build cannot install over a
+release-signed one, so uninstall first (which takes the app's data with it —
+on a phone that matters, on an emulator it does not).
+
+Verified on an emulator 2026-08-20: the test drove the app through scan and
+failed with its own message, which is the correct outcome where the radio is
+virtual and no peripheral can be seen.
+
 ## What it does and does not establish
 
 It exercises the real platform channel: connect, discover, subscribe, write,

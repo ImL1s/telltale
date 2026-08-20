@@ -764,6 +764,41 @@ reports **7 skipped rather than 12** — the five Ircama oracle tests ran and
 passed against a simulator this project did not write. The number is the
 evidence that they ran.
 
+## Round 16 — the last mile, reduced to one action, 2026-08-20
+
+The BLE gap has a fixed shape: the rig advertises a real peripheral, and the
+app has to be driven on a device that can see it. Every attempt to close it by
+hand ran into the same wall — `adb shell input` goes to the lockscreen, not to
+the app behind it, and every phone worth testing on has a secure lockscreen.
+
+`integration_test/ble_rig_test.dart` removes that wall. It injects widget
+events directly, so it does not care whether anyone is looking at the screen:
+it opens the Bluetooth LE section, scans, taps `TelltaleELM`, and waits for the
+handshake to reach the dashboard.
+
+**It fails rather than skips when no peripheral is found.** The oracles in this
+repository skip when their simulator is absent, and CI has a guard that fails
+the job if they did — because a green that cannot distinguish "checked" from
+"never ran" is not green. Here the same reasoning points the other way: this
+test exists only to prove a real connection happened, so having nothing to
+connect to is a failure of the run, and the message says what to start and
+where.
+
+Verified on an emulator: the test drove the app through the scan and stopped at
+its own `fail`, with the message it was written to produce. That is the correct
+outcome where the radio is virtual — and it establishes the half that does not
+need hardware, that the driver reaches the right controls in the right order
+and can tell a connection from an absence.
+
+Two obstacles worth recording, because both look like the test being broken:
+`flutter test` reported `No tests ran — Error waiting for a debug connection`
+with two devices attached, fixed by setting `ANDROID_SERIAL` alongside `-d`;
+and a debug build cannot install over a release-signed one.
+
+What remains is one device that can see the peripheral. On a phone that means
+an unlock and an uninstall — the uninstall takes saved PIDs, dashboard layout
+and vehicle profile with it, which is why it has not been done unasked.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of
