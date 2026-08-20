@@ -8,9 +8,10 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## 1.0.3+4 — 2026-08-20
 
-Three defects found by driving the app on a phone against real Bluetooth
-hardware behaving badly. All three were true statements that a person standing
-at a car could do nothing with.
+Two defects found by driving 1.0.2 on a phone against real Bluetooth hardware
+that misbehaves. Both were true statements a person standing at a car could do
+nothing with — the same shape as the empty-scan panel fixed in 1.0.2, and found
+the same way.
 
 ### Fixed
 
@@ -25,9 +26,6 @@ at a car could do nothing with.
   handshake is a few hundred bytes, so the recording with the most diagnostic
   value in it was the one displayed as empty — directly beneath a sentence
   promising it had been kept. Nobody exports a file the app has called empty.
-- **A BLE scan that finds nothing says so.** Previously the panel returned to
-  exactly its pre-tap state, at the moment somebody is wondering whether the
-  app or the adapter is broken.
 
 ## 1.0.2+3 — 2026-08-20
 
