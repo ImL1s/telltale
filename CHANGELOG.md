@@ -6,7 +6,10 @@ which therefore does not always move in step with the name.
 
 Dates are the date the build was made, not the date it reached anyone.
 
-## Unreleased
+## 1.0.2+3 — 2026-08-20
+
+Both fixes are failures that only show up where nobody can watch them: a car,
+with the app in one hand.
 
 ### Fixed
 
