@@ -730,6 +730,40 @@ obvious one is the phone, which is locked with a secure lockscreen. So the rig
 is built, verified as far as this machine can verify it, and one unlocked phone
 away from closing the last gap in the BLE path.
 
+## Round 15 — what the emulator's radio actually is, 2026-08-20
+
+Round 14 left the rig advertising and the question open: can the Android
+emulator's Bluetooth reach the host's radio? I had asserted it could not,
+without testing it. Tested now, with `-feature Bluetooth` and the rig
+advertising `TelltaleELM` from the Mac:
+
+- The emulator has a real adapter — `state: ON`, its own MAC.
+- Tapping 搜尋 BLE 裝置 ran a **real scan**: Android's own stack logged
+  `le_scanning_manager` starting and stopping, `le_address_manager` registering
+  a client, `BluetoothAdapter: isLeEnabled(): ON`.
+- It found nothing. The emulator's Bluetooth is a closed virtual stack; it does
+  not see the host's radio. So the assertion was right and the reasoning was
+  not, and this is now a measurement.
+
+**The trip found a real defect anyway, which is the argument for taking it.**
+A BLE scan that finishes with no results rendered *nothing*: the panel returned
+to exactly its pre-tap state. `_BleBody` only ever built a list when
+`_found.isNotEmpty`, with no else branch, while the Classic branch has carried
+an `emptyHint` since it was written. Somebody standing at a car reads that
+silence as a broken app, and cannot see any of the three things that actually
+cause it.
+
+Fixed with `bleEmptyScanGuidance`, gated on a scan having finished — greeting
+somebody with an explanation of a failure that has not happened would be its
+own defect. Both exits set the flag, including the one that throws, or an error
+message would still sit above a silent empty list. Verified by rebuilding,
+reinstalling, and walking it: before the scan, nothing; after it, the guidance.
+
+Also confirmed in passing: with the rig's ELM327 emulator running, the suite
+reports **7 skipped rather than 12** — the five Ircama oracle tests ran and
+passed against a simulator this project did not write. The number is the
+evidence that they ran.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of

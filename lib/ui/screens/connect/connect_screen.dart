@@ -953,6 +953,12 @@ class _BleBody extends StatefulWidget {
 
 class _BleBodyState extends State<_BleBody> {
   bool _scanning = false;
+
+  /// Whether a scan has finished at least once.
+  ///
+  /// Without it the guidance would greet somebody who has not tapped anything
+  /// yet with an explanation of a failure that has not happened.
+  bool _scanned = false;
   String? _error;
   bool _permanentlyDenied = false;
   final List<_BleEntry> _found = [];
@@ -1001,7 +1007,12 @@ class _BleBodyState extends State<_BleBody> {
           if (mounted) setState(() => _error = '$e');
         },
         onDone: () {
-          if (mounted) setState(() => _scanning = false);
+          if (mounted) {
+            setState(() {
+              _scanning = false;
+              _scanned = true;
+            });
+          }
         },
       );
     } on Object catch (e) {
@@ -1009,6 +1020,7 @@ class _BleBodyState extends State<_BleBody> {
         setState(() {
           _error = '$e';
           _scanning = false;
+          _scanned = true;
         });
       }
     }
@@ -1039,6 +1051,10 @@ class _BleBodyState extends State<_BleBody> {
               label: const Text('開啟應用程式設定'),
             ),
           ],
+        ],
+        if (_scanned && !_scanning && _found.isEmpty) ...[
+          const SizedBox(height: Spacing.md),
+          Text(bleEmptyScanGuidance, style: context.texts.bodyMedium),
         ],
         if (_found.isNotEmpty) ...[
           const SizedBox(height: Spacing.md),
@@ -1516,6 +1532,22 @@ List<TransportQuestion> whichTransportGuidance({
               'App 不能代替你配對。配對碼多半是 1234 或 0000。',
         ),
     ];
+
+/// What to say when a BLE scan finishes having found nothing.
+///
+/// The Classic branch has had an equivalent since it was written; this branch
+/// showed nothing at all, so a scan that found no adapter left the screen
+/// exactly as it was before the tap. Somebody standing at a car reads that as
+/// a broken app, and the three things that actually cause it are all invisible
+/// from a blank panel.
+///
+/// Ordered by how often each one is the answer, not by how interesting it is.
+const String bleEmptyScanGuidance =
+    '搜尋結束，沒有找到 BLE 轉接器。依序確認：轉接器的燈有沒有亮 —— '
+    '多數 OBD 插座要電門轉到 ON 才供電；再來是距離，先坐進車裡再搜尋；'
+    '最後看盒子上的規格，如果寫的是 2.0 或 3.0，那是 Bluetooth Classic，'
+    '不會出現在這份清單裡，請改用上面的 Bluetooth Classic。'
+    'BLE 轉接器不需要、也不應該在系統設定裡配對，那條路走不通。';
 
 class _WhichTransportCard extends ConsumerStatefulWidget {
   const _WhichTransportCard();

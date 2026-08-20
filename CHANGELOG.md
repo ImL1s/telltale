@@ -10,6 +10,15 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ### Fixed
 
+- **A BLE scan that finds nothing now says so, and says what to do.** The panel
+  returned to exactly the state it was in before the tap: no message, no
+  result, no next step. Bluetooth Classic has had an equivalent since it was
+  written. This is the connect screen's worst moment to be silent — somebody is
+  at a car with an adapter plugged in, and the three things that actually cause
+  it (no power until the ignition is on, out of range, or a Classic adapter
+  that can never appear in a BLE list) are all invisible from a blank panel.
+  The guidance is ordered by how often each one is the answer.
+
 - **A crash no longer takes the recording with it.** The snapshot that lets a
   session be read after the app dies was written only by the pause and
   teardown handlers, so it covered the app being backgrounded and then killed
