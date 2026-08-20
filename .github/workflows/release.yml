@@ -17,6 +17,12 @@
 # from here. Android will refuse with a signature mismatch. That is the correct
 # behaviour — if the two shared a key, anything that compromised CI could publish
 # a replacement for a store install.
+#
+# A tag carrying a SemVer pre-release suffix (v1.0.1-beta.1) is published as a
+# GitHub pre-release and carries an extra section stating what has and has not
+# been verified. The rule lives here rather than in a person's memory, because
+# the one release where somebody forgets to tick the box is the one where the
+# claim matters.
 name: Release
 
 on:
@@ -146,7 +152,39 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk \
              "telltale-${TAG}.apk"
 
-          cat > notes.md <<EOF
+          # SemVer says everything after the first hyphen is a pre-release
+          # identifier. v1.0.1 is a release; v1.0.1-beta.1 is not.
+          PRERELEASE=""
+          case "$TAG" in
+            *-*) PRERELEASE="--prerelease" ;;
+          esac
+
+          : > notes.md
+          if [ -n "$PRERELEASE" ]; then
+            cat >> notes.md <<'PRE'
+          > **Pre-release.** What has been verified, and what has not:
+          >
+          > - Every screen walked against the built-in demo simulator, and the
+          >   protocol layer run against two third-party ELM327 simulators in CI.
+          > - **Never connected to a real vehicle.** Bluetooth LE is verified as
+          >   far as scanning and permissions; no ELM327 adapter of any kind has
+          >   been connected to this build.
+          > - `TEST_EVIDENCE.md` and `DEVICE_VERIFICATION.md` record exactly what
+          >   was checked, including the checks that turned out to be worthless.
+          >
+          > If you have an adapter and a car, this is the build to try. Settings →
+          > 匯出紀錄 exports a verbatim transcript of everything the adapter said;
+          > an issue with that file attached is the most useful thing you can send.
+          >
+          > **預發行版本。** 每個畫面都對內建模擬器走過，協定層在 CI 裡跑過兩個
+          > 第三方 ELM327 模擬器，但**從未連過真車** —— 藍牙 LE 只驗到掃描與權限，
+          > 沒有連過任何一顆 ELM327 轉接器。有轉接器又有車的話，這就是該試的版本；
+          > 出問題請到「設定 → 匯出紀錄」把逐字紀錄存下來，附在 issue 裡送回來。
+
+          PRE
+          fi
+
+          cat >> notes.md <<EOF
           Telltale ${{ steps.describe.outputs.version }}
 
           **English** | 繁體中文 below
@@ -189,7 +227,7 @@ jobs:
           gh release create "$TAG" "telltale-${TAG}.apk" \
             --title "Telltale ${TAG}" \
             --notes-file notes.md \
-            --verify-tag || \
+            --verify-tag $PRERELEASE || \
           gh release upload "$TAG" "telltale-${TAG}.apk" --clobber
 
       - name: Shred the signing material

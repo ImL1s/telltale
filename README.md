@@ -124,8 +124,10 @@ The app ships with a **demo simulator** — every screen works with no adapter a
 no car, fault codes, freeze frames and emissions readiness included. It is
 deliberately as strict as real hardware (it emits `SEARCHING...`, multi-frame
 responses with length lines, the all-zero trap after a clear), because back when
-it was more forgiving than a real ELM327, three CRITICAL parsing bugs survived
-underneath a green test suite.
+it was more forgiving than a real ELM327, three CRITICAL defects survived
+underneath a green test suite — two in the parser, and one an AT initialisation
+command that a strict simulator would not have caught either. `REVIEW_LOG.md`
+names all three.
 
 ## Before you get in the car
 
