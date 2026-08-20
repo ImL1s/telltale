@@ -609,6 +609,53 @@ screen-by-screen evidence is the most recent of that kind, and it was taken on
 `1.0.0+1` — the two builds differ only by the version bump and the release
 metadata, but that is an argument, not an observation.
 
+## Round 12 — the walkthrough the locked phone could not give, 2026-08-20
+
+Round 11 got `1.0.1+2` onto the phone and no further: the device is locked with
+a secure lockscreen. So the screen-by-screen pass ran on an emulator instead —
+a Pixel 9 system image, API 36, the same release APK, the built-in Demo
+transport. Every screen below was reached by tapping, and every claim is from a
+screenshot.
+
+- **Connect** — four transports listed, Demo expands to its description and
+  `啟動模擬器`, connects.
+- **Dashboard** — six gauges live, `77 PIDs/s`, `fastMode`, `14.0 V`, and the
+  derived row (MAF air flow, fuel consumption, horsepower) updating with them.
+- **PID manager** — 6 of 25 enabled, each row showing its mode/PID and formula
+  next to a live value; disabled rows greyed with the toggle off.
+- **DTC** — a full scan: VIN `1D4GP00R55B123456` over multiple frames, the
+  freeze frame headed by its cause code `P0301` with twelve named values and an
+  explicit note that two further entries had no conversion formula and were
+  therefore **not** shown, readiness monitors in three states, and Mode 03's
+  three codes (`P0301`, `P0420`, `U0123`) with descriptions and controller ids.
+- **Performance** — armed at a 100 km/h target and then refused to run,
+  reporting `請先完全停車 — 目前 60 km/h` and offering only a reset, which is
+  the behaviour the demo's moving vehicle should produce.
+- **Settings** — adapter self-report panel (`ELM327 v2.1` / `Torque Demo ECU`,
+  with the warning that a consistent self-report is not proof of authenticity),
+  vehicle profile sliders, manual command entry, theme, gauge skins.
+- **Both themes** — light is the pastel-to-saturated palette rather than a
+  dimmed copy of dark; text and gauge faces stayed legible on both.
+- **Skins** — switching from `儀表艙` to `極簡` changed the geometry (ticks and
+  needle gone, arc thickened), not just the colours.
+- **Transcript export** — `匯出紀錄` produced
+  `torque-obd-20260820-111759.txt` and handed it to the system share sheet as a
+  file. This is the mechanism the whole "bring the recording back" workflow
+  depends on, and it had never been exercised through the UI on a device.
+
+**A blank screenshot from this emulator means the capture failed, not the app.**
+On the first boot (hardware GPU) `screencap` returned a frame that was uniformly
+`(0,0,0)` with zero alpha, while logcat showed `Using the Impeller rendering
+backend (OpenGLES)` and `ActivityTaskManager: Fully drawn … +1s112ms` — the app
+had drawn. Rebooting with `-gpu swiftshader_indirect` produced the screenshots
+above from the same APK. Recorded because the next reader who sees a white
+rectangle will otherwise start debugging the app.
+
+What this does not establish: it is an emulator. Font rendering, display cutout
+handling, real GPU behaviour and the Samsung skin are all untested by it, and
+the transport was Demo — no socket, no protocol negotiation, no adapter. It
+closes the "does 1.0.1+2 render and navigate" question and nothing beyond it.
+
 ## What would move this forward, in order of value
 
 1. One real adapter, one real car, ignition on, engine off, stationary. Most of
