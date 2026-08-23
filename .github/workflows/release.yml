@@ -214,18 +214,33 @@ jobs:
 
           sdk_root=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
           test -n "$sdk_root"
-          build_tools=$(find "$sdk_root/build-tools" -mindepth 1 -maxdepth 1 \
-            -type d | sort -V | tail -n 1)
-          test -n "$build_tools"
-          AAPT=$build_tools/aapt
-          APKSIGNER=$build_tools/apksigner
-          test -x "$AAPT"
-          test -x "$APKSIGNER"
+          AAPT=$(find "$sdk_root/build-tools" -type f -name aapt -perm -111 \
+            | sort -V | tail -n 1)
+          APKSIGNER=$(find "$sdk_root/build-tools" -type f -name apksigner -perm -111 \
+            | sort -V | tail -n 1)
+          if [ -z "$AAPT" ] || [ -z "$APKSIGNER" ]; then
+            echo "::error::Android build tools do not contain executable aapt and apksigner"
+            exit 1
+          fi
+          echo "aapt=$AAPT"
+          echo "apksigner=$APKSIGNER"
+          echo "build-tools=$(basename "$(dirname "$APKSIGNER")")"
 
           badging=$($AAPT dump badging "$APK")
-          grep -Fq "package: name='com.cbstudio.telltale' versionCode='$APP_VERSION_CODE' versionName='$APP_VERSION_NAME'" \
-            <<< "$badging"
-          grep -Fq "application-label:'Telltale'" <<< "$badging"
+          package_line=$(grep -m 1 '^package:' <<< "$badging" || true)
+          label_line=$(grep -m 1 '^application-label:' <<< "$badging" || true)
+          expected_package="package: name='com.cbstudio.telltale' versionCode='$APP_VERSION_CODE' versionName='$APP_VERSION_NAME'"
+          if [[ "$package_line" != "$expected_package"* ]]; then
+            echo "::error::Field APK package/version metadata is wrong"
+            echo "expected-prefix=$expected_package"
+            echo "actual=${package_line:-missing}"
+            exit 1
+          fi
+          if [ "$label_line" != "application-label:'Telltale'" ]; then
+            echo "::error::Field APK application label is wrong"
+            echo "actual=${label_line:-missing}"
+            exit 1
+          fi
           if grep -Eiq "com\.cbstudio\.telltale\.rig|Telltale Rig|versionName='[^']*-rig" \
               <<< "$badging"; then
             echo "::error::A rig identity reached the field release path"
@@ -233,16 +248,36 @@ jobs:
           fi
 
           "$APKSIGNER" verify --verbose --print-certs "$APK" > apk-certs.txt
-          apk_fingerprint=$(awk -F': ' \
-            'tolower($1) ~ /signer #[0-9]+ certificate sha-256 digest/ { print tolower($2); exit }' \
-            apk-certs.txt)
+          # Build Tools 36 prints `Signer #1 certificate ...`; Build Tools 37
+          # prints `V2 Signer: certificate ...`. The digest is the final field
+          # in both formats, so do not couple release integrity to the prefix.
+          apk_fingerprint=$(awk \
+            'tolower($0) ~ /certificate sha-256 digest:/ { print tolower($NF); exit }' \
+            apk-certs.txt | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]:')
           key_fingerprint=$(keytool -list -v -keystore android/community.jks \
             -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" \
-            | awk -F': ' '/SHA256:/ { gsub(":", "", $2); print tolower($2); exit }')
-          test -n "$apk_fingerprint"
-          test -n "$key_fingerprint"
-          test "$apk_fingerprint" = "$key_fingerprint"
-          test "$apk_fingerprint" = "$COMMUNITY_CERT_SHA256"
+            | awk -F':' '/SHA256:/ { for (i = 2; i <= NF; i++) printf "%s", $i; exit }' \
+            | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]:')
+          if ! [[ "$apk_fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not parse the APK SHA-256 signing certificate digest"
+            grep -i 'certificate SHA-256 digest' apk-certs.txt || true
+            exit 1
+          fi
+          if ! [[ "$key_fingerprint" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not parse the keystore SHA-256 certificate digest"
+            echo "keystore=${key_fingerprint:-missing}"
+            exit 1
+          fi
+          if [ "$apk_fingerprint" != "$key_fingerprint" ]; then
+            echo "::error::APK certificate does not match the restored community keystore"
+            echo "apk=$apk_fingerprint keystore=$key_fingerprint"
+            exit 1
+          fi
+          if [ "$apk_fingerprint" != "$COMMUNITY_CERT_SHA256" ]; then
+            echo "::error::APK certificate is not the reviewed community lineage"
+            echo "expected=$COMMUNITY_CERT_SHA256 actual=$apk_fingerprint"
+            exit 1
+          fi
 
           {
             echo "sha256=$(sha256sum "$APK" | cut -d' ' -f1)"
