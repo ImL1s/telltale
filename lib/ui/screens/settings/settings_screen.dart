@@ -8,11 +8,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../obd/physics/vehicle_profile.dart';
-import '../../../obd/transport/obd_transport.dart' show TransportException;
+import '../../../obd/transport/obd_transport.dart'
+    show TransportException, TransportKind;
 import '../../../state/obd_session.dart';
 import '../../../state/settings.dart';
 import '../../widgets/panel.dart';
 import '../../widgets/gauges/dial_gauge.dart';
+import '../../widgets/field_event_markers.dart';
 import '../../../core/theme/gauge_skin.dart';
 import '../../widgets/transcript_export.dart';
 import '../connect/connect_screen.dart';
@@ -144,7 +146,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ? OutlinedButton.icon(
                             onPressed: () async {
                               await ref.read(obdSessionProvider.notifier).disconnect();
-                              if (context.mounted) context.go(ConnectScreen.path);
+                              if (context.mounted) {
+                                context.go(ConnectScreen.path);
+                              }
                             },
                             icon: const Icon(Icons.link_off, size: 18),
                             label: const Text('中斷連線'),
@@ -296,6 +300,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SectionHeading('診斷紀錄'),
             const RecoveredTranscriptPanel(),
             const _AdapterIdentityPanel(),
+            FieldEventMarkerPanel(
+              enabled: connected && connection.kind != TransportKind.demo,
+              onRecord: ref.read(obdSessionProvider.notifier).recordFieldEvent,
+            ),
+            const SizedBox(height: Spacing.md),
             const Panel(child: TranscriptExportButtons()),
             const SizedBox(height: Spacing.md),
             Panel(
@@ -375,7 +384,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             Text(
               '本 App 的 OBD2 實作依據 SAE J1979 與 ELM327 datasheet 等公開標準；'
               '每一條影響硬體行為的公式與 AT 指令都經過交叉驗證，'
-              '結果記錄於 SPEC_DEVIATIONS.md。'
+              '結果記錄於 docs/protocol-deviations.zh-TW.md。'
               '本 App 與 Torque / Torque Pro 無關聯。',
               style: context.texts.bodySmall,
             ),

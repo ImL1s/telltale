@@ -156,7 +156,7 @@ void main() {
       // enough that the unawaited census usually lands before a scan finishes
       // anyway, so removing the await leaves this green — the race needs a
       // transport slow enough to lose it, and `ObdSession` takes no injected
-      // transport. Recorded in `TEST_EVIDENCE.md` rather than dressed up as
+      // transport. Recorded in `docs/verification/test-evidence.md` rather than dressed up as
       // coverage it does not give.
       expect(session.engine!.responders, isNotNull,
           reason: 'the scan reasons from the census, so it has to have one '

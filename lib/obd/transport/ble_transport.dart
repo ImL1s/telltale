@@ -15,15 +15,14 @@ import 'package:universal_ble/universal_ble.dart';
 
 import 'obd_transport.dart';
 
-/// A BLE peripheral, reduced to the two things anything outside this file
-/// needs to know about it.
+/// A BLE peripheral, reduced to its identity plus optional scan evidence.
 ///
 /// The UI and session layers used to pass the BLE package's own device object
 /// around, which meant a package swap reached into three files and the widget
 /// tree imported a transport dependency to name a callback parameter. A BLE
 /// peripheral is addressed purely by its platform id — a MAC on Android, a
-/// service UUID on Apple — so a handle is genuinely (id, name) and nothing is
-/// lost by saying so.
+/// service UUID on Apple — so (id, name) remains the handle's identity. RSSI
+/// is only evidence carried forward from the scan that found it.
 ///
 /// [id] is what the OS reports, verbatim. Do not normalise its case: the
 /// platform reports the same adapter differently on Android and Windows, and
@@ -31,10 +30,16 @@ import 'obd_transport.dart';
 /// a canonical form. Storing it verbatim is what lets a remembered adapter
 /// reconnect without a scan.
 class BleAdapterHandle {
-  const BleAdapterHandle({required this.id, required this.name});
+  const BleAdapterHandle({required this.id, required this.name, this.rssi});
 
   final String id;
   final String name;
+
+  /// RSSI from the scan advertisement that produced this handle, if any.
+  ///
+  /// Reconnecting from a remembered identifier does not perform a scan and
+  /// therefore leaves this null rather than inventing a current signal value.
+  final int? rssi;
 
   @override
   bool operator ==(Object other) =>
@@ -58,6 +63,13 @@ class BleTransport extends BaseObdTransport {
   BleCharacteristic? _notify;
   StreamSubscription<Uint8List>? _valueSub;
   StreamSubscription<bool>? _stateSub;
+  String _mtuRequestOutcome = 'notAttempted';
+  String? _selectedServiceUuid;
+  String? _selectedWriteCharacteristicUuid;
+  String? _selectedNotifyCharacteristicUuid;
+  String? _subscriptionKind;
+
+  static const int requestedMtu = 185;
 
   /// Known UART service/characteristic families, best-known first.
   ///
@@ -78,6 +90,19 @@ class BleTransport extends BaseObdTransport {
 
   @override
   String get displayName => handle.name.isEmpty ? handle.id : handle.name;
+
+  @override
+  Map<String, Object> get diagnosticMetadata => Map.unmodifiable({
+    'deviceIdentifier': handle.id,
+    'deviceName': handle.name,
+    'scanRssiDbm': ?handle.rssi,
+    'requestedMtu': requestedMtu,
+    'mtuRequestOutcome': _mtuRequestOutcome,
+    'selectedServiceUuid': ?_selectedServiceUuid,
+    'selectedWriteCharacteristicUuid': ?_selectedWriteCharacteristicUuid,
+    'selectedNotifyCharacteristicUuid': ?_selectedNotifyCharacteristicUuid,
+    'subscriptionKind': ?_subscriptionKind,
+  });
 
   static Future<void> stopScan() => UniversalBle.stopScan();
 
@@ -110,10 +135,10 @@ class BleTransport extends BaseObdTransport {
   ///
   /// Each advertisement arrives as its own event, including repeats from an
   /// adapter already seen, so a consumer must upsert by id rather than append.
-  static Stream<(String, String, int)> scanEntries({
+  static Stream<(String, String, int?)> scanEntries({
     Duration timeout = const Duration(seconds: 12),
   }) {
-    final controller = StreamController<(String, String, int)>();
+    final controller = StreamController<(String, String, int?)>();
     StreamSubscription<BleDevice>? resultsSub;
     Timer? deadline;
 
@@ -142,7 +167,7 @@ class BleTransport extends BaseObdTransport {
           controller.add((
             device.deviceId,
             _displayNameFor(device),
-            device.rssi ?? -127,
+            device.rssi,
           ));
         }, onError: controller.addError);
 
@@ -164,6 +189,11 @@ class BleTransport extends BaseObdTransport {
 
   @override
   Future<void> connect() async {
+    _mtuRequestOutcome = 'notAttempted';
+    _selectedServiceUuid = null;
+    _selectedWriteCharacteristicUuid = null;
+    _selectedNotifyCharacteristicUuid = null;
+    _subscriptionKind = null;
     final device = _device;
     try {
       await device.connect(timeout: const Duration(seconds: 15));
@@ -194,8 +224,10 @@ class BleTransport extends BaseObdTransport {
       // a separate request and a refusal costs throughput, not the link. A
       // transport that works slowly beats one that does not open.
       try {
-        await device.requestMtu(185);
+        await device.requestMtu(requestedMtu);
+        _mtuRequestOutcome = 'succeeded';
       } on Object {
+        _mtuRequestOutcome = 'failed';
         // Negotiation refused or unsupported on this platform. The default
         // 23-byte MTU still carries every ELM327 reply, just in more frames.
       }
@@ -203,12 +235,13 @@ class BleTransport extends BaseObdTransport {
       final services = await device.discoverServices();
       final pair = _findUartPair(services);
       if (pair == null) {
-        throw TransportException(
-          '$displayName 沒有可用的序列埠特徵值，可能不是 ELM327 轉接器。',
-        );
+        throw TransportException('$displayName 沒有可用的序列埠特徵值，可能不是 ELM327 轉接器。');
       }
       _write = pair.$1;
       _notify = pair.$2;
+      _selectedServiceUuid = _write!.metaData?.serviceId;
+      _selectedWriteCharacteristicUuid = _write!.uuid;
+      _selectedNotifyCharacteristicUuid = _notify!.uuid;
 
       // Listener first, CCCD second. `onValueReceived` is a live stream, not
       // a replay buffer, and some BLE UART clones emit a ready banner or
@@ -223,9 +256,11 @@ class BleTransport extends BaseObdTransport {
         // matching property. `_findUartPair` deliberately accepts either, so
         // asking blindly for notifications breaks every indicate-only clone —
         // a whole family of adapters that would otherwise have worked.
-        final subscription = _notify!.properties.contains(
+        final usesNotifications = _notify!.properties.contains(
           CharacteristicProperty.notify,
-        )
+        );
+        _subscriptionKind = usesNotifications ? 'notification' : 'indication';
+        final subscription = usesNotifications
             ? _notify!.notifications
             : _notify!.indications;
         await subscription.subscribe();

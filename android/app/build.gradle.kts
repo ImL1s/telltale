@@ -56,6 +56,21 @@ android {
         }
     }
 
+    flavorDimensions += "environment"
+    productFlavors {
+        create("field") {
+            dimension = "environment"
+        }
+        create("rig") {
+            dimension = "environment"
+            // The no-car rig must coexist with a debug or release field app.
+            // Only this explicit flavor gets the simulated-evidence identity;
+            // a normal debug build remains usable against a physical adapter.
+            applicationIdSuffix = ".rig"
+            versionNameSuffix = "-rig"
+        }
+    }
+
     buildTypes {
         release {
             if (hasReleaseKeystore) {
@@ -74,15 +89,15 @@ android {
 
 // Release artifacts must not be debug-signed.
 //
-// This blocks *every* release packaging path, `flutter run --release`
-// included. An earlier version claimed local release runs still worked, which
-// was wrong — `flutter run --release` invokes `assembleRelease`, which the
-// gate refused, so the documentation contradicted the behaviour.
+// This blocks *every* release packaging path, including flavor-qualified tasks
+// such as `assembleFieldRelease` and `bundleFieldRelease`. An earlier version
+// claimed local release runs still worked, but the gate correctly refused the
+// packaging task, so the documentation contradicted the behaviour.
 //
 // Rather than carve out an exception that would also let a distributable APK
 // through, the local case is served by the same explicit override:
 //
-//     flutter run --release -PallowUnsignedRelease=true
+//     flutter run --release --flavor field -PallowUnsignedRelease=true
 //
 // The point is that building something debug-signed has to be a choice
 // somebody made, not a default they did not notice.

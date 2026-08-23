@@ -12,11 +12,12 @@ that also holds a reverse-engineered protocol specification, which is why it
 cannot be opened. Everything in `lib/`, `test/`, `android/`, `ios/` and `macos/`
 is copied here verbatim and is never edited on this side.
 
-A small publish-only set does live here and only here, and is maintained here:
-`PRIVACY.md`, `docs/` (the GitHub Pages copy of the privacy policy, which is
-the URL registered with Google Play), `store/`, and `.github/workflows/` — CI
-differs between the two sides, because the private one also runs the reference
-implementations and an oracle whose simulator cannot be published.
+A small publish-only set lives here and is maintained on the public side:
+`.github/`, `store/`, and the GitHub Pages shell files `docs/.nojekyll`,
+`docs/index.html`, and `docs/privacy.html`. Product Markdown documentation and
+`PRIVACY.md` come from the private source of truth. CI differs between the two
+sides because the private repository also runs the reference implementations
+and an oracle whose simulator cannot be published.
 
 That has one consequence for you: a merged pull request is applied by hand on
 the private side and arrives back here in the next sync, so the commit that
@@ -35,7 +36,7 @@ flutter --version        # expect 3.47.0
 flutter pub get
 flutter analyze          # expect: No issues found!
 flutter test
-flutter build apk --debug
+flutter build apk --debug --flavor field
 ```
 
 `flutter analyze` clean is not advisory. The repository has no accepted
@@ -44,21 +45,22 @@ is zero.
 
 ## The tests that skip, and why the number matters
 
-`flutter test` reports around **12 skipped**. That is not slack — it is exactly
-the two oracle suites, which need an external ELM327 simulator running and skip
-themselves when it is absent:
+`flutter test` reports around **13 skipped**. That is not slack — it is exactly
+the externally driven oracle files, which skip unless their required emulator
+or fault proxy is running and explicitly enabled:
 
 | suite | tests | simulator |
 |---|---|---|
 | `test/emulator_integration_test.dart` | 5 | [Ircama/ELM327-emulator](https://github.com/Ircama/ELM327-emulator) |
 | `test/freeze_frame_oracle_test.dart` | 7 | a second simulator, not in this repository — see below |
+| `test/chaos_oracle_test.dart` | 1 | Ircama through `tool/obd_test_rig/chaos_proxy.py` |
 
 **A skipped test and a passing test print the same summary and both exit 0.**
-That is why the number is worth knowing: `~12` is the expected reading, `~0`
-means you have a simulator up, and anything else means something is being
-skipped that you did not intend to skip. CI does not rely on reading the
-number — it parses the JSON report and fails the job if an oracle test was
-skipped rather than run.
+That is why the number is worth knowing: `~13` is the expected default and `~8`
+means Ircama alone is running; other counts deserve inspection. CI does not
+rely on reading the number — it parses each oracle's JSON report and fails the
+job if a test was skipped rather than run. The chaos job also verifies the
+exact commands that reached the proxy before each injected fault.
 
 To run the first suite yourself:
 
@@ -75,10 +77,46 @@ env -u GITHUB_RUN_NUMBER /tmp/elmvenv/bin/pip install \
   --no-build-isolation ELM327-emulator==3.0.5
 /tmp/elmvenv/bin/pip check
 
-# -b matters: without it the CLI exits as soon as stdin sees EOF
-/tmp/elmvenv/bin/python -m elm -n 35000 -s car -b /tmp/elm_batch.out &
-flutter test test/emulator_integration_test.dart
+# The fail-fast subshell cleans up immediately after the test, not when your
+# terminal exits. The wrapper rejects a missing/shared PID directory, binds
+# loopback only, and does not depend on an open stdin. Invoke Bash explicitly:
+# a Markdown `bash` fence is syntax highlighting, not a shell selection.
+/bin/bash <<'BASH'
+(
+  set -e
+  ELM_PID_DIR="$(mktemp -d "${TMPDIR:-/tmp}/telltale-elm.XXXXXX")"
+  readonly ELM_PID_DIR
+  chmod 700 "$ELM_PID_DIR"
+  ELM_PID=''
+
+  cleanup_elm() {
+    rc=$?
+    trap - EXIT
+    if [ -n "$ELM_PID" ] && jobs -pr | grep -Fxq -- "$ELM_PID"; then
+      kill "$ELM_PID" 2>/dev/null || true
+    fi
+    if [ -n "$ELM_PID" ]; then
+      wait "$ELM_PID" 2>/dev/null || true
+    fi
+    rm -rf -- "${ELM_PID_DIR:?}"
+    exit "$rc"
+  }
+  trap cleanup_elm EXIT
+
+  /tmp/elmvenv/bin/python tool/ble_test_rig/emulator_entrypoint.py \
+    --pid-directory "$ELM_PID_DIR" \
+    -n 35000 -s car -b "$ELM_PID_DIR/batch.out" \
+    > "$ELM_PID_DIR/emulator.log" 2>&1 &
+  ELM_PID=$!
+  flutter test test/emulator_integration_test.dart \
+    --dart-define=ELM_ORACLE_REQUIRED=true
+)
+BASH
 ```
+
+The `ELM_ORACLE_REQUIRED` define turns a missing or unrecognised listener into
+a test failure. Do not omit it when claiming oracle evidence; the default full
+suite intentionally marks an unavailable external oracle as skipped.
 
 Both suites listen on port 35000 and tell each other apart by the answer to
 `AT@1`, so only one can run at a time.
@@ -87,6 +125,10 @@ The second suite's simulator lives on a branch of the private repository and is
 not distributable from here. Its 7 tests will skip for you and run in CI on the
 private side. If you are changing freeze-frame handling, say so in the pull
 request and it will be run against that oracle before merge.
+
+`tool/obd_test_rig/README.md` documents the no-fault fragmentation pass and the
+three fresh-process fault runs (`close`, `no_prompt`, and `corrupt`). These use
+the real `WifiTransport` socket and fail closed during initialization.
 
 ### Bluetooth LE, without an adapter
 
@@ -97,6 +139,11 @@ stream with no hardware and no car. Its README explains the two macOS traps
 that make it look broken when it is not — and the one that makes it look
 working when it is not: a Mac cannot see its own peripheral, so scanning from
 the same machine finds nothing and proves nothing.
+
+The Android driver uses the isolated `com.cbstudio.telltale.rig` debug package,
+marks stored evidence as simulated, and cannot approve a system permission
+dialog. Follow the README's preinstall and `adb shell pm grant` steps on a fresh
+phone. A passing run requires exactly one subscribed BLE central.
 
 **Why two, and why third-party at all.** Every other test in this suite is
 ultimately this project's parser checked against this project's simulator —
@@ -139,7 +186,7 @@ produced a bug that survived a green test suite.
   behave like v1.3. State is committed only when the adapter literally answers
   `OK`.
 
-`SPEC_DEVIATIONS.md` records where this app deliberately departs from the
+`docs/protocol-deviations.zh-TW.md` records where this app deliberately departs from the
 specification it was derived from, and why. Three of those departures fix
 commands that would break a connection to a real vehicle — one of them
 silently, and only on vehicles that are not 11-bit CAN. Read it before changing
@@ -150,6 +197,10 @@ anything in the AT initialisation sequence.
 - `flutter analyze` — no issues.
 - `flutter test` — green, with the skip count where you expect it.
 - If you touched anything under `lib/obd/`, run the Ircama oracle above.
+- If you touched socket framing, timeouts, or initialization, also run the TCP
+  chaos oracle described in `tool/obd_test_rig/README.md`.
+- If you touched BLE transport code, run the bridge/probe unit tests; report the
+  physical-phone GATT integration separately if no second device was available.
 - If you touched anything with a screen, walk that screen. The built-in **Demo
   simulator** on the connect screen runs every screen with no hardware and no
   car; there is no excuse for an unwalked UI change.

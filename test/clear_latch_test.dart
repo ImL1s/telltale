@@ -175,7 +175,7 @@ void main() {
     //
     // So: tap 清除, read 不要再送一次全車清除…請重新掃描, tap 掃描 as both the
     // panel and the field guide instruct, and the button comes back live
-    // underneath a sentence telling you not to press it. `FIELD_GUIDE.md` said
+    // underneath a sentence telling you not to press it. `docs/field-guide.zh-TW.md` said
     // to trust the button.
     //
     // Deleting the sentence would be worse — a partial clear is a fact about
@@ -387,7 +387,7 @@ void main() {
     expect(after.clearMessage, isNotNull,
         reason: 'the bytes went out; a blank panel says nothing happened');
     expect(after.clearMessage, contains('不要'),
-        reason: 'this is the sentence FIELD_GUIDE.md promises for this row');
+        reason: 'this is the sentence docs/field-guide.zh-TW.md promises for this row');
     expect(after.clearRepeatWouldHarm, isTrue,
         reason: 'and the button has to enforce it after the reconnect');
     expect(after.clearing, isFalse);

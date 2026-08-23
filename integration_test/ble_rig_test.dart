@@ -20,59 +20,47 @@
 ///
 /// Then, with a device attached:
 ///
-///     flutter test integration_test/ble_rig_test.dart -d <device-id>
+///     flutter test integration_test/ble_rig_test.dart -d <device-id> \
+///       --flavor rig \
+///       --dart-define=TELLTALE_TEST_RIG=true
+///
+/// A fresh install must first receive the version-appropriate Android Bluetooth
+/// permission grants documented in `tool/ble_test_rig/README.md`; widget tests
+/// cannot approve the platform permission dialog.
 ///
 /// A run that cannot find the peripheral reports it and stops rather than
 /// passing quietly. Nothing here is allowed to be green without having
 /// connected to something.
 library;
 
-import 'dart:async';
-
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:torque_obd/main.dart' as app;
+import 'rig_support.dart';
 
 /// What the rig advertises as. Kept in one place so the rig and the test cannot
 /// drift apart silently.
 const String rigName = 'TelltaleELM';
 
-/// Pumps for up to [timeout], returning true as soon as [predicate] holds.
-///
-/// `pumpAndSettle` is wrong for a scan: the screen has a spinner, so it never
-/// settles, and the call times out having proved nothing about the scan.
-Future<bool> pumpUntil(
-  WidgetTester tester,
-  bool Function() predicate, {
-  Duration timeout = const Duration(seconds: 30),
-  Duration step = const Duration(milliseconds: 250),
-}) async {
-  final deadline = DateTime.now().add(timeout);
-  while (DateTime.now().isBefore(deadline)) {
-    if (predicate()) return true;
-    await tester.pump(step);
-  }
-  return predicate();
-}
-
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('scan, connect and talk to a real BLE peripheral', (tester) async {
-    unawaited(app.main());
-    await tester.pumpAndSettle(const Duration(seconds: 5));
+  testWidgets('scan, connect and talk to a real BLE peripheral', (
+    tester,
+  ) async {
+    // This runs under the `.rig` debug application ID, never the field-test
+    // release package. Start from a known state so an old successful recording
+    // cannot make a failed run look green.
+    await startCleanRigApp(tester);
 
     // 1. Open the Bluetooth LE section.
-    final bleHeader = find.text('Bluetooth LE');
-    expect(bleHeader, findsOneWidget,
-        reason: 'the connect screen must offer a Bluetooth LE transport');
+    final bleHeader = await revealText(tester, 'Bluetooth LE');
     await tester.tap(bleHeader);
     await tester.pumpAndSettle();
 
     // 2. Scan. The button is the only control in that section before a result.
-    final scanButton = find.text('搜尋 BLE 裝置');
-    expect(scanButton, findsOneWidget);
+    final scanButton = await revealText(tester, '搜尋 BLE 裝置');
     await tester.tap(scanButton);
     await tester.pump();
 
@@ -96,23 +84,108 @@ void main() {
 
     // 3. Connect. This is the part that has never run outside a fake platform:
     //    GATT connect, service discovery, the UART pair, the CCCD subscribe.
-    await tester.tap(find.text(rigName));
+    final rigLabel = find.text(rigName);
+    final rigTile = find
+        .ancestor(of: rigLabel, matching: find.byType(InkWell))
+        .hitTestable();
+    final resultsScroll = find
+        .ancestor(of: rigLabel, matching: find.byType(Scrollable))
+        .first;
+    try {
+      await tester.scrollUntilVisible(rigTile, 300, scrollable: resultsScroll);
+    } on StateError catch (error) {
+      fail('the discovered rig was not visible or tappable: $error');
+    }
+    expect(
+      rigTile,
+      findsOneWidget,
+      reason: 'the discovered rig was not visible or tappable',
+    );
+    await tester.tap(rigTile);
     await tester.pump();
 
     // The handshake is a conversation, not a round trip: ATZ alone can take
     // several seconds on a real adapter, and the rig forwards every command to
     // a third-party emulator over TCP.
-    final connected = await pumpUntil(
+    await requireDashboard(tester);
+
+    // A dashboard route alone is weak evidence: it can be reached before any
+    // useful telemetry has crossed the platform channel. Require at least one
+    // observed polling rate from the third-party ECU emulator.
+    await requireLivePolling(
       tester,
-      () =>
-          find.textContaining('儀表板').evaluate().isNotEmpty ||
-          find.textContaining('PIDs/s').evaluate().isNotEmpty,
-      timeout: const Duration(seconds: 90),
+      reason:
+          'the dashboard never received live PIDs. The rig logs every '
+          'exchange to /tmp/ble_bridge.log — the last line there is the '
+          'command the app stopped on.',
     );
 
-    expect(connected, isTrue,
-        reason: 'the handshake did not complete against the rig. The rig logs '
-            'every exchange to /tmp/ble_bridge.log — the last line there is '
-            'the command the app stopped on.');
+    // Inject the app's Dart lifecycle callbacks and use the real
+    // Documents-directory store. OS Activity/Doze delivery is a separate
+    // device gate; this test deliberately does not claim it.
+    // The resulting header proves which GATT service/characteristics and CCCD
+    // mode the platform path actually selected; the body proves bytes crossed
+    // the link rather than a fake screen transition.
+    pauseApp(tester);
+    final paused = await waitForStoredTranscript(
+      tester,
+      (value) => value.body.contains('App 進入背景'),
+    );
+    expect(paused, isNotNull, reason: 'pause did not persist field evidence');
+    expect(paused!.fromRealHardware, isFalse);
+    expect(paused.header, contains('# Telltale 無車測試馬具證據 v1'));
+    expect(paused.header, contains('不得視為實體轉接器或實車驗證'));
+    expect(paused.header, contains('# 連線方式：Bluetooth LE'));
+    expect(paused.header, contains('# 裝置：$rigName'));
+    expect(paused.header, contains('OBDII to RS232 Interpreter'));
+    expect(
+      paused.header.toLowerCase(),
+      contains(
+        '# 連線資訊.selectedserviceuuid：'
+        '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+      ),
+    );
+    expect(
+      paused.header.toLowerCase(),
+      contains(
+        '# 連線資訊.selectedwritecharacteristicuuid：'
+        '6e400002-b5a3-f393-e0a9-e50e24dcca9e',
+      ),
+    );
+    expect(
+      paused.header.toLowerCase(),
+      contains(
+        '# 連線資訊.selectednotifycharacteristicuuid：'
+        '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
+      ),
+    );
+    expect(paused.header, contains('# 連線資訊.subscriptionKind：notification'));
+    expect(paused.body, contains(r'>> ATZ\r'));
+    expect(paused.body, contains(r'>> 0100\r'));
+    expect(paused.body, contains('  << '));
+
+    resumeApp(tester);
+    await requireLivePolling(
+      tester,
+      timeout: const Duration(seconds: 20),
+      reason: 'polling did not recover after resume',
+    );
+
+    // Snapshot once more so the recovery marker and its liveness probe are on
+    // disk, not merely still in RAM when the test process exits.
+    pauseApp(tester);
+    final recovered = await waitForStoredTranscript(
+      tester,
+      (value) => value.body.contains('App 回到前景'),
+    );
+    expect(recovered, isNotNull);
+    final resumedAt = recovered!.body.lastIndexOf('App 回到前景');
+    final probeAt = recovered.body.indexOf(r'>> ATRV\r', resumedAt);
+    expect(
+      probeAt,
+      greaterThan(resumedAt),
+      reason: 'resume must prove the link before telemetry becomes live',
+    );
+    resumeApp(tester);
   });
 }

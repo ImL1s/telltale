@@ -25,22 +25,91 @@ import 'support/fake_elm327.dart';
 /// the request stays outstanding — which is the state the watchdog exists for,
 /// and the one a suspended process resumes into.
 FakeElm327 _adapter({Set<String> wedge = const {}}) => FakeElm327(
-      faults: AdapterFaults(swallowPromptFor: wedge),
-      protocol: BusProtocol.can11,
-      ecus: [
-        FakeEcu(
-          name: 'ECM',
-          requestId: '7E0',
-          responseId: '7E8',
-          responses: {
-            '0100': [0x41, 0x00, 0xBE, 0x1F, 0xA8, 0x13],
-            '010C': [0x41, 0x0C, 0x1A, 0xF8],
-          },
-        ),
-      ],
-    );
+  faults: AdapterFaults(swallowPromptFor: wedge),
+  protocol: BusProtocol.can11,
+  ecus: [
+    FakeEcu(
+      name: 'ECM',
+      requestId: '7E0',
+      responseId: '7E8',
+      responses: {
+        '0100': [0x41, 0x00, 0xBE, 0x1F, 0xA8, 0x13],
+        '010C': [0x41, 0x0C, 0x1A, 0xF8],
+      },
+    ),
+  ],
+);
 
 void main() {
+  group('transport loss during the handshake', () {
+    test('fails the pending init command immediately, not as a timeout', () async {
+      final transport = _adapter()..dropLinkAfterWritingFor = const {'ATE0'};
+      final client = Elm327Client(transport);
+      addTearDown(client.dispose);
+
+      final progress = <InitProgress>[];
+      final subscription = client.initProgress.listen(progress.add);
+      addTearDown(subscription.cancel);
+      var lostAfterInit = 0;
+      client.onConnectionLost = () => lostAfterInit++;
+
+      final connected = await client.connect().timeout(
+        const Duration(seconds: 1),
+        onTimeout: () => throw TimeoutException(
+          'a reported transport close waited for the four-second command timer',
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(connected, isFalse);
+      expect(client.isInitialized, isFalse);
+      expect(lostAfterInit, isZero);
+      final failed = progress.where(
+        (event) => event.status == InitStatus.failed,
+      );
+      expect(failed, hasLength(1));
+      expect(failed.single.step.command, 'ATE0');
+      expect(failed.single.detail, contains('連線已中斷'));
+      expect(failed.single.detail, isNot('逾時'));
+    });
+
+    test(
+      'a close immediately after the final prompt cannot commit a session',
+      () async {
+        final transport = _adapter()
+          ..dropLinkAfterReplyingFor = const {'ATDPN'};
+        final client = Elm327Client(transport);
+        addTearDown(client.dispose);
+
+        var lostAfterInit = 0;
+        client.onConnectionLost = () => lostAfterInit++;
+
+        expect(await client.connect(), isFalse);
+        expect(client.isInitialized, isFalse);
+        expect(transport.isConnected, isFalse);
+        expect(lostAfterInit, isZero);
+      },
+    );
+
+    test(
+      'a close during post-handshake probes cannot return success',
+      () async {
+        final transport = _adapter()
+          ..dropLinkAfterReplyingFor = const {'ATPPS'};
+        final client = Elm327Client(transport);
+        addTearDown(client.dispose);
+
+        var lostAfterInit = 0;
+        client.onConnectionLost = () => lostAfterInit++;
+
+        expect(await client.connect(), isFalse);
+        expect(client.isInitialized, isFalse);
+        expect(transport.isConnected, isFalse);
+        expect(lostAfterInit, 1);
+      },
+    );
+  });
+
   group('the watchdog and a suspended process', () {
     test('a link is dropped when the adapter really does go quiet', () async {
       // The control: the watchdog must still do its job.
@@ -110,8 +179,7 @@ void main() {
   });
 
   group('one poller at a time', () {
-    test('a stop released by the loop it started, never by an older one',
-        () async {
+    test('a stop released by the loop it started, never by an older one', () async {
       // Pause and resume were independent and neither awaited the other, so
       // two loops could exist at once: `start()` set `_running = true` and
       // replaced the shared completer while the previous loop was still parked
@@ -147,7 +215,8 @@ void main() {
         expect(
           transport.commandLog.length,
           equals(settled),
-          reason: 'nothing may reach the adapter after stop() returns '
+          reason:
+              'nothing may reach the adapter after stop() returns '
               '(cycle $cycle)',
         );
       }
@@ -155,8 +224,7 @@ void main() {
       await engine.dispose();
     });
 
-    test('a command that resolves after stop() cannot repopulate the gauges',
-        () async {
+    test('a command that resolves after stop() cannot repopulate the gauges', () async {
       // `stop()`'s barrier is bounded at two seconds so a disconnect never
       // looks frozen, but a command may have up to five — twenty-five during a
       // protocol search. Pausing while the loop is parked on one therefore
@@ -228,7 +296,8 @@ void main() {
       expect(
         published,
         equals(atStop),
-        reason: 'the loop that owned that command is gone; anything it '
+        reason:
+            'the loop that owned that command is gone; anything it '
             'publishes now describes a moment before the pause',
       );
 
@@ -236,7 +305,8 @@ void main() {
       expect(
         rpmAfter?.timestamp,
         equals(rpmAtStop?.timestamp),
-        reason: 'a reply that arrived after the pause must not be recorded at '
+        reason:
+            'a reply that arrived after the pause must not be recorded at '
             'all — a reading stamped after `stop()` returned is exactly what '
             'the resumed loop would publish as current',
       );
@@ -251,8 +321,7 @@ void main() {
   });
 
   group('a silent adapter cannot leave a session that looks alive', () {
-    test('the loss is reported even when the command timer wins the race',
-        () async {
+    test('the loss is reported even when the command timer wins the race', () async {
       // Fable reproduced this on a device: freeze the adapter and the
       // dashboard keeps its green dot, its throughput pill and its last values
       // for four minutes, while the fault-code screen simultaneously says
@@ -303,7 +372,8 @@ void main() {
       expect(
         lost,
         greaterThan(0),
-        reason: 'a wedged adapter must end the session; leaving it up is what '
+        reason:
+            'a wedged adapter must end the session; leaving it up is what '
             'produced a green, confidently connected, frozen dashboard',
       );
 
@@ -312,8 +382,7 @@ void main() {
   });
 
   group('interleaved transitions', () {
-    test('an unawaited stop followed immediately by start leaves one loop',
-        () async {
+    test('an unawaited stop followed immediately by start leaves one loop', () async {
       // This is the shape a real pause/resume pair has: `_onAppPaused` fires
       // `stop()` without awaiting it, and a resume can call `start()` while
       // that stop is still draining. The session serialises them through one
@@ -356,36 +425,39 @@ void main() {
     });
   });
 
-  test('a write that never completes ends the command rather than the session',
-      () async {
-    // `WifiTransport.write` is `socket.add` plus `await flush()`. On a
-    // half-dead TCP link — the phone carried out of range of the adapter's
-    // hotspot, no RST, the OS retransmitting for a quarter of an hour — that
-    // flush never returns and never throws. The command chain then parks on
-    // the write forever, `_pending` is cleared by its own timer, and the
-    // watchdog has nothing to observe: a frozen screen that still says
-    // connected.
-    final transport = _adapter();
-    final client = Elm327Client(
-      transport,
-      commandTimeout: const Duration(seconds: 5),
-      writeTimeout: const Duration(milliseconds: 300),
-    );
-    expect(await client.connect(), isTrue);
+  test(
+    'a write that never completes ends the command rather than the session',
+    () async {
+      // `WifiTransport.write` is `socket.add` plus `await flush()`. On a
+      // half-dead TCP link — the phone carried out of range of the adapter's
+      // hotspot, no RST, the OS retransmitting for a quarter of an hour — that
+      // flush never returns and never throws. The command chain then parks on
+      // the write forever, `_pending` is cleared by its own timer, and the
+      // watchdog has nothing to observe: a frozen screen that still says
+      // connected.
+      final transport = _adapter();
+      final client = Elm327Client(
+        transport,
+        commandTimeout: const Duration(seconds: 5),
+        writeTimeout: const Duration(milliseconds: 300),
+      );
+      expect(await client.connect(), isTrue);
 
-    transport.stallWrites = true;
+      transport.stallWrites = true;
 
-    final started = DateTime.now();
-    await expectLater(client.send('010C'), throwsA(isA<Object>()));
-    final elapsed = DateTime.now().difference(started);
+      final started = DateTime.now();
+      await expectLater(client.send('010C'), throwsA(isA<Object>()));
+      final elapsed = DateTime.now().difference(started);
 
-    expect(
-      elapsed,
-      lessThan(const Duration(seconds: 2)),
-      reason: 'the write has its own deadline; waiting out the command timeout '
-          'would mean the deadline is not doing anything',
-    );
+      expect(
+        elapsed,
+        lessThan(const Duration(seconds: 2)),
+        reason:
+            'the write has its own deadline; waiting out the command timeout '
+            'would mean the deadline is not doing anything',
+      );
 
-    await client.dispose();
-  });
+      await client.dispose();
+    },
+  );
 }

@@ -1,27 +1,93 @@
 # What was verified on hardware, and what that is worth
 
-Galaxy S25 Ultra, Android 16, 1080×2340. Every run below was
-driven through the real UI — taps and text on the device, not a test harness —
-against a build installed with `adb install`.
+The Android device used below is a Samsung `SM-S9280` on Android 16. Earlier
+rounds were manual screen walks; the 2026-08-23 BLE run used Flutter's
+integration-test driver on the same physical phone so a locked screen could not
+turn UI automation into a false negative.
 
-**There is still no ELM327 adapter and no vehicle.** The strongest link tested
-is a real ELM327 protocol implementation over a real TCP socket. What that
-does and does not establish is the point of this file; `TEST_EVIDENCE.md`
-covers the unit suite.
+**There is still no purchased ELM327 adapter and no vehicle.** The strongest
+link tested is now a physical Android BLE stack connecting over the air to a Mac
+CoreBluetooth Nordic UART peripheral, with an independent ELM327 emulator behind
+that peripheral. What that does and does not establish is the point of this
+file; `docs/verification/test-evidence.md` covers the automated suite.
 
 Round 9 added a proxy in that socket that logs every byte and can hold a reply
 back, which is how the timing findings were tested and how one of them was
 found to have been testing nothing at all.
 
-## The two links exercised
+## 2026-08-23 — physical Samsung-to-Mac BLE/GATT rig
+
+The isolated `com.cbstudio.telltale.rig` build ran on the Samsung phone while a
+second machine advertised `TelltaleELM` through CoreBluetooth. The test found
+the named result, scrolled its actionable tile into the phone's viewport,
+tapped it, and completed the real Android GATT path:
+
+- native `BluetoothGatt` connect and connection-state success;
+- MTU handling and Nordic UART service/characteristic discovery;
+- CCCD notification subscription;
+- ELM327 initialization, `0100` capability probes, live PID polling, and
+  `ATRV` traffic crossing real BLE writes and notifications;
+- a persisted transcript explicitly labelled as simulated rig evidence; and
+- polling recovery after injected Dart lifecycle pause/resume callbacks.
+
+The exact driver command was:
+
+```bash
+flutter test integration_test/ble_rig_test.dart -d <device-id> \
+  --flavor rig --dart-define=TELLTALE_TEST_RIG=true
+```
+
+It ended `All tests passed`. The host bridge recorded one subscription, 36
+central writes, and 58 notification chunks; Android logcat independently showed
+the GATT connection, MTU, service discovery, and UART service selection.
+
+This is **physical phone + physical BLE radios + real GATT**, but the peripheral
+and ECU conversation are still test infrastructure. It does not establish the
+purchased CAR25 adapter's firmware/profile/timing, Bluetooth Classic, an
+indicate-only adapter, a real ECU/CAN response, ignition/crank behavior, Android
+Doze delivery, or any vehicle result. The lifecycle callbacks were injected by
+the test, not delivered by the operating system.
+
+## 2026-08-23 — host-only rig hardening (not new device evidence)
+
+This continuation had no physical Android device attached, so none of the
+historical phone results below was revalidated. An Android emulator was later
+attached for an isolated Wi-Fi rig run; it is not radio or phone evidence.
+
+- Ircama ran on loopback behind the TCP chaos proxy. The five existing oracle
+  tests completed through deterministic fragmentation, and separate fresh
+  proxy processes made connection-close, missing-prompt, and corruption faults
+  fail at the intended initialization command.
+- The CoreBluetooth bridge completed three consecutive start/status/stop
+  cycles, a natural-expiry cycle, and a custom-`TMPDIR` cycle, leaving no
+  listener or owned process. The tests exposed a transient readiness race,
+  LaunchServices access stalls for scripts under `Documents`, and a changing
+  TCC code identity when the host bundle followed `TMPDIR`; the controller now
+  retries its complete status snapshot, stages scripts privately, and keeps a
+  stable host identity. Its same-Mac scan remained the expected negative
+  control.
+- The Android emulator's real TCP stack connected through `adb reverse`,
+  reached live polling, persisted simulated evidence, and recovered after a
+  lifecycle pause. The rig package was isolated and removed by the Flutter
+  integration-test runner afterward.
+- Rig logs were created owner-only, and the Android rig package/evidence paths
+  are isolated and explicitly marked as simulated.
+
+This proves host orchestration and real TCP behavior. It does **not** prove an
+Android permission flow, a second-device GATT connection, the purchased
+adapter's firmware or Bluetooth profile, an ECU response, or any vehicle
+behavior. Those remain separate physical gates.
+
+## The three links exercised
 
 | | What it is |
 |---|---|
 | Demo simulator | The in-app `DemoTransport`. Every screen, no hardware. |
 | **Wi-Fi → `Ircama/ELM327-emulator`** | The phone's real `WifiTransport` opening a real TCP socket to an ELM327 implementation nobody here wrote, reached over `adb reverse tcp:35000 tcp:35000`. Protocol handshake, framing, timing and error paths are all its, not ours. |
+| **BLE → CoreBluetooth rig → Ircama** | A physical Samsung phone crossing real BLE radios, Android GATT, Nordic UART discovery/subscription, writes and notifications. The peripheral host and ECU remain simulated. |
 
-Bluetooth Classic and BLE were exercised as far as an absent adapter allows,
-which turned out to be further than expected — see below.
+Bluetooth Classic and purchased-adapter behavior were exercised only as far as
+an absent adapter allows. The BLE rig goes further, but remains a rig.
 
 ## Verified over the Wi-Fi link
 
@@ -336,7 +402,7 @@ the save closes the editor, logcat is clean, and the definition polls.
 
 ## Round 23, after the typed-evidence rewrite
 
-Galaxy S25 Ultra, debug build of `685d34a`, the ELM327 emulator over Wi-Fi on
+Galaxy S24 Ultra, debug build of `685d34a`, the ELM327 emulator over Wi-Fi on
 one pass and the demo link on the other. The commit rewrote how a damaged
 exchange decides who was on the bus, so both links were walked end to end
 rather than spot-checked.
@@ -868,7 +934,7 @@ seconds, well past a snapshot interval, but the timestamp stayed at 16:10, the
 BLE attempt. A simulator session did not overwrite a recording made from real
 hardware.
 
-That is exactly the scenario `FIELD_GUIDE.md` describes — something goes wrong
+That is exactly the scenario `docs/field-guide.zh-TW.md` describes — something goes wrong
 at the car, you get home, you tap Demo to check whether the app itself is
 broken — and it had never been run. Now it has, in that order, on the phone.
 
@@ -955,7 +1021,7 @@ gets nothing. Its log confirms the app addressed it properly:
 vehicle does not support this" from "this connection did not read it". The
 heading read 無法確認 rather than 共 0 筆.
 
-`REVIEW_LOG.md` lists "DTC 讀取失敗顯示無故障碼" as a HIGH defect and calls it
+`docs/verification/review-log.md` lists "DTC 讀取失敗顯示無故障碼" as a HIGH defect and calls it
 a false all-clear on a diagnostic screen. This is that fix, on a phone, against
 a third-party implementation, refusing to give the answer that would have been
 comfortable.

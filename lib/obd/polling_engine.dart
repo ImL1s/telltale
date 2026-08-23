@@ -898,7 +898,7 @@ class PollingEngine {
   /// reports as unanswered, carries its codes out on the exception, and
   /// `ScanVerdict` renders the scan partial.
   ///
-  /// This is what `TEST_EVIDENCE.md` recorded as a known gap awaiting
+  /// This is what `docs/verification/test-evidence.md` recorded as a known gap awaiting
   /// hardware. It needed no hardware — only for the two states to stop
   /// sharing one branch.
   void _requireAttributable(ObdResponse response, List<Dtc> found,
@@ -990,8 +990,7 @@ class PollingEngine {
   /// to reach the code that decides to send again, so it is passed in rather
   /// than wrapped around.
   Future<List<Dtc>> readDtcs(DtcKind kind, {DateTime? deadline}) async {
-    client.transcript
-        .recordNote('開始讀取${kind.label}故障碼（Mode ${kind.mode}）', DateTime.now());
+    client.transcript.recordNote('開始讀取${kind.label}故障碼（Mode ${kind.mode}）');
     // Captured, not sampled. Re-checked before every attempt, so a retry that
     // slept across an interruption does not resume on the other side of it.
     final owner = lifecycleEpoch?.call();

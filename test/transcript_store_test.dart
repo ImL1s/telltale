@@ -9,6 +9,7 @@
 /// existed they were the ones with no record at all.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,8 +49,11 @@ void main() {
   });
 
   test('nothing is offered when nothing has been recorded', () async {
-    expect(await _store().load(), isNull,
-        reason: 'a first launch must not invent a previous session');
+    expect(
+      await _store().load(),
+      isNull,
+      reason: 'a first launch must not invent a previous session',
+    );
   });
 
   test('a saved recording comes back with its heading attached', () async {
@@ -57,23 +61,72 @@ void main() {
       ..recordWrite('ATZ\r'.codeUnits, DateTime(2026, 8, 17, 12))
       ..recordRead('ELM327 v1.5\r>'.codeUnits, DateTime(2026, 8, 17, 12));
 
-    await _store().save(transcript, '# 連線方式：Bluetooth Classic\n', fromRealHardware: true);
+    await _store().save(
+      transcript,
+      '# 連線方式：Bluetooth Classic\n',
+      fromRealHardware: true,
+    );
     final loaded = await _store().load();
 
     expect(loaded, isNotNull);
-    expect(loaded!.header, contains('Bluetooth Classic'),
-        reason: 'bytes with no idea what produced them are most of the way to '
-            'useless — the first question anybody asks of a log is which '
-            'adapter');
+    expect(
+      loaded!.header,
+      contains('Bluetooth Classic'),
+      reason:
+          'bytes with no idea what produced them are most of the way to '
+          'useless — the first question anybody asks of a log is which '
+          'adapter',
+    );
     expect(loaded.body, contains('ATZ'));
     expect(loaded.body, contains('ELM327'));
   });
 
+  test(
+    'sentinel text inside a header value is not treated as the delimiter',
+    () async {
+      final transcript = ObdTranscript()
+        ..recordWrite('ATI\r'.codeUnits, DateTime(2026, 8, 21, 12))
+        ..recordRead('ELM327 v1.5\r>'.codeUnits, DateTime(2026, 8, 21, 12));
+      const header =
+          '# adapter identity: clone #### TRANSCRIPT #### rev A\n'
+          '# protocol: 6\n';
+      final expectedBody = transcript.renderHex();
+
+      expect(
+        await _store().save(transcript, header, fromRealHardware: true),
+        isTrue,
+      );
+      final loaded = await _store().load();
+
+      expect(loaded, isNotNull);
+      expect(loaded!.header, header);
+      expect(loaded.body, expectedBody);
+    },
+  );
+
   test('an empty session writes nothing', () async {
     await _store().save(ObdTranscript(), '# header\n', fromRealHardware: true);
-    expect(await _store().load(), isNull,
-        reason: 'offering an empty log implies something was recorded');
+    expect(
+      await _store().load(),
+      isNull,
+      reason: 'offering an empty log implies something was recorded',
+    );
   });
+
+  test(
+    'a storage error is reported without escaping into the session',
+    () async {
+      final store = TranscriptStore(
+        directory: () async => throw const FileSystemException('disk full'),
+      );
+      final transcript = ObdTranscript()..recordNote('worth keeping');
+
+      expect(
+        await store.save(transcript, '# header\n', fromRealHardware: true),
+        isFalse,
+      );
+    },
+  );
 
   test('a later session replaces the earlier one', () async {
     // Deliberately one file. The point is "what happened last time", and a
@@ -92,6 +145,32 @@ void main() {
     expect(loaded.body, isNot(contains('0100')));
   });
 
+  test('save captures the transcript before its first await', () async {
+    final directoryGate = Completer<Directory>();
+    final store = TranscriptStore(directory: () => directoryGate.future);
+    final transcript = ObdTranscript()
+      ..recordNote('before save', DateTime.utc(2026, 8, 21, 3));
+
+    final saving = store.save(transcript, '# frozen\n', fromRealHardware: true);
+    transcript.recordNote(
+      'after save started',
+      DateTime.utc(2026, 8, 21, 3, 0, 1),
+    );
+    directoryGate.complete(_dir);
+    await saving;
+
+    final loaded = await store.load();
+    expect(loaded, isNotNull);
+    expect(loaded!.body, contains('before save'));
+    expect(
+      loaded.body,
+      isNot(contains('after save started')),
+      reason:
+          'the file must describe the exact moment save was requested, '
+          'not whichever entries happened to arrive while storage was awaited',
+    );
+  });
+
   test('a half-written file does not replace a complete one', () async {
     // Why the write is staged and renamed. A process killed midway would
     // otherwise swap a complete recording of the session that failed for a
@@ -105,8 +184,11 @@ void main() {
         .writeAsStringSync('this is a torn write');
 
     final loaded = await _store().load();
-    expect(loaded!.header, contains('complete'),
-        reason: 'the staging file is not the one that is read');
+    expect(
+      loaded!.header,
+      contains('complete'),
+      reason: 'the staging file is not the one that is read',
+    );
   });
 
   test('a corrupt file reads as no recording rather than throwing', () async {
@@ -158,11 +240,18 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 200));
 
     final loaded = await _store().load();
-    expect(loaded, isNotNull,
-        reason: 'a session that has ended is exactly the one somebody comes '
-            'back to read');
-    expect(loaded!.body, contains('ATZ'),
-        reason: 'and the handshake is the part that says why it failed');
+    expect(
+      loaded,
+      isNotNull,
+      reason:
+          'a session that has ended is exactly the one somebody comes '
+          'back to read',
+    );
+    expect(
+      loaded!.body,
+      contains('ATZ'),
+      reason: 'and the handshake is the part that says why it failed',
+    );
   });
 
   group('a simulator session cannot destroy a real one', () {
@@ -176,10 +265,16 @@ void main() {
 
     test('demo does not overwrite hardware', () async {
       final store = _store();
-      await store.save(_transcript('7E8 41 0C 1A F8'), 'real adapter\n',
-          fromRealHardware: true);
-      await store.save(_transcript('7E8 41 0C 00 00'), 'Demo ECU\n',
-          fromRealHardware: false);
+      await store.save(
+        _transcript('7E8 41 0C 1A F8'),
+        'real adapter\n',
+        fromRealHardware: true,
+      );
+      await store.save(
+        _transcript('7E8 41 0C 00 00'),
+        'Demo ECU\n',
+        fromRealHardware: false,
+      );
 
       final kept = await store.load();
       expect(kept, isNotNull);
@@ -187,55 +282,74 @@ void main() {
       expect(kept.fromRealHardware, isTrue);
     });
 
-    test('but hardware overwrites hardware, and demo overwrites demo',
-        () async {
-      // The rule is about diagnostic value, not about being precious with the
-      // file. A newer real session is the one worth keeping, and a simulator
-      // recording is better than nothing when nothing else is there.
-      final store = _store();
-      await store.save(_transcript('AA'), 'first adapter\n',
-          fromRealHardware: true);
-      await store.save(_transcript('BB'), 'second adapter\n',
-          fromRealHardware: true);
-      expect((await store.load())!.header, contains('second adapter'));
+    test(
+      'but hardware overwrites hardware, and demo overwrites demo',
+      () async {
+        // The rule is about diagnostic value, not about being precious with the
+        // file. A newer real session is the one worth keeping, and a simulator
+        // recording is better than nothing when nothing else is there.
+        final store = _store();
+        await store.save(
+          _transcript('AA'),
+          'first adapter\n',
+          fromRealHardware: true,
+        );
+        await store.save(
+          _transcript('BB'),
+          'second adapter\n',
+          fromRealHardware: true,
+        );
+        expect((await store.load())!.header, contains('second adapter'));
 
-      // Cleared first: the half above left a hardware recording in the same
-      // directory, which would refuse both demo saves and make this pass for
-      // the wrong reason.
-      await _store().clear();
-      final fresh = _store();
-      await fresh.save(_transcript('CC'), 'Demo one\n',
-          fromRealHardware: false);
-      await fresh.save(_transcript('DD'), 'Demo two\n',
-          fromRealHardware: false);
-      final kept = await fresh.load();
-      expect(kept!.header, contains('Demo two'));
-      expect(kept.fromRealHardware, isFalse);
-    });
+        // Cleared first: the half above left a hardware recording in the same
+        // directory, which would refuse both demo saves and make this pass for
+        // the wrong reason.
+        await _store().clear();
+        final fresh = _store();
+        await fresh.save(
+          _transcript('CC'),
+          'Demo one\n',
+          fromRealHardware: false,
+        );
+        await fresh.save(
+          _transcript('DD'),
+          'Demo two\n',
+          fromRealHardware: false,
+        );
+        final kept = await fresh.load();
+        expect(kept!.header, contains('Demo two'));
+        expect(kept.fromRealHardware, isFalse);
+      },
+    );
 
-    test('a file written before the marker existed reads as hardware',
-        () async {
-      // The safe direction. Treating an unmarked recording as a simulator one
-      // would let the next Demo session delete it, which is the failure this
-      // whole group is about — arriving through the upgrade path instead.
-      final store = _store();
-      final file = File('${_dir.path}/last-session.log');
-      await file.writeAsString(
-        '${DateTime.now().toIso8601String()}\n'
-        'old adapter\n'
-        '#### TRANSCRIPT ####\n'
-        '7E8 41 0C 1A F8\n',
-      );
+    test(
+      'a file written before the marker existed reads as hardware',
+      () async {
+        // The safe direction. Treating an unmarked recording as a simulator one
+        // would let the next Demo session delete it, which is the failure this
+        // whole group is about — arriving through the upgrade path instead.
+        final store = _store();
+        final file = File('${_dir.path}/last-session.log');
+        await file.writeAsString(
+          '${DateTime.now().toIso8601String()}\n'
+          'old adapter\n'
+          '#### TRANSCRIPT ####\n'
+          '7E8 41 0C 1A F8\n',
+        );
 
-      final loaded = await store.load();
-      expect(loaded, isNotNull);
-      expect(loaded!.fromRealHardware, isTrue);
-      expect(loaded.header, contains('old adapter'));
+        final loaded = await store.load();
+        expect(loaded, isNotNull);
+        expect(loaded!.fromRealHardware, isTrue);
+        expect(loaded.header, contains('old adapter'));
 
-      await store.save(_transcript('ZZ'), 'Demo ECU\n',
-          fromRealHardware: false);
-      expect((await store.load())!.header, contains('old adapter'));
-    });
+        await store.save(
+          _transcript('ZZ'),
+          'Demo ECU\n',
+          fromRealHardware: false,
+        );
+        expect((await store.load())!.header, contains('old adapter'));
+      },
+    );
   });
 
   test('two saves that overlap do not interleave into one file', () async {
@@ -291,8 +405,11 @@ void main() {
       session.saveTranscriptSnapshotForTest(),
     ]);
 
-    expect(overlapped, isFalse,
-        reason: 'the writes are queued, not concurrent');
+    expect(
+      overlapped,
+      isFalse,
+      reason: 'the writes are queued, not concurrent',
+    );
     final loaded = await store.load();
     expect(loaded, isNotNull, reason: 'and the file is readable afterwards');
   });
@@ -310,7 +427,7 @@ class _CountingStore extends TranscriptStore {
   final void Function() onExit;
 
   @override
-  Future<void> save(
+  Future<bool> save(
     ObdTranscript transcript,
     String header, {
     required bool fromRealHardware,
@@ -319,8 +436,11 @@ class _CountingStore extends TranscriptStore {
     try {
       // A turn of the loop, so an unserialised caller has somewhere to slip in.
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      await super.save(transcript, header,
-          fromRealHardware: fromRealHardware);
+      return await super.save(
+        transcript,
+        header,
+        fromRealHardware: fromRealHardware,
+      );
     } finally {
       onExit();
     }

@@ -259,5 +259,5 @@ US$4.99 的付費 App，所以程式碼裡原本宣告的 `License.nonprofit` �
 | MTU 從 `connect()` 的參數變成連線後的獨立請求 | 舊寫法下協商失敗會讓**整條連線**失敗；現在只損失吞吐量 |
 
 換套件本身沒有損失已驗證的覆蓋率：BLE 路徑從來沒有對真實 ELM327 硬體驗證過
-（見 `DEVICE_VERIFICATION.md`）。反而是這次換出的介面接縫（`UniversalBle.setInstance`）
+（見 `docs/verification/device-verification.md`）。反而是這次換出的介面接縫（`UniversalBle.setInstance`）
 讓 `BleTransport` 第一次有了單元測試 —— 以前那些只能寫在註解裡的宣稱，現在有東西釘住。

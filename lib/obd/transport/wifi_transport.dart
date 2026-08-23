@@ -34,6 +34,10 @@ class WifiTransport extends BaseObdTransport {
   String get displayName => '$host:$port';
 
   @override
+  Map<String, Object> get diagnosticMetadata =>
+      Map.unmodifiable({'host': host, 'port': port});
+
+  @override
   Future<void> connect() async {
     if (_socket != null) return;
     try {
@@ -41,7 +45,7 @@ class WifiTransport extends BaseObdTransport {
       // single most common way a Wi-Fi adapter fails in the field.
       //
       // The adapter's soft-AP carries no internet, and Android decides what to
-      // do about that per network. Measured on a Galaxy S25 Ultra rather than
+      // do about that per network. Measured on a Galaxy S24 Ultra rather than
       // reasoned about: with the validation probe pointed at an unroutable
       // address so the Wi-Fi was judged to have no internet, and cellular data
       // live and pingable, the **Wi-Fi remained the default network** and this

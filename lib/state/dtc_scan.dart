@@ -235,7 +235,7 @@ class DtcScanState {
   /// ends by asking for exactly the rescan that is now finishing. Carrying it
   /// through unchanged is how the panel came to sit beside a live 清除 button
   /// telling somebody not to press it — the app's own recovery step making its
-  /// own warning false, with `FIELD_GUIDE.md` telling them to trust the
+  /// own warning false, with `docs/field-guide.zh-TW.md` telling them to trust the
   /// button.
   ///
   /// Deleting it instead would be worse: a partial clear is a fact about the

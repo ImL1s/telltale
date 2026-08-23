@@ -1,7 +1,7 @@
 # Round 6 review — merged findings
 
 Two independent reviewers, again unrestricted, on the tree that round 5 left
-behind. `REVIEW_ROUND5.md` records the previous round.
+behind. `docs/verification/history/review-round-5.md` records the previous round.
 
 - **Codex** (`gpt-5.6-sol`, effort max) — 16 CRITICAL, 9 HIGH, 8 MEDIUM, 4 LOW.
 - **Fable 5** — 3 CRITICAL, 5 HIGH, 11 MEDIUM, with device access.
@@ -52,7 +52,7 @@ One is deliberately not done, and it is not a defect:
 
 | | Why |
 |---|---|
-| ~~Codex M-08 — `License.nonprofit` on the BLE connect~~ | **Closed 2026-08-18.** The condition this row named did arrive — the app went to Google Play at US$4.99, which makes the distribution commercial and the `nonprofit` declaration false. Resolved by removing the dependency rather than buying the licence: `flutter_blue_plus` was replaced with `universal_ble` (BSD-3-Clause), which imposes no commercial term and no build-time telemetry. See `SPEC_DEVIATIONS.md` §5. |
+| ~~Codex M-08 — `License.nonprofit` on the BLE connect~~ | **Closed 2026-08-18.** The condition this row named did arrive — the app went to Google Play at US$4.99, which makes the distribution commercial and the `nonprofit` declaration false. Resolved by removing the dependency rather than buying the licence: `flutter_blue_plus` was replaced with `universal_ble` (BSD-3-Clause), which imposes no commercial term and no build-time telemetry. See `docs/protocol-deviations.zh-TW.md` §5. |
 | ~~Codex M-07's second half~~ | Done after all: a read now waits out a pending controller, two extra attempts two seconds apart. A **clear** deliberately does not retry — re-issuing Mode 04 resets the readiness monitors a second time, costing the vehicle another drive cycle before it can pass an emissions test, so the user is told to rescan instead. |
 
 ## Checked against something other than the suite
@@ -106,4 +106,4 @@ A simulator more permissive than the hardware certifies paths no real adapter
 takes. It implements what it implements now, acknowledges what it can honour,
 and answers `?` to the rest.
 
-See `TEST_EVIDENCE.md` for what the suite does and does not establish.
+See `docs/verification/test-evidence.md` for what the suite does and does not establish.

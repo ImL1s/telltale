@@ -4,7 +4,7 @@ Reviewers, all given the same unrestricted brief (whole `app/`, nothing off limi
 
 | Reviewer | Model | Special access |
 |---|---|---|
-| Fable | `claude-fable-5` | Live Galaxy S25 Ultra — walked all seven screens, both themes, landscape, 1.8× text |
+| Fable | `claude-fable-5` | Live Galaxy S24 Ultra — walked all seven screens, both themes, landscape, 1.8× text |
 | Codex | `gpt-5.6-sol`, effort `max` | Read the installed plugin sources in `.pub-cache`, ran the Dart analyzer |
 | GPT-5.6 Pro | ChatGPT web + @GitHub connector | Read the private repo directly |
 

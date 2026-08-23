@@ -11,6 +11,9 @@
 # itself and goes green. The oracle is the only place that cannot happen.
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -53,19 +56,42 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
 
-      # The two oracle files self-skip here — no simulator is listening on
-      # 35000 in this job — so this run ends in `~12`. The `oracle` job below is
-      # what actually exercises those twelve, and refuses to pass if they skip.
+      # The three simulator-backed oracle files self-skip here because no
+      # simulator is listening. The `oracle` job below exercises the public
+      # third-party suite and refuses to pass if any expected test skips; the
+      # source repository's CI also runs the additional oracle suites.
       # No count is asserted here on purpose: pinning one turns every added test
       # into a CI failure, which trains people to edit the number rather than
       # read it.
       - run: flutter test
 
-      # android/key.properties is gitignored, so this falls back to debug
-      # signing automatically and needs no secrets. It is the step that catches
-      # the AGP / compileSdk / plugin-metadata class of breakage, which no unit
-      # test can see.
-      - run: flutter build apk --debug
+      # Debug signing needs no secrets. Build both identities so the physical
+      # adapter app can never accidentally inherit the rig package or label.
+      - name: Build and verify Android field/rig identities
+        run: |
+          set -euo pipefail
+          flutter build apk --debug --flavor field
+          flutter build apk --debug --flavor rig \
+            --dart-define=TELLTALE_TEST_RIG=true
+
+          field_apk=build/app/outputs/flutter-apk/app-field-debug.apk
+          rig_apk=build/app/outputs/flutter-apk/app-rig-debug.apk
+          test -f "$field_apk"
+          test -f "$rig_apk"
+          aapt=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools" \
+            -type f -name aapt -perm -111 | sort -V | tail -n 1)
+          test -n "$aapt"
+          field_badging=$($aapt dump badging "$field_apk")
+          rig_badging=$($aapt dump badging "$rig_apk")
+          grep -Fq "package: name='com.cbstudio.telltale'" <<< "$field_badging"
+          grep -Fq "application-label:'Telltale'" <<< "$field_badging"
+          grep -Fq "package: name='com.cbstudio.telltale.rig'" <<< "$rig_badging"
+          grep -Fq "application-label:'Telltale Rig'" <<< "$rig_badging"
+          if grep -Eiq "com\.cbstudio\.telltale\.rig|Telltale Rig|versionName='[^']*-rig" \
+              <<< "$field_badging"; then
+            echo "::error::Field APK contains the rig identity"
+            exit 1
+          fi
 
   apple:
     name: Apple compile gates
@@ -181,6 +207,45 @@ jobs:
               sys.exit(1)
           print(f'OK: {len(md_zh)} sections, identical across both files and both languages.')
           PY
+
+  rigs:
+    name: test rigs — framing and fault injection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.4"
+          architecture: x64
+
+      - name: Syntax checks
+        run: |
+          python3 -m py_compile \
+            tool/ble_test_rig/emulator_entrypoint.py \
+            tool/ble_test_rig/bridge.py \
+            tool/ble_test_rig/process_identity.py \
+            tool/ble_test_rig/probe.py \
+            tool/ble_test_rig/test_bridge.py \
+            tool/ble_test_rig/test_emulator_entrypoint.py \
+            tool/ble_test_rig/test_probe.py \
+            tool/ble_test_rig/test_process_identity.py \
+            tool/ble_test_rig/test_run_controller.py \
+            tool/obd_test_rig/chaos_proxy.py \
+            tool/obd_test_rig/test_chaos_proxy.py
+
+      - name: Unit tests
+        env:
+          PYTHONWARNINGS: error::ResourceWarning
+        run: |
+          python3 -m unittest discover \
+            -s tool/ble_test_rig -p 'test_*.py' -v
+          python3 -m unittest discover \
+            -s tool/obd_test_rig -p 'test_*.py' -v
 
   oracle:
     name: third-party ELM327 simulator

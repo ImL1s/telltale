@@ -6,6 +6,94 @@ which therefore does not always move in step with the name.
 
 Dates are the date the build was made, not the date it reached anyone.
 
+## Unreleased
+
+No changes yet.
+
+## 1.0.4+5 — 2026-08-24
+
+This is the field-evidence build: a real-car failure should come home with
+enough context to reproduce and explain it, without a laptop or a second app.
+
+### Added
+
+- **Every connection now carries a versioned evidence header.** The exported
+  transcript records the app/build, phone and Android version, configured
+  vehicle profile, transport endpoint or adapter identifier, BLE scan RSSI,
+  MTU/subscription outcome, protocol, adapter identity and bus facts. Missing
+  facts stay `unknown`; the app does not infer a successful result.
+- **Four one-tap real-car event markers** — ignition on, engine started,
+  throttle blip and road test started — place physical events on the same
+  monotonic timeline as the raw OBD bytes and request an immediate snapshot,
+  reporting if it remains memory-only. Demo sessions cannot create these
+  markers. They live in Settings → Diagnostic records and are intended for a
+  stopped vehicle or a passenger.
+- Lifecycle and link events are recorded automatically: app background/resume,
+  user disconnect and unexpected adapter loss.
+- Added isolated Android BLE and Wi-Fi rig drivers. The explicit `rig` flavor
+  uses `com.cbstudio.telltale.rig`, clears only its own state, and labels
+  exported transcripts as simulated; the `field` flavor keeps physical
+  adapter debugging under `com.cbstudio.telltale`.
+- Added a deterministic TCP chaos proxy and CI oracle for fragmented replies,
+  peer close, missing prompt, and corrupted critical initialization replies.
+- Added a hash-locked macOS CoreBluetooth-to-Ircama rig with owner-only logs,
+  exact process ownership, bounded lifetime, and fail-closed single-central
+  notification routing.
+- Added a conventional public documentation index, security policy, conduct
+  policy, and a source-controlled privacy policy.
+
+### Fixed
+
+- Remembered-adapter direct connect now opens the dashboard after a successful
+  handshake instead of leaving the connected session behind the connect page.
+- Android rig evidence now fails closed when the native application-identity
+  channel is unavailable or times out, so an unverified `.rig` session cannot
+  create real-car markers or replace stored physical evidence.
+- A transport that closes during the handshake or its post-handshake probes is
+  reported immediately and cannot briefly commit an already-dead session.
+- Interrupted, expired, or failed rig commands now remove only their owned
+  bridge, emulator, and listener state, then release the OS advisory controller
+  lock; no orphaned test service or stale held mutex is left running.
+- Rig stop now rediscovers exact kernel identities when PID files are missing or
+  partial, and evidence cleanup runs through `--purge-evidence` without
+  unlinking live controller-lock inodes.
+- Rig startup now retries the complete ownership/listener/advertising snapshot
+  when LaunchServices exposes a still-settling process identity, instead of
+  tearing down a healthy bridge after one transient check.
+- The macOS BLE host now runs owner-private staged scripts outside protected
+  source folders and keeps one stable bundle/venv identity across custom
+  `TMPDIR` runs, avoiding LaunchServices file-access stalls and stale
+  CoreBluetooth TCC grants.
+- The physical BLE integration test now scrolls the discovered rig's actionable
+  tile into a narrow phone viewport and taps only a hit-testable `InkWell`, so
+  an off-screen text finder cannot report a successful tap without attempting
+  GATT.
+
+### Changed
+
+- Long recordings preserve the first 200 handshake entries and the newest
+  traffic instead of evicting the handshake first. Any omitted middle range is
+  labelled with its count and elapsed-time range.
+- Snapshot and share operations freeze one atomic transcript/header pair before
+  awaiting storage, so later traffic or a new connection cannot relabel or
+  extend the evidence being written.
+- The evidence header warns that raw OBD traffic can contain VIN and device or
+  adapter identifiers. The app never proactively uploads it; operating-system
+  backup follows the device's settings, and sharing remains an explicit action.
+- Public-facing guides, maintainer notes, and historical verification records
+  now live under `docs/`; the repository root keeps only standard project files.
+- The README now leads with APK download, supported transports, signing-lineage
+  warnings, privacy, and the exact boundary between a physical BLE rig and a
+  purchased adapter or vehicle.
+- Field and rig guides now work from both the private `torque/app/` layout and
+  the public `telltale` repository root, and the field guide identifies GitHub
+  APKs as community-signed rather than Play-signed.
+- Corrected the recorded `SM-S9280` model name to Galaxy S24 Ultra and pinned
+  the Gradle 9.3.1 distribution checksum used by Android builds.
+
+These are no-car test facilities. They do not upgrade simulated sessions into
+real adapter, ECU, or vehicle evidence.
+
 ## 1.0.3+4 — 2026-08-20
 
 Two defects found by driving 1.0.2 on a phone against real Bluetooth hardware
@@ -68,7 +156,7 @@ attached to the production draft. The production submission is still a draft.
   telemetry — package name, app name, version, date — which does not sit with a
   privacy policy that says nothing is collected. The replacement has neither
   term, and the merged `AndroidManifest.xml` is byte-for-byte unchanged, so no
-  permission the app asks for has changed. Rationale in `SPEC_DEVIATIONS.md` §5.
+  permission the app asks for has changed. Rationale in `docs/protocol-deviations.zh-TW.md` §5.
 
   Four behavioural differences between the two packages had to be handled.
   Three of them would otherwise have been real bugs and are listed under Fixed

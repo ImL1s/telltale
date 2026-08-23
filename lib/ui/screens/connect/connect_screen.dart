@@ -75,11 +75,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   /// overwhelmingly the one that was meant, and the retry is exactly when not
   /// having to find it again in a list of headphones matters most — the same
   /// rule the Wi-Fi address above already follows.
-  void _rememberAdapter(DiscoveredDevice device) => _rememberAdapterRaw(
-        id: device.id,
-        name: device.name,
-        kind: device.kind,
-      );
+  void _rememberAdapter(DiscoveredDevice device) =>
+      _rememberAdapterRaw(id: device.id, name: device.name, kind: device.kind);
 
   void _rememberAdapterRaw({
     required String id,
@@ -87,8 +84,11 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     required TransportKind kind,
     int? port,
   }) {
-    unawaited(ref.read(lastAdapterProvider.notifier).remember(
-        LastAdapter(id: id, name: name, kind: kind, port: port)));
+    unawaited(
+      ref
+          .read(lastAdapterProvider.notifier)
+          .remember(LastAdapter(id: id, name: name, kind: kind, port: port)),
+    );
   }
 
   @override
@@ -145,8 +145,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
 
       // The user said no. Location is a different permission for a different
       // purpose and cannot substitute for this one.
-      _permissionPermanentlyDenied =
-          results.values.any((s) => s.isPermanentlyDenied);
+      _permissionPermanentlyDenied = results.values.any(
+        (s) => s.isPermanentlyDenied,
+      );
       _deniedPermissionLabel = '藍牙';
       return false;
     }
@@ -316,10 +317,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     );
 
     await _connect(
-      () => ref.read(obdSessionProvider.notifier).connectWifi(
-            host: host,
-            port: port,
-          ),
+      () => ref
+          .read(obdSessionProvider.notifier)
+          .connectWifi(host: host, port: port),
     );
   }
 
@@ -432,8 +432,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     kind: kind,
                     isExpanded: _expanded == kind,
                     isDisabled: unavailable || connection.isBusy,
-                    disabledReason:
-                        unavailable ? 'iOS 不開放第三方 App 使用藍牙 SPP' : null,
+                    disabledReason: unavailable
+                        ? 'iOS 不開放第三方 App 使用藍牙 SPP'
+                        : null,
                     onTap: () => _select(kind),
                     child: _bodyFor(kind, palette),
                   );
@@ -449,61 +450,55 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   Widget _bodyFor(TransportKind kind, AppPalette palette) {
     return switch (kind) {
       TransportKind.demo => _DemoBody(
-          onConnect: () => _connect(
-            () => ref.read(obdSessionProvider.notifier).connectDemo(),
-          ),
-        ),
+        onConnect: () =>
+            _connect(() => ref.read(obdSessionProvider.notifier).connectDemo()),
+      ),
       TransportKind.wifi => _WifiBody(
-          hostController: _hostController,
-          portController: _portController,
-          error: _wifiError,
-          onConnect: _connectWifi,
-        ),
+        hostController: _hostController,
+        portController: _portController,
+        error: _wifiError,
+        onConnect: _connectWifi,
+      ),
       TransportKind.bluetoothClassic => _DeviceListBody(
-          devices: _devices,
-          scanning: _scanning,
-          error: _scanError,
-          emptyHint: '找不到已配對的轉接器。請先到系統藍牙設定完成配對（多數 ELM327 的配對碼為 1234 或 0000）。',
-          // The last sentence used to read 選錯裝置要等約半分鐘才會失敗, which
-          // was true and is the wrong thing to tell somebody. It described the
-          // wait as unavoidable, so the only advice it gave was to sit through
-          // it — and while they did, every other device in this list was
-          // untappable. Cancelling stops the attempt at the end of the step
-          // it is on, and the next tap works immediately after; saying so is
-          // the difference between a wrong tap costing ten seconds and
-          // costing half a minute of believing the app is broken.
-          listHint: '這裡列出手機上所有已配對的裝置 — 耳機、喇叭也會在內，'
-              '看起來像轉接器的排在前面。選錯了就按「取消」，'
-              '不必等它自己失敗，取消後可以馬上改選別的。',
-          showSettingsAction: _permissionPermanentlyDenied,
-          onRefresh: _loadPairedDevices,
-          onSelect: (device) => _connect(
-            () {
-              _rememberAdapter(device);
-              return ref
-                  .read(obdSessionProvider.notifier)
-                  .connectClassic(device);
-            },
-          ),
-        ),
+        devices: _devices,
+        scanning: _scanning,
+        error: _scanError,
+        emptyHint: '找不到已配對的轉接器。請先到系統藍牙設定完成配對（多數 ELM327 的配對碼為 1234 或 0000）。',
+        // The last sentence used to read 選錯裝置要等約半分鐘才會失敗, which
+        // was true and is the wrong thing to tell somebody. It described the
+        // wait as unavoidable, so the only advice it gave was to sit through
+        // it — and while they did, every other device in this list was
+        // untappable. Cancelling stops the attempt at the end of the step
+        // it is on, and the next tap works immediately after; saying so is
+        // the difference between a wrong tap costing ten seconds and
+        // costing half a minute of believing the app is broken.
+        listHint:
+            '這裡列出手機上所有已配對的裝置 — 耳機、喇叭也會在內，'
+            '看起來像轉接器的排在前面。選錯了就按「取消」，'
+            '不必等它自己失敗，取消後可以馬上改選別的。',
+        showSettingsAction: _permissionPermanentlyDenied,
+        onRefresh: _loadPairedDevices,
+        onSelect: (device) => _connect(() {
+          _rememberAdapter(device);
+          return ref.read(obdSessionProvider.notifier).connectClassic(device);
+        }),
+      ),
       TransportKind.bluetoothLe => _BleBody(
-          onConnect: (device) => _connect(
-            () {
-              _rememberAdapterRaw(
-                id: device.id,
-                name: device.name,
-                kind: TransportKind.bluetoothLe,
-              );
-              return ref.read(obdSessionProvider.notifier).connectBle(device);
-            },
-          ),
-          ensurePermissions: () => _ensurePermissions(forScanning: true),
-          // Classic already offered this. Without it the BLE screen was a dead
-          // end: once "don't ask again" is chosen the system auto-denies every
-          // later request, so recoverable configuration looked permanently
-          // broken with no route out.
-          isPermanentlyDenied: () => _permissionPermanentlyDenied,
-        ),
+        onConnect: (device) => _connect(() {
+          _rememberAdapterRaw(
+            id: device.id,
+            name: device.name,
+            kind: TransportKind.bluetoothLe,
+          );
+          return ref.read(obdSessionProvider.notifier).connectBle(device);
+        }),
+        ensurePermissions: () => _ensurePermissions(forScanning: true),
+        // Classic already offered this. Without it the BLE screen was a dead
+        // end: once "don't ask again" is chosen the system auto-denies every
+        // later request, so recoverable configuration looked permanently
+        // broken with no route out.
+        isPermanentlyDenied: () => _permissionPermanentlyDenied,
+      ),
     };
   }
 }
@@ -539,11 +534,7 @@ class _Header extends StatelessWidget {
                     colors: [palette.accent, palette.accentSoft],
                   ),
                 ),
-                child: Icon(
-                  Icons.speed,
-                  color: palette.background,
-                  size: 24,
-                ),
+                child: Icon(Icons.speed, color: palette.background, size: 24),
               ),
               const SizedBox(width: Spacing.md),
               Expanded(
@@ -588,18 +579,18 @@ class _TransportCard extends StatelessWidget {
   final Widget child;
 
   IconData get _icon => switch (kind) {
-        TransportKind.bluetoothClassic => Icons.bluetooth,
-        TransportKind.bluetoothLe => Icons.bluetooth_audio,
-        TransportKind.wifi => Icons.wifi,
-        TransportKind.demo => Icons.play_circle_outline,
-      };
+    TransportKind.bluetoothClassic => Icons.bluetooth,
+    TransportKind.bluetoothLe => Icons.bluetooth_audio,
+    TransportKind.wifi => Icons.wifi,
+    TransportKind.demo => Icons.play_circle_outline,
+  };
 
   Color _accent(AppPalette palette) => switch (kind) {
-        TransportKind.bluetoothClassic => palette.info,
-        TransportKind.bluetoothLe => palette.derived,
-        TransportKind.wifi => palette.success,
-        TransportKind.demo => palette.accent,
-      };
+    TransportKind.bluetoothClassic => palette.info,
+    TransportKind.bluetoothLe => palette.derived,
+    TransportKind.wifi => palette.success,
+    TransportKind.demo => palette.accent,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -607,86 +598,86 @@ class _TransportCard extends StatelessWidget {
     final accent = _accent(palette);
 
     return Panel(
-        // Not wrapped in an Opacity. `disabledReason` is the only thing on
-        // screen that explains *why* a transport cannot be used — "iOS exposes
-        // RFCOMM only to MFi accessories", say — and fading the row put that
-        // sentence below the contrast floor along with everything else. The
-        // row already reads as unavailable from its muted icon and the absent
-        // chevron and tap target.
-        accent: isDisabled ? palette.textTertiary : accent,
-        isActive: isExpanded,
-        padding: EdgeInsets.zero,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            InkWell(
-              onTap: isDisabled ? null : onTap,
-              borderRadius: Radii.cardRadius,
-              child: Padding(
-                padding: const EdgeInsets.all(Spacing.lg),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        // The icon carries the dimming, because nothing has to
-                        // be read off it.
-                        color: (isDisabled ? palette.textTertiary : accent)
-                            .withValues(alpha: isDisabled ? 0.08 : 0.14),
-                        borderRadius: BorderRadius.circular(Radii.sm + 2),
-                      ),
-                      child: Icon(
-                        _icon,
-                        color: isDisabled ? palette.textTertiary : accent,
-                        size: 21,
-                      ),
+      // Not wrapped in an Opacity. `disabledReason` is the only thing on
+      // screen that explains *why* a transport cannot be used — "iOS exposes
+      // RFCOMM only to MFi accessories", say — and fading the row put that
+      // sentence below the contrast floor along with everything else. The
+      // row already reads as unavailable from its muted icon and the absent
+      // chevron and tap target.
+      accent: isDisabled ? palette.textTertiary : accent,
+      isActive: isExpanded,
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: isDisabled ? null : onTap,
+            borderRadius: Radii.cardRadius,
+            child: Padding(
+              padding: const EdgeInsets.all(Spacing.lg),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      // The icon carries the dimming, because nothing has to
+                      // be read off it.
+                      color: (isDisabled ? palette.textTertiary : accent)
+                          .withValues(alpha: isDisabled ? 0.08 : 0.14),
+                      borderRadius: BorderRadius.circular(Radii.sm + 2),
                     ),
-                    const SizedBox(width: Spacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(kind.label, style: context.texts.titleMedium),
-                          const SizedBox(height: 2),
-                          Text(
-                            disabledReason ?? kind.description,
-                            style: context.texts.bodySmall,
-                          ),
-                        ],
-                      ),
+                    child: Icon(
+                      _icon,
+                      color: isDisabled ? palette.textTertiary : accent,
+                      size: 21,
                     ),
-                    if (!isDisabled)
-                      AnimatedRotation(
-                        turns: isExpanded ? 0.5 : 0,
-                        duration: Motion.fast,
-                        child: Icon(
-                          Icons.expand_more,
-                          color: palette.textTertiary,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            AnimatedSize(
-              duration: Motion.normal,
-              curve: Motion.standard,
-              alignment: Alignment.topCenter,
-              child: isExpanded && !isDisabled
-                  ? Column(
+                  ),
+                  const SizedBox(width: Spacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Divider(height: 1, color: palette.hairline),
-                        Padding(
-                          padding: const EdgeInsets.all(Spacing.lg),
-                          child: child,
+                        Text(kind.label, style: context.texts.titleMedium),
+                        const SizedBox(height: 2),
+                        Text(
+                          disabledReason ?? kind.description,
+                          style: context.texts.bodySmall,
                         ),
                       ],
-                    )
-                  : const SizedBox(width: double.infinity),
+                    ),
+                  ),
+                  if (!isDisabled)
+                    AnimatedRotation(
+                      turns: isExpanded ? 0.5 : 0,
+                      duration: Motion.fast,
+                      child: Icon(
+                        Icons.expand_more,
+                        color: palette.textTertiary,
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+          AnimatedSize(
+            duration: Motion.normal,
+            curve: Motion.standard,
+            alignment: Alignment.topCenter,
+            child: isExpanded && !isDisabled
+                ? Column(
+                    children: [
+                      Divider(height: 1, color: palette.hairline),
+                      Padding(
+                        padding: const EdgeInsets.all(Spacing.lg),
+                        child: child,
+                      ),
+                    ],
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -777,8 +768,9 @@ class _WifiBody extends StatelessWidget {
           const SizedBox(height: Spacing.md),
           Text(
             error!,
-            style: context.texts.bodyMedium
-                ?.copyWith(color: context.palette.warning),
+            style: context.texts.bodyMedium?.copyWith(
+              color: context.palette.warning,
+            ),
           ),
         ],
         const SizedBox(height: Spacing.lg),
@@ -923,7 +915,11 @@ class _DeviceTile extends StatelessWidget {
                 const SizedBox(width: Spacing.sm),
               ],
               if (device.isPaired)
-                const StatusPill(label: '已配對', tone: StatusTone.good, dense: true),
+                const StatusPill(
+                  label: '已配對',
+                  tone: StatusTone.good,
+                  dense: true,
+                ),
               const SizedBox(width: Spacing.sm),
               Icon(Icons.chevron_right, color: palette.textTertiary, size: 20),
             ],
@@ -1097,7 +1093,7 @@ class _BleEntry {
 
   final String id;
   final String name;
-  final int rssi;
+  final int? rssi;
 
   /// What the transport needs to open this adapter.
   ///
@@ -1105,7 +1101,8 @@ class _BleEntry {
   /// projection rather than a stored object — which is also why a remembered
   /// adapter can be reconnected on a fresh launch with no scan result to have
   /// held on to.
-  BleAdapterHandle get handle => BleAdapterHandle(id: id, name: name);
+  BleAdapterHandle get handle =>
+      BleAdapterHandle(id: id, name: name, rssi: rssi);
 }
 
 Stream<_BleEntry> _bleScanStream() async* {
@@ -1129,7 +1126,9 @@ class _HandshakePanel extends ConsumerWidget {
     final palette = context.palette;
     final steps = connection.initSteps;
     final done = steps.where((s) => s.status != InitStatus.running).length;
-    final total = steps.isEmpty ? Elm327Client.initSequence.length : steps.first.total;
+    final total = steps.isEmpty
+        ? Elm327Client.initSequence.length
+        : steps.first.total;
 
     // Past rather than live. Signalled by the accent and the inactive panel
     // treatment, not by fading the contents.
@@ -1154,16 +1153,13 @@ class _HandshakePanel extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  switch (connection.phase) {
-                    ConnectionPhase.connecting => '建立連線中…',
-                    ConnectionPhase.handshaking => 'ELM327 初始化',
-                    ConnectionPhase.connected => 'ELM327 初始化',
-                    // Past tense, so a green row cannot be read as "fine now".
-                    _ => 'ELM327 初始化（上次嘗試）',
-                  },
-                  style: context.texts.titleMedium,
-                ),
+                child: Text(switch (connection.phase) {
+                  ConnectionPhase.connecting => '建立連線中…',
+                  ConnectionPhase.handshaking => 'ELM327 初始化',
+                  ConnectionPhase.connected => 'ELM327 初始化',
+                  // Past tense, so a green row cannot be read as "fine now".
+                  _ => 'ELM327 初始化（上次嘗試）',
+                }, style: context.texts.titleMedium),
               ),
               Text(
                 '$done / $total',
@@ -1250,7 +1246,11 @@ class _StepRow extends StatelessWidget {
             width: 76,
             child: Text(
               progress.step.command,
-              style: AppTypography.code(palette, size: 11.5, color: palette.textPrimary),
+              style: AppTypography.code(
+                palette,
+                size: 11.5,
+                color: palette.textPrimary,
+              ),
             ),
           ),
           Expanded(
@@ -1292,7 +1292,9 @@ class _ErrorBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: context.texts.bodyMedium?.copyWith(color: palette.textPrimary),
+              style: context.texts.bodyMedium?.copyWith(
+                color: palette.textPrimary,
+              ),
             ),
           ),
         ],
@@ -1316,8 +1318,7 @@ class _LastAdapterCard extends ConsumerWidget {
     final palette = context.palette;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          Spacing.lg, 0, Spacing.lg, Spacing.lg),
+      padding: const EdgeInsets.fromLTRB(Spacing.lg, 0, Spacing.lg, Spacing.lg),
       child: Panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1365,15 +1366,19 @@ class _LastAdapterCard extends ConsumerWidget {
   }
 
   Future<void> _reconnect(
-      BuildContext context, WidgetRef ref, LastAdapter last) async {
+    BuildContext context,
+    WidgetRef ref,
+    LastAdapter last,
+  ) async {
     final session = ref.read(obdSessionProvider.notifier);
+    late final bool ok;
     // Rebuilt from the stored identifiers rather than from a device object,
     // which is the whole point: on a fresh launch there is no scan result to
     // hold on to, and a shortcut that required one would only work in the
     // session where it was not needed.
     switch (last.kind) {
       case TransportKind.bluetoothClassic:
-        await session.connectClassic(
+        ok = await session.connectClassic(
           DiscoveredDevice(
             id: last.id,
             name: last.name,
@@ -1387,19 +1392,23 @@ class _LastAdapterCard extends ConsumerWidget {
         // for IPv4 and silently wrong for IPv6. Calling `connectWifi()` bare
         // would use the shipped default, which is the value the user had to
         // change in the first place.
-        await session.connectWifi(host: last.id, port: last.port);
+        ok = await session.connectWifi(host: last.id, port: last.port);
       case TransportKind.bluetoothLe:
         // The handle is rebuilt from the stored address without a scan, which
         // is exactly what a shortcut on a fresh launch needs: there is no scan
         // result to have held on to. A device that has moved out of range
         // fails the connect, which is the same thing that happens when it is
         // picked from a list.
-        await session.connectBle(
+        ok = await session.connectBle(
           BleAdapterHandle(id: last.id, name: last.name),
         );
       case TransportKind.demo:
         // Nothing to remember, and nothing to shorten.
-        break;
+        return;
+    }
+    if (!context.mounted) return;
+    if (ok) {
+      context.go(DashboardScreen.path);
     }
   }
 }
@@ -1506,32 +1515,34 @@ bool get classicTransportAvailable => Platform.isAndroid;
 List<TransportQuestion> whichTransportGuidance({
   required bool classicAvailable,
 }) => [
-      (
-        transport: TransportKind.wifi,
-        question: '手機的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？',
-        answer: '選 Wi-Fi。先把手機連上那個網路，再回來輸入位址。',
-      ),
-      (
-        transport: TransportKind.bluetoothLe,
-        question: '盒子、賣場標題或裝置名稱上有 BLE、4.0、5.0 這些字？',
-        // The fallback is in the answer rather than only in the note at the
-        // bottom, because the cheap clones lie: a box marked "Bluetooth 4.0"
-        // is sometimes an SPP-only adapter with a dual-mode chip it does not
-        // use. Somebody who answered honestly and got nothing needs the next
-        // step attached to the answer that failed them, not four lines below
-        // it.
-        answer: '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
-            '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
-            '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。',
-      ),
-      if (classicAvailable)
-        (
-          transport: TransportKind.bluetoothClassic,
-          question: '都不是 —— 比較舊、盒子上寫 2.0 或 3.0？',
-          answer: '選 Bluetooth Classic。先在系統設定裡配對完成，'
-              'App 不能代替你配對。配對碼多半是 1234 或 0000。',
-        ),
-    ];
+  (
+    transport: TransportKind.wifi,
+    question: '手機的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？',
+    answer: '選 Wi-Fi。先把手機連上那個網路，再回來輸入位址。',
+  ),
+  (
+    transport: TransportKind.bluetoothLe,
+    question: '盒子、賣場標題或裝置名稱上有 BLE、4.0、5.0 這些字？',
+    // The fallback is in the answer rather than only in the note at the
+    // bottom, because the cheap clones lie: a box marked "Bluetooth 4.0"
+    // is sometimes an SPP-only adapter with a dual-mode chip it does not
+    // use. Somebody who answered honestly and got nothing needs the next
+    // step attached to the answer that failed them, not four lines below
+    // it.
+    answer:
+        '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
+        '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
+        '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。',
+  ),
+  if (classicAvailable)
+    (
+      transport: TransportKind.bluetoothClassic,
+      question: '都不是 —— 比較舊、盒子上寫 2.0 或 3.0？',
+      answer:
+          '選 Bluetooth Classic。先在系統設定裡配對完成，'
+          'App 不能代替你配對。配對碼多半是 1234 或 0000。',
+    ),
+];
 
 /// What to say when a BLE scan finishes having found nothing.
 ///
@@ -1567,8 +1578,7 @@ class _WhichTransportCardState extends ConsumerState<_WhichTransportCard> {
     final palette = context.palette;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          Spacing.lg, 0, Spacing.lg, Spacing.lg),
+      padding: const EdgeInsets.fromLTRB(Spacing.lg, 0, Spacing.lg, Spacing.lg),
       child: Panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1580,11 +1590,13 @@ class _WhichTransportCardState extends ConsumerState<_WhichTransportCard> {
                   Icon(Icons.help_outline, size: 18, color: palette.accent),
                   const SizedBox(width: Spacing.xs),
                   Expanded(
-                    child: Text('不確定要選哪一個？',
-                        style: context.texts.titleSmall),
+                    child: Text('不確定要選哪一個？', style: context.texts.titleSmall),
                   ),
-                  Icon(_open ? Icons.expand_less : Icons.expand_more,
-                      size: 20, color: palette.textTertiary),
+                  Icon(
+                    _open ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: palette.textTertiary,
+                  ),
                 ],
               ),
             ),
@@ -1596,7 +1608,8 @@ class _WhichTransportCardState extends ConsumerState<_WhichTransportCard> {
               ),
               const SizedBox(height: Spacing.sm),
               for (final row in whichTransportGuidance(
-                  classicAvailable: classicTransportAvailable))
+                classicAvailable: classicTransportAvailable,
+              ))
                 _WhichRow(question: row.question, answer: row.answer),
               const SizedBox(height: Spacing.sm),
               Text(
@@ -1605,13 +1618,13 @@ class _WhichTransportCardState extends ConsumerState<_WhichTransportCard> {
                     // is worth saying before somebody spends an afternoon on
                     // it rather than after.
                     ? 'iPhone 只能用 Wi-Fi 或 BLE —— 一般的藍牙 ELM327 在 iOS 上'
-                        '完全不能用，這是系統限制，換 App 也一樣。'
+                          '完全不能用，這是系統限制，換 App 也一樣。'
                     // Said out loud because the fear of picking wrong is what
                     // makes somebody close the app instead of tapping
                     // something. Nothing here is destructive and nothing is
                     // remembered until a handshake succeeds.
                     : '猜錯不會怎麼樣 —— 連不上就退回來換另一個試。真的卡住，'
-                        '先用最下面的「Demo 模擬器」確認 App 本身正常。',
+                          '先用最下面的「Demo 模擬器」確認 App 本身正常。',
                 style: context.texts.bodySmall,
               ),
             ],
@@ -1636,9 +1649,12 @@ class _WhichRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(question,
-              style: context.texts.bodyMedium
-                  ?.copyWith(color: palette.textPrimary)),
+          Text(
+            question,
+            style: context.texts.bodyMedium?.copyWith(
+              color: palette.textPrimary,
+            ),
+          ),
           Text(answer, style: context.texts.bodySmall),
         ],
       ),

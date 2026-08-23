@@ -1,7 +1,7 @@
 # Round 7 review — merged findings
 
 Two independent reviewers, unrestricted, on the tree round 6 left behind.
-`REVIEW_ROUND5.md` and `REVIEW_ROUND6.md` record the previous rounds.
+`docs/verification/history/review-round-5.md` and `docs/verification/history/review-round-6.md` record the previous rounds.
 
 - **Codex** (`gpt-5.6-sol`, effort max) — 3 CRITICAL, 9 HIGH, 4 MEDIUM, 1 LOW.
 - **Fable 5** — 0 CRITICAL, 9 HIGH, 9 MEDIUM, 9 LOW/NIT, with device access.
@@ -77,7 +77,7 @@ What genuinely remains:
 | | Why |
 |---|---|
 | Native instrumentation for the fork's connect-cancellation race | The fix shipped at `f04ef9d` and the Dart half is tested, but the ownership race lives inside a Kotlin worker thread and the plugin has no Android instrumentation harness. The interleaving is argued, not executed. |
-| Anything requiring a real adapter or a real vehicle | There is neither. `TEST_EVIDENCE.md` has said so from the first round and still does. |
+| Anything requiring a real adapter or a real vehicle | There is neither. `docs/verification/test-evidence.md` has said so from the first round and still does. |
 
 ## Against Codex's own closure bar
 
@@ -90,7 +90,7 @@ honestly:
 | 2. Lifecycle, scan deadlines and pending transactions own the send boundary | **Done.** `mayTransmit` is consulted inside the serialized chain immediately before every write; the scan deadline is passed into `readDtcs` rather than wrapped around it, and removing that check sends three Mode 03 requests where one is allowed. |
 | 3. Controller-scoped, explicit-width evidence before batching; frame boundaries retained for custom responses | **Done.** H-02 and H-03. |
 | 4. Native Android tests for connect cancellation ownership and action-specific permission callbacks | **Partly.** The fork's races are fixed at `f04ef9d` and the Dart half is tested, but the plugin has no Android instrumentation harness, so the Kotlin interleaving is argued rather than executed. |
-| 5. Transcripts from one real CAN adapter and one real legacy vehicle before calling the global scan vehicle-wide | **Not done, and not possible here.** No adapter and no vehicle. `TEST_EVIDENCE.md` has said so from the start and still does. |
+| 5. Transcripts from one real CAN adapter and one real legacy vehicle before calling the global scan vehicle-wide | **Not done, and not possible here.** No adapter and no vehicle. `docs/verification/test-evidence.md` has said so from the start and still does. |
 
 ## Checked against something other than the suite
 
@@ -124,7 +124,7 @@ provoking that state needs control over which PID is in flight that the
 scheduler does not offer.
 
 It was deleted rather than adjusted until it went green. A test that passes
-either way is worse than none, and `TEST_EVIDENCE.md` lists the guard as
+either way is worse than none, and `docs/verification/test-evidence.md` lists the guard as
 reasoned rather than demonstrated. This project has shipped that mistake
 twice: the `014` artifact test reverted the day before, and the heartbeat test
 Codex caught this round, which had pinned "a stopped engine keeps publishing"
@@ -132,9 +132,9 @@ as desired behaviour.
 
 ## The count that kept being wrong
 
-`TEST_EVIDENCE.md` claimed 323 tests while the suite ran 328, then 342, then
+`docs/verification/test-evidence.md` claimed 323 tests while the suite ran 328, then 342, then
 361. Codex filed it as L-01 — closure documents not true of the tree — and it
 is the least interesting finding here and the most repeated. A document that
 reports a number has to be re-read whenever the number moves.
 
-See `TEST_EVIDENCE.md` for what the suite does and does not establish.
+See `docs/verification/test-evidence.md` for what the suite does and does not establish.

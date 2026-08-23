@@ -45,10 +45,10 @@
 <main>
 
 <h1>Telltale 隱私權政策</h1>
-<p class="sub">最後更新：2026 年 8 月 18 日</p>
+<p class="sub">最後更新：2026 年 8 月 24 日</p>
 
-<p class="lede"><strong>Telltale 不收集、不上傳、不分享任何資料。</strong>
-沒有帳號、沒有廣告、沒有分析、沒有當機回報服務。App 唯一會連線的對象是你插在車上的那個
+<p class="lede"><strong>Telltale 本身不收集資料，也不會主動上傳資料。</strong>
+沒有帳號、沒有廣告、沒有分析、沒有當機回報服務。App 唯一主動建立的連線是你設定的
 ELM327 轉接器。</p>
 
 <h2>我們收集哪些資料</h2>
@@ -56,7 +56,7 @@ ELM327 轉接器。</p>
 伺服器。我們沒有伺服器。</p>
 
 <h2>App 在你裝置上儲存哪些東西</h2>
-<p>以下全部只存在你的手機裡，不會離開裝置，解除安裝時一併移除：</p>
+<p>以下內容會寫入 App 的私有儲存空間，不會傳送到我們的伺服器：</p>
 <div class="wrap">
 <table>
   <tr><th>內容</th><th>為什麼</th></tr>
@@ -68,8 +68,11 @@ ELM327 轉接器。</p>
 </table>
 </div>
 <p><strong>診斷紀錄</strong>值得特別說明：它記錄 App 與轉接器之間往返的原始位元組，包括車輛
-回報的 VIN 與故障碼。它只寫在 App 的私有目錄，<strong>只有你按下「匯出」時才會離開
-App</strong>，而且是由你決定要傳給誰。App 從來不會自己送出它。</p>
+回報的 VIN 與故障碼。App 不會自行上傳；只有你按下「匯出」時，才會交給你選擇的其他
+App。</p>
+<p>Android、iOS 或 macOS 的作業系統備份可能依你的裝置與雲端備份設定，複製 App 的
+私有資料。解除安裝會移除裝置上的本機副本，但不一定會刪除作業系統先前建立的備份。
+若不希望備份這些資料，請在裝置設定中停用 Telltale 或整台裝置的備份。</p>
 
 <h2>網路連線</h2>
 <p>Telltale 需要 <code>INTERNET</code> 權限，但<strong>不用來連上網際網路</strong>。它只用來對
@@ -122,23 +125,26 @@ Wi-Fi 型 ELM327 轉接器開啟一條 TCP 連線 —— 那是一個區域位�
 <hr>
 
 <h1>Telltale Privacy Policy</h1>
-<p class="sub">Last updated: 18 August 2026</p>
+<p class="sub">Last updated: 24 August 2026</p>
 
-<p class="lede"><strong>Telltale collects nothing, uploads nothing, and shares nothing.</strong>
-No accounts, no ads, no analytics, no crash reporting. The only thing it connects to is the
-ELM327 adapter plugged into your car.</p>
+<p class="lede"><strong>Telltale itself collects nothing and proactively uploads nothing.</strong>
+There are no accounts, ads, analytics, or crash reporting. The only connection the app
+initiates is to the ELM327 adapter you configure.</p>
 
 <h2>What we collect</h2>
 <p><strong>Nothing.</strong> We have no servers.</p>
 
 <h2>What the app stores on your device</h2>
 <p>Vehicle profile, your custom PID definitions, the last adapter used, interface
-preferences, and a diagnostic transcript of the most recent session. All of it stays in the
-app's private storage and is removed when you uninstall.</p>
+preferences, and a diagnostic transcript of the most recent session. These are written to
+the app's private storage and are not sent to our servers.</p>
 <p>The <strong>diagnostic transcript</strong> records the raw bytes exchanged with the
-adapter, including the VIN and fault codes the vehicle reports. It leaves the app only when
-<em>you</em> press Export, and only to a destination you choose. The app never sends it
-anywhere on its own.</p>
+adapter, including the VIN and fault codes the vehicle reports. The app never uploads it on
+its own; pressing Export hands it to another app that you choose.</p>
+<p>Android, iOS, or macOS system backup may copy the app's private data according to your
+device and cloud-backup settings. Uninstalling removes the local copy from the device, but
+may not erase a backup the operating system already made. Disable backup for Telltale or the
+device if you do not want this data backed up.</p>
 
 <h2>Network access</h2>
 <p>The <code>INTERNET</code> permission is not used to reach the internet. It opens a TCP

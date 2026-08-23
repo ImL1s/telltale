@@ -11,7 +11,7 @@
 /// note in `elm327_client.dart` says: "The sentence, not the identifier." The
 /// manual box was the copy that got missed, and nothing could see it because
 /// no test looked at the rendered string. Found by typing `04` into the box on
-/// a Galaxy S25 Ultra and reading the screen.
+/// a Galaxy S24 Ultra and reading the screen.
 library;
 
 import 'package:flutter_test/flutter_test.dart';

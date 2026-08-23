@@ -145,6 +145,14 @@ abstract class ObdTransport {
   /// Human-readable identity of what we are connected to.
   String get displayName;
 
+  /// Stable, read-only facts already known about this transport.
+  ///
+  /// Implementations must not perform I/O to populate this projection. Keys
+  /// are emitted in a deterministic order so exported diagnostics remain
+  /// readable and diffable. Device identifiers are verbatim platform values,
+  /// not anonymized identifiers.
+  Map<String, Object> get diagnosticMetadata;
+
   bool get isConnected;
 
   /// Raw bytes as they arrive. Chunk boundaries are arbitrary — BLE in
@@ -177,6 +185,10 @@ abstract class BaseObdTransport implements ObdTransport {
 
   @override
   bool get isConnected => _connected;
+
+  /// Test and simulator transports have no link-specific metadata by default.
+  @override
+  Map<String, Object> get diagnosticMetadata => const {};
 
   /// Publishes received bytes to listeners.
   void emitBytes(List<int> data) {

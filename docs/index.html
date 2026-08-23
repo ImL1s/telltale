@@ -1,95 +1,182 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Telltale — 車輛即時遙測 / Real-time vehicle telemetry</title>
-<meta name="description" content="Telltale — real-time vehicle telemetry and fault diagnosis over an ELM327 OBD2 adapter. Android / iOS / macOS, GPL-3.0.">
+<title>Telltale — 開源 OBD2 車輛診斷 / Open-source OBD2 diagnostics</title>
+<meta name="description" content="Telltale is an open-source Flutter app for OBD2 telemetry and diagnostics over Bluetooth Classic, BLE, Wi-Fi, or its built-in Demo ECU.">
 <style>
-  :root { --bg:#ffffff; --fg:#14181d; --muted:#5b6672; --rule:#e3e7ec; --accent:#0f766e; --card:#f6f8fa; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#14181d; --fg:#e8edf2; --muted:#9aa6b2; --rule:#2a3138; --accent:#5eead4; --card:#1c2229; }
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfcfd;
+    --fg: #172027;
+    --muted: #53616d;
+    --rule: #dce3e8;
+    --accent: #0b6b63;
+    --accent-fg: #fff;
+    --card: #f1f5f7;
+    --warning: #fff6d8;
+    --warning-fg: #4d3a00;
   }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg);
-    font:16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
-         "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif; }
-  main { max-width:40rem; margin:0 auto; padding:2rem 1.25rem 5rem; }
-  h1 { font-size:2rem; margin:0 0 .25rem; }
-  .sub { color:var(--muted); margin:0 0 2.5rem; }
-  blockquote { margin:2rem 0; padding:1rem 1.25rem; background:var(--card);
-    border-left:3px solid var(--accent); border-radius:0 6px 6px 0; font-size:1.05rem; }
-  ul { padding-left:1.2rem; }
-  li { margin:.4rem 0; }
-  a { color:var(--accent); }
-  nav { margin-top:2.5rem; padding-top:1.5rem; border-top:1px solid var(--rule); }
-  nav a { display:inline-block; margin-right:1.25rem; }
-  .lang { margin:0 0 2.5rem; padding-bottom:1rem; border-bottom:1px solid var(--rule);
-    color:var(--muted); font-size:.9rem; }
-  .lang a { margin-right:.75rem; }
-  hr.split { margin:4rem 0 3rem; border:0; border-top:1px solid var(--rule); }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11171c;
+      --fg: #edf2f5;
+      --muted: #acb8c1;
+      --rule: #33404a;
+      --accent: #62d5c6;
+      --accent-fg: #092420;
+      --card: #1a232a;
+      --warning: #3a300d;
+      --warning-fg: #ffeaa3;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC",
+      "PingFang TC", "Microsoft JhengHei", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--accent); text-underline-offset: .18em; }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+  .skip {
+    position: absolute;
+    left: 1rem;
+    top: -5rem;
+    padding: .65rem 1rem;
+    background: var(--accent);
+    color: var(--accent-fg);
+    z-index: 2;
+  }
+  .skip:focus { top: 1rem; }
+  header, main, footer { width: min(100% - 2.5rem, 48rem); margin-inline: auto; }
+  header { padding: 2.5rem 0 1.75rem; border-bottom: 1px solid var(--rule); }
+  h1 { margin: 0; font-size: clamp(2.25rem, 8vw, 4rem); line-height: 1; letter-spacing: -.04em; }
+  .tagline { margin: .75rem 0 1.25rem; color: var(--muted); font-size: 1.08rem; }
+  .language-nav { display: flex; flex-wrap: wrap; gap: .55rem 1rem; }
+  .language-nav a { font-weight: 700; }
+  main { padding: 0 0 3rem; }
+  section { padding: 2.75rem 0; scroll-margin-top: 1rem; }
+  section + section { border-top: 1px solid var(--rule); }
+  h2 { margin: 0 0 1rem; font-size: 1.75rem; line-height: 1.2; }
+  h3 { margin: 2rem 0 .6rem; font-size: 1.12rem; }
+  p { margin: .7rem 0 1rem; }
+  .lead { font-size: 1.12rem; }
+  blockquote {
+    margin: 1.5rem 0;
+    padding: 1rem 1.2rem;
+    background: var(--card);
+    border-left: 4px solid var(--accent);
+    border-radius: 0 .5rem .5rem 0;
+    font-size: 1.08rem;
+  }
+  ul { padding-left: 1.35rem; }
+  li { margin: .35rem 0; }
+  .transports { display: flex; flex-wrap: wrap; gap: .5rem; padding: 0; list-style: none; }
+  .transports li { margin: 0; padding: .28rem .65rem; background: var(--card); border-radius: 999px; }
+  .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.5rem 0; }
+  .button {
+    display: inline-block;
+    padding: .72rem 1rem;
+    border: 2px solid var(--accent);
+    border-radius: .45rem;
+    font-weight: 750;
+    text-decoration: none;
+  }
+  .button.primary { background: var(--accent); color: var(--accent-fg); }
+  .notice { padding: 1rem 1.15rem; background: var(--warning); color: var(--warning-fg); border-radius: .5rem; }
+  .evidence { padding: 1rem 1.15rem; background: var(--card); border-radius: .5rem; }
+  footer { padding: 1.5rem 0 3rem; border-top: 1px solid var(--rule); color: var(--muted); }
+  footer nav { display: flex; flex-wrap: wrap; gap: .5rem 1.1rem; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 </style>
 </head>
 <body>
-<main>
-  <p class="lang"><a href="#zh">繁體中文</a><a href="#en">English</a></p>
-
-  <section id="zh">
+<a class="skip" href="#content">跳至主要內容 / Skip to content</a>
+<header>
   <h1>Telltale</h1>
-  <p class="sub">即時車輛遙測與故障診斷，透過 ELM327 轉接器讀取 OBD2。<br>
-  Android / iOS / macOS · GPL-3.0</p>
-
-  <blockquote><strong>一個看起來合理的錯數字，比沒有數字更糟。</strong></blockquote>
-
-  <p>診斷 App 的輸出會被人拿著扳手去執行。一個顯示 −40 °C 的水溫錶會被當成感測器壞掉；
-  一句「沒有故障碼」會讓人開走一台其實有問題的車。所以這裡的每一條規則都是為了讓
-  「不確定」看起來像不確定，而不是像一個答案。</p>
-
-  <ul>
-    <li>回應解析用白名單 —— 只接受整行都是 hex byte pair 的行</li>
-    <li>多 ECU 給出兩個答案時，兩個都不採用</li>
-    <li>「已回應的控制器沒有故障碼」不會被寫成「這台車沒有故障碼」</li>
-    <li>凍結幀的致因碼是閘門 —— 讀不到就什麼都不顯示，不會給你一份全零的假紀錄</li>
-    <li>推算值標明來源，輸入缺一個就整條顯示不可用</li>
-  </ul>
-
-  <nav>
-    <a href="https://github.com/ImL1s/telltale">原始碼 (GitHub)</a>
-    <a href="https://github.com/ImL1s/telltale/releases">下載 APK</a>
-    <a href="privacy.html">隱私權政策</a>
-    <a href="https://github.com/ImL1s/telltale/issues">回報問題</a>
+  <p class="tagline">開源 Flutter OBD2 車輛遙測與診斷<br><span lang="en">Open-source Flutter OBD2 telemetry and diagnostics</span></p>
+  <nav class="language-nav" aria-label="Language / 語言">
+    <a href="#zh">繁體中文</a>
+    <a href="#en" hreflang="en">English</a>
   </nav>
+</header>
+
+<main id="content">
+  <section id="zh" aria-labelledby="zh-title">
+    <h2 id="zh-title">繁體中文</h2>
+    <p class="lead">Telltale 透過 ELM327 相容轉接器讀取即時車輛資料與 OBD2 故障資訊，並在資料不完整或互相衝突時明確顯示不確定。</p>
+
+    <blockquote><strong>一個看起來合理的錯數字，比沒有數字更糟。</strong></blockquote>
+
+    <h3>連線方式</h3>
+    <ul class="transports" aria-label="支援的連線方式">
+      <li>Bluetooth Classic / RFCOMM（僅 Android）</li>
+      <li>Bluetooth LE / GATT</li>
+      <li>Wi-Fi / TCP</li>
+      <li>內建 Demo ECU</li>
+    </ul>
+    <p>Android 是目前主要完成實體裝置、UI 與 BLE 測試馬具驗證的平台；iOS 與 macOS 只有編譯閘門，不能視為已完成實機或實車驗證。</p>
+
+    <div class="actions" aria-label="下載與專案連結">
+      <a class="button primary" href="https://github.com/ImL1s/telltale/releases">從 GitHub Releases 下載 APK</a>
+      <a class="button" href="https://github.com/ImL1s/telltale">查看原始碼</a>
+    </div>
+
+    <p class="notice"><strong>安裝前注意：</strong>GitHub APK 使用社群簽章，無法更新 Google Play 版，Play 版也無法直接更新它。兩者互換必須先解除安裝，會刪除 App 本機資料；請先匯出需要保留的診斷紀錄並記下設定。</p>
+
+    <h3>目前的驗證邊界</h3>
+    <div class="evidence">
+      <p><strong>已驗證：</strong>Samsung 實體手機到 Mac 的真實 BLE/GATT 無線路徑，搭配模擬 ELM327，已完成掃描、連線、UART 寫入與通知。</p>
+      <p><strong>尚未驗證：</strong>CAR25 或其他購入轉接器、其韌體與 profile、ECU/CAN 匯流排，以及真車。</p>
+    </div>
+
+    <p>請只在車輛停妥時操作，或交由乘客操作。清除 DTC 前先保存診斷證據。App 不會主動上傳資料；你匯出的紀錄可能含 VIN、裝置與轉接器識別資訊。</p>
   </section>
 
-  <hr class="split">
+  <section id="en" lang="en" aria-labelledby="en-title">
+    <h2 id="en-title">English</h2>
+    <p class="lead">Telltale reads live vehicle data and OBD2 faults through an ELM327-compatible adapter, while making incomplete or conflicting evidence visibly uncertain.</p>
 
-  <section id="en" lang="en">
-  <h1>Telltale</h1>
-  <p class="sub">Real-time vehicle telemetry and fault diagnosis over an ELM327 OBD2 adapter.<br>
-  Android / iOS / macOS · GPL-3.0</p>
+    <blockquote><strong>A plausible wrong number is worse than no number.</strong></blockquote>
 
-  <blockquote><strong>A plausible wrong number is worse than no number.</strong></blockquote>
+    <h3>Connections</h3>
+    <ul class="transports" aria-label="Supported connections">
+      <li>Bluetooth Classic / RFCOMM (Android only)</li>
+      <li>Bluetooth LE / GATT</li>
+      <li>Wi-Fi / TCP</li>
+      <li>Built-in Demo ECU</li>
+    </ul>
+    <p>Android is the primary physically tested platform for device, UI, and BLE-rig paths. iOS and macOS currently have compile gates only, not equivalent physical-device or vehicle verification.</p>
 
-  <p>People act on what a diagnostic app tells them, with a spanner in hand. A coolant gauge
-  reading −40&nbsp;°C gets read as a dead sensor; "no fault codes" sends somebody away in a car
-  that has them. So every rule here exists to make uncertainty <em>look</em> like uncertainty
-  instead of like an answer.</p>
+    <div class="actions" aria-label="Downloads and project links">
+      <a class="button primary" href="https://github.com/ImL1s/telltale/releases">Download APK from GitHub Releases</a>
+      <a class="button" href="https://github.com/ImL1s/telltale">View source</a>
+    </div>
 
-  <ul>
-    <li>Responses are parsed by whitelist — a line is accepted only if the whole of it is hex byte pairs</li>
-    <li>When two ECUs answer at once, neither answer is used</li>
-    <li>"The controllers that replied have no fault codes" is never rendered as "this car has no fault codes"</li>
-    <li>The freeze-frame cause code is a gate: no cause, no frame, nothing shown — rather than a precise and entirely fictional record of all zeroes</li>
-    <li>Derived values carry their provenance, and the whole strip goes unavailable if one input is missing</li>
-  </ul>
+    <p class="notice"><strong>Before installing:</strong> GitHub APKs use a community signing key. They cannot update, or be updated by, the Google Play build. Switching requires uninstalling Telltale, which removes local app data; export diagnostic records and note any settings you need first.</p>
 
-  <nav>
-    <a href="https://github.com/ImL1s/telltale">Source (GitHub)</a>
-    <a href="https://github.com/ImL1s/telltale/releases">Download APK</a>
-    <a href="privacy.html">Privacy policy</a>
-    <a href="https://github.com/ImL1s/telltale/issues">Report a problem</a>
-  </nav>
+    <h3>Current verification boundary</h3>
+    <div class="evidence">
+      <p><strong>Verified:</strong> a real Samsung-to-Mac BLE/GATT radio path using a simulated ELM327, including discovery, connection, UART writes, and notifications.</p>
+      <p><strong>Not yet verified:</strong> CAR25 or another purchased adapter, its firmware and profile, an ECU/CAN bus, or a real vehicle.</p>
+    </div>
+
+    <p>Use Telltale only while parked or as a passenger. Save diagnostic evidence before clearing DTCs. The app proactively uploads nothing; exported records may contain VIN, device, and adapter identifiers.</p>
   </section>
 </main>
+
+<footer>
+  <nav aria-label="Project links / 專案連結">
+    <a href="https://github.com/ImL1s/telltale/releases">Releases / 下載</a>
+    <a href="https://github.com/ImL1s/telltale">GitHub</a>
+    <a href="privacy.html">Privacy / 隱私權</a>
+    <a href="https://github.com/ImL1s/telltale/issues">Issues / 問題回報</a>
+  </nav>
+  <p>GPL-3.0 · Telltale</p>
+</footer>
 </body>
 </html>

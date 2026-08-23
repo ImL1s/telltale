@@ -7,7 +7,7 @@ with no restriction on focus:
   Reviewed committed HEAD from a clean worktree. Could not run the test suite:
   its sandbox denies Flutter's bind to `127.0.0.1:0`, and it says so rather than
   claiming a pass.
-- **Fable 5** — 4 CRITICAL, 9 HIGH, 16 MEDIUM. Had device access (S25 Ultra) and
+- **Fable 5** — 4 CRITICAL, 9 HIGH, 16 MEDIUM. Had device access (S24 Ultra) and
   verified several findings on hardware rather than by reading.
 
 The two agreed on three CRITICAL defects by independent derivation. Where they

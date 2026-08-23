@@ -5,7 +5,7 @@ The suite is green. **There is deliberately no test count in this file.**
 That number has now been wrong here four times — 323 stated while the suite
 ran 328, then 342, then 361, and most recently a figure barely over half the
 real total — and each correction was a document catching up with a tree that
-had already moved again. `REVIEW_ROUND7.md` filed the recurrence as the least
+had already moved again. `docs/verification/history/review-round-7.md` filed the recurrence as the least
 interesting finding in the project and the most repeated. The fourth
 occurrence landed here, in the same paragraph as a sentence saying that a
 document reporting a count has to be re-read whenever the count moves. At that
@@ -16,34 +16,35 @@ tree that starts rotting the next time anyone writes a test.
 What a count cannot tell you is what *kind* of evidence it is, and that is
 what this file is for.
 
-**It is strong unit evidence. It is not hardware evidence.** This app has never
-been connected to a real ELM327 adapter or a real vehicle.
+**It is strong automated evidence plus one physical BLE/GATT rig run.** The app
+has still never been connected to a purchased ELM327 adapter or a real vehicle.
 
-## The four oracles, and what each can be trusted for
+## The oracle surfaces, and what each can be trusted for
 
 | | What it proves | What it cannot |
 |---|---|---|
 | `test/support/fake_elm327.dart` | That the client handles the framing, faults and multi-ECU shapes *I believe* adapters produce | Anything about shapes I got wrong — it shares the implementation's assumptions by construction |
 | `Ircama/ELM327-emulator` (`emulator_integration_test.dart`) | That the client works against an implementation nobody here wrote | 11-bit CAN only; no functional addressing; answers `ATSP3` with `OK` while still reporting `A6`, so it does not refuse — it quietly misleads |
+| Ircama through `tool/obd_test_rig/chaos_proxy.py` (`chaos_oracle_test.dart`) | That the real Wi-Fi socket handles deterministic fragmentation and fails closed on peer close, a missing prompt, or a corrupted critical reply | Physical radio loss, adapter reboot behavior, vehicle timing, or any fault shape not injected by this repository's proxy |
 | `elm327_virtual_server.py` (`freeze_frame_oracle_test.dart`) | That the freeze frame (Mode 02) survives an ELM327 nobody here wrote — its Mode 02 was written by a different agent from a different reading of J1979, and it disagreed usefully on first contact: it serves the data PIDs with **no support mask at all**, a shape a mask-first reader renders as "this car has no stored frame". Its seven cases also cover the fault-code classes, the readiness monitors, VIN reassembly, two controllers answering a census, a deadline, and a link that drops mid-session | The same 11-bit CAN-only limit as Ircama's; and it is one implementation's reading of J1979, not the standard — where the two readings happen to agree they can still be wrong together |
-| On-device runs (Galaxy S25 Ultra) | Layout, theming, text scaling, lifecycle, and anything visible | Any wire behaviour, because the only ECU it has talked to is the in-app simulator or the emulator over `adb reverse` |
+| Physical BLE rig (`integration_test/ble_rig_test.dart`) | A Samsung `SM-S9280` can scan, hit-test the discovered result, connect through Android GATT, discover Nordic UART, subscribe, exchange ELM327 commands/notifications, poll live data, and persist rig-labelled evidence | The peripheral and ECU are simulated; no CAR25 firmware, real adapter timing, CAN bus, vehicle, Classic RFCOMM, or OS-delivered Doze/lifecycle behavior |
+| Other on-device runs (`SM-S9280`) | Layout, theming, text scaling, Android lifecycle, and anything visible | Purchased-adapter or vehicle behavior unless the exported field transcript says otherwise |
 
 The legacy buses (J1850, ISO 9141-2, KWP2000) and 29-bit CAN are covered
 **only by fixtures written from the datasheet by the same person who wrote the
 code under test**. That is the weakest part of the evidence, and three of round
 5's CRITICAL findings were found exactly there.
 
-Both socket oracles bind port 35000 — `WifiTransport.defaultPort`, and
-therefore where anybody's ELM327 simulator ends up — so they can never run in
-the same pass, and neither can run in the pass that has a real adapter on the
-other end. That is why a default `flutter test` reports twelve skips: seven in
-`freeze_frame_oracle_test.dart` and five in `emulator_integration_test.dart`,
-each file asking `AT@1` who is listening and standing down when the answer is
-not its own simulator. Twelve skips is the expected shape. Fewer means you
-started one of them; a skipped oracle is not a passing oracle, and neither is
-distinguishable from one in the summary line.
+The two upstream socket simulators bind port 35000 — `WifiTransport.defaultPort`
+— so they can never run in the same pass. The chaos proxy listens separately
+and forwards to Ircama, using a fresh process for each fault so its global
+command counter cannot leak between cases. A default `flutter test` reports
+thirteen skips: seven freeze-frame tests, five Ircama tests, and the explicitly
+enabled chaos test. A skipped oracle is not a passing oracle, and the summary
+line alone does not distinguish them; CI parses the JSON event stream and
+rejects skips in every oracle run.
 
-### The datasheet is a fifth oracle, and it has been misquoted
+### The datasheet is another oracle, and it has been misquoted
 
 For the legacy buses it is the *only* oracle: no test can catch a wrong header,
 because the fixture and the implementation would be wrong together. So a
@@ -113,8 +114,9 @@ Named by Codex in round 6, kept as a list rather than a claim:
 - Native socket races in the fork: cancel before the socket is registered,
   cancel after it is removed, a blocked `OutputStream.write`, executor
   shutdown draining queued writes
-- BLE: a notification arriving immediately after CCCD enablement; MTU
-  negotiation; notification ordering
+- BLE: an immediate notification race during CCCD enablement, MTU refusal on a
+  physical adapter, indication-only hardware, and notification reordering under
+  radio loss
 - Real 29-bit and legacy rendering from actual hardware, as opposed to from the
   datasheet's worked examples
 - Clone adapters generally — every clone behaviour modelled here is one someone

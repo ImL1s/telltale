@@ -93,6 +93,13 @@ class ClassicTransport extends BaseObdTransport {
   @override
   String get displayName => name.isEmpty ? address : name;
 
+  @override
+  Map<String, Object> get diagnosticMetadata => Map.unmodifiable({
+        'deviceIdentifier': address,
+        'deviceName': name,
+        'paired': true,
+      });
+
   /// Bonded devices. An ELM327 must be paired in system settings before it will
   /// accept an RFCOMM connection, so these are the only ones worth offering.
   static Future<List<DiscoveredDevice>> pairedDevices() async {

@@ -2,117 +2,100 @@
 
 # Telltale
 
-即時車輛遙測與故障診斷，透過 ELM327 轉接器讀取 OBD2。Flutter，Android / iOS / macOS。
+[![CI](https://github.com/ImL1s/telltale/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ImL1s/telltale/actions/workflows/ci.yml)
+[![最新版本](https://img.shields.io/github/v/release/ImL1s/telltale?include_prereleases&sort=semver&label=latest%20release)](https://github.com/ImL1s/telltale/releases)
+[![授權：GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-原始碼在這裡，你可以自己編譯自己用。Google Play 上的付費版是給不想自己編譯的人，
-以及願意支持繼續開發的人 —— 功能完全一樣，沒有閹割版。
-
----
-
-## 這個 App 的組織原則
+Telltale 是開放原始碼 Flutter App，透過 ELM327 相容轉接器提供即時車輛遙測與
+OBD2 故障診斷。它的設計原則是誠實呈現不確定性，不把格式錯誤、不完整或互相衝突
+的回應包裝成看似可信的結果。
 
 > **一個看起來合理的錯數字，比沒有數字更糟。**
 
-診斷 App 的輸出會被人拿著扳手去執行。一個顯示 −40 °C 的水溫錶會被當成感測器
-壞掉；一句「沒有故障碼」會讓人開走一台其實有問題的車。所以這裡的每一條規則
-都是為了讓「不確定」看起來像不確定，而不是像一個答案。
+## 下載與安裝
 
-具體長什麼樣子：
+**[前往 GitHub Releases 下載 APK](https://github.com/ImL1s/telltale/releases)。**
+打開最新的 prerelease，選擇其中的 `.apk` 檔；原始碼目錄不會保存 release 產物。
 
-- **回應解析用白名單。** 只接受整行都是 hex byte pair 的行。剝掉非 hex 字元再串
-  接會讓 `DATA ERROR` 變成 `DA AE` 兩個 byte 被當成感測器讀數 —— 一個看起來
-  完全合理的錯數字。
-- **多 ECU 的回應不合併。** 兩個控制器對同一個問題給出兩個答案時，兩個都不採用。
-  挑一個等於隨機挑。
-- **沉默不等於答案。** 「已回應的控制器沒有故障碼」和「這台車沒有故障碼」是不同
-  的句子，畫面上永遠用前者。
-- **凍結幀的致因碼是閘門。** 沒存凍結幀的控制器不會拒絕請求 —— 它會用全零回答
-  每一個 PID，解出來是 0 rpm、−40 °C。所以先讀致因碼，讀不到就什麼都不顯示。
-- **推算值標明來源。** 馬力、扭力、油耗是算出來的，畫面上標著是用實測 MAF 還是
-  Speed-Density 推算，而輸入缺一個就整條顯示不可用，不會用零代替。
+GitHub APK 使用社群簽章，無法更新 Google Play 版，也無法由 Play 版直接更新。
+兩者互換時必須先解除安裝；解除安裝會刪除 App 本機資料，請先匯出需要保留的內容。
 
-`SPEC_DEVIATIONS.md` 記錄了每一條會影響硬體行為的公式對 SAE J1979 的查證結果。
+## 支援功能
 
-## 測試
+- Bluetooth Classic（RFCOMM/SPP）
+- Bluetooth LE（GATT UART service）
+- Wi-Fi 轉接器的區域 TCP 連線
+- 不需轉接器或車輛的內建 Demo ECU
+- 即時 PID 儀表、故障碼、凍結幀、排放就緒、自訂 PID，以及由使用者主動匯出
+  的診斷紀錄
 
-其中 12 個是第三方 oracle —— 它們對接的是本專案沒有寫的 ELM327 實作，沒有在
-35000 埠起模擬器時會自己 skip。所以 `flutter test` 預設結尾是 `~12`，看到 `~0`
-反而代表你起了模擬器。**這裡刻意不寫測試總數** —— 這個專案已經在自己的文件裡
-訂正過四次寫死的測試數字，第五次不會比第四次更持久。跑一次，它會告訴你。
+Android 是裝置、UI 與 BLE rig 路徑的主要實體測試平台。iOS 與 macOS 目前只有
+編譯閘門，不能視為具備同等的實體轉接器或實車證據。Bluetooth Classic 實務上
+只支援 Android，因為 Apple
+平台不向一般第三方 App 開放通用 RFCOMM/SPP 配件。
 
-這個專案的測試有一條硬性規則：
+## 建置與測試
 
-> **在自己的 mutation 下不會變紅的測試，證明不了任何事。**
-
-每一條修正都要先寫出會紅的測試，改完之後再把修正拿掉確認它真的變紅。這不是
-形式 —— 這個專案發生過三次「規則抽成純函式測得很好，而呼叫點留著舊的內聯版本」，
-測試全綠而產品是壞的。
-
-還有一層更硬的：**第三方 oracle**。`test/freeze_frame_oracle_test.dart` 跑在一個
-本專案沒有寫的 ELM327 實作上，因為其餘所有測試最終都是自己的 parser 對自己的
-模擬器 —— 同一份對標準的理解在兩邊，誤讀會自己同意自己。它上線一小時內抓到兩個
-真缺陷。
+使用固定的 Flutter 3.47.0 工具鏈：
 
 ```bash
-flutter analyze
-flutter test
+git clone https://github.com/ImL1s/telltale.git
+cd telltale
+FLUTTER="$HOME/fvm/versions/3.47.0/bin/flutter"
+"$FLUTTER" pub get
+"$FLUTTER" analyze
+"$FLUTTER" test
+"$FLUTTER" build apk --debug --flavor field
 ```
 
-## 建置
+若要建立自行簽章的 release，請依照
+[維護者 release 指南](docs/maintainers/release.md)。`field` flavor 才是實際使用的
+App；隔離的 `rig` flavor 是測試基礎設施。
 
-Flutter 3.47.0 / Dart 3.13.0。
+## 驗證邊界
 
-```bash
-flutter pub get
-```
+Samsung 實體手機到 Mac 的 BLE GATT 無線路徑，已搭配模擬 ELM327 peripheral 通過。
+這證明該路徑上的實體 BLE 掃描、GATT 連線、UART 寫入與通知，但**不代表**已驗證
+CAR25 等購入轉接器、其韌體或 profile、ECU/CAN 匯流排或任何實車。
 
-接下來有三條路，取決於你要拿這個 APK 做什麼。
+驗證文件只描述有邊界的證據，不是認證或安全保證。請先閱讀
+[測試證據](docs/verification/test-evidence.md)與
+[裝置驗證](docs/verification/device-verification.md)。
 
-**只是想跑跑看：**
+## 專案目錄
 
-```bash
-flutter build apk --debug
-```
+| 路徑 | 用途 |
+| --- | --- |
+| `lib/` | App、狀態、UI、ELM327 協定與 transports |
+| `test/` | 單元、契約、parser 與 widget 測試 |
+| `integration_test/` | 裝置與隔離 rig 流程 |
+| `tool/` | 可重現的模擬器與驗證工具 |
+| `android/`、`ios/`、`macos/` | 平台整合 |
+| `assets/` | 內附字型與圖示 |
 
-**要一個自己長期用的版本：**
+## 文件
 
-```bash
-flutter build apk --release -PallowUnsignedRelease=true
-```
+| 文件 | 用途 |
+| --- | --- |
+| [文件索引](docs/README.md) | 所有使用、證據與維護者文件 |
+| [實車指南](docs/field-guide.zh-TW.md) | 安全的實車流程與故障排除 |
+| [協定差異](docs/protocol-deviations.zh-TW.md) | 標準查證與硬體行為註記 |
+| [版本紀錄](CHANGELOG.md) | 各版本可見變更 |
+| [貢獻指南](CONTRIBUTING.md) | 開發與 pull request 要求 |
 
-產物是用 debug 金鑰簽章的。它會安裝、會跑，但它跟 Google Play 上那份屬於不同的
-簽章血緣，永遠無法拿來更新一個從 Play 裝的 Telltale —— 要換過去必須先解除安裝。
+## 隱私與安全使用
 
-**要一個正式簽章的版本：**
+Telltale 不會主動上傳資料。本機診斷匯出可能含 VIN、裝置、轉接器與故障識別資訊；
+匯出與分享由你主動控制，作業系統備份也可能依裝置設定複製 App 私有資料。請閱讀
+[專案內政策](PRIVACY.md)或
+[已發布的隱私權政策](https://iml1s.github.io/telltale/privacy.html)。
 
-```bash
-cp android/key.properties.example android/key.properties
-# 照該檔內附的 keytool 指令產生 keystore，再把裡面四個值填上
-flutter build apk --release
-```
+請只在停妥時操作，或交由乘客操作。清除 DTC 前先保存診斷證據，也不要以本 App
+取代專業檢查。安全漏洞請依 [SECURITY.md](SECURITY.md) 私下回報；社群互動規範見
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。
 
-沒有 `android/key.properties` 就直接跑 `flutter build apk --release`，Gradle 會拒絕
-並中止（`android/app/build.gradle.kts`），錯誤訊息本身就印著上面那個 `-P` 逃生口。
-這是刻意的：debug 簽章的 release 產物跟正式版看起來一模一樣，直到你要用它更新一個
-已安裝的版本、簽章對不上的那一刻才會發現。**建置出 debug 簽章的東西必須是某個人
-做的決定，而不是他沒注意到的預設值** —— 跟這個 App 對待數字的規則是同一條。
+## 授權與聲明
 
-App 內建 **Demo 模擬器** —— 沒有轉接器、沒有車也能跑完所有畫面，包含故障碼、
-凍結幀、排放就緒狀態。它刻意跟真實硬體一樣嚴格（會發出 `SEARCHING...`、含長度行
-的多幀回應、清除後的全零陷阱），因為先前它比真實 ELM327 寬容時，三個 CRITICAL
-等級的缺陷在綠燈測試底下活了下來 —— 兩個在解析器，另一個是 AT 初始化指令，
-那一個就算模擬器夠嚴格也抓不到。三個都記在 `REVIEW_LOG.md`。
-
-## 上車之前
-
-`FIELD_GUIDE.md` 是寫給坐在車上的人看的：怎麼選轉接器、連不上時怎麼辦、故障碼
-那一行結論實際上證明了什麼、清除之前要先看什麼。
-
-## 授權
-
-GPL-3.0。你可以自由使用、修改、散布，衍生作品必須同樣開源。
-
-## 聲明
-
-本 App 與 Ian Hawkins 的 Torque / Torque Pro 無任何關聯，非其官方或衍生版本。
-OBD2 通訊實作依據 SAE J1979 與 ELM327 datasheet 等公開標準。
+歡迎依[貢獻指南](CONTRIBUTING.md)參與。Telltale 採
+[GPL-3.0](LICENSE) 授權，與 Ian Hawkins 的 Torque / Torque Pro 無關，也不是其
+官方或衍生版本。請自行承擔使用風險；任何診斷結果都不保證車輛可安全行駛。

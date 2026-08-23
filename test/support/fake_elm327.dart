@@ -61,10 +61,10 @@ enum BusProtocol {
   /// the wrong width is [C-01]: the app currently sends `ATSH 7E0` on every
   /// protocol, which is meaningless on anything but 11-bit CAN.
   int get headerDigits => switch (this) {
-        can11 || can11Slow => 3,
-        can29 || can29Slow => 8,
-        _ => 6,
-      };
+    can11 || can11Slow => 3,
+    can29 || can29Slow => 8,
+    _ => 6,
+  };
 
   /// The functional ("ask every emissions ECU") request address, which is also
   /// what the adapter has installed before anyone sends `ATSH`.
@@ -75,11 +75,11 @@ enum BusProtocol {
   /// priority bytes, so production declines to name one; `686AF1` here is a
   /// fixture stand-in that only ever affects this file's own routing.
   String get functionalHeader => switch (this) {
-        can11 || can11Slow => '7DF',
-        can29 || can29Slow => '18DB33F1',
-        kwp2000Slow || kwp2000Fast => 'C133F1',
-        _ => '686AF1',
-      };
+    can11 || can11Slow => '7DF',
+    can29 || can29Slow => '18DB33F1',
+    kwp2000Slow || kwp2000Fast => 'C133F1',
+    _ => '686AF1',
+  };
 
   /// A physical controller address a *user* might type into a custom PID.
   ///
@@ -89,10 +89,10 @@ enum BusProtocol {
   /// repository's own spec uses in its worked example, and it is a fixture
   /// input rather than an expectation about production.
   String get engineHeader => switch (this) {
-        can11 || can11Slow => '7E0',
-        can29 || can29Slow => '18DA10F1',
-        _ => '6C10F1',
-      };
+    can11 || can11Slow => '7E0',
+    can29 || can29Slow => '18DA10F1',
+    _ => '6C10F1',
+  };
 }
 
 /// One controller on the bus.
@@ -244,6 +244,7 @@ class FakeElm327 extends BaseObdTransport {
     required List<FakeEcu> ecus,
     this.faults = const AdapterFaults(),
     this.identity = 'ELM327 v2.1',
+    this.deviceDescription = 'Fake OBD Adapter',
     this.forceProtocolNumber,
     this.responseLatency = Duration.zero,
     this.requiresProtocolSearch = true,
@@ -275,7 +276,9 @@ class FakeElm327 extends BaseObdTransport {
       }
     }
   }
+
   final AdapterFaults faults;
+
   /// Reports a different `ATDPN` digit than the framing this fake produces.
   ///
   /// For the bridge case: an adapter announcing J1939 while something behind
@@ -290,6 +293,13 @@ class FakeElm327 extends BaseObdTransport {
   /// adapter — or a clone reporting a version it does not implement — is the
   /// case this lets a test express.
   final String identity;
+
+  /// The device description returned by `AT@1`.
+  ///
+  /// Separate from [identity] so evidence tests can exercise both untrusted
+  /// adapter-controlled header fields independently.
+  final String deviceDescription;
+
   /// Mutable so a test can let the handshake run at full speed and then make
   /// the adapter slow.
   ///
@@ -440,6 +450,12 @@ class FakeElm327 extends BaseObdTransport {
   /// generation counter.
   Set<String> dropLinkAfterWritingFor = const {};
 
+  /// The link dies immediately after these commands' complete replies.
+  ///
+  /// This models the narrow handshake edge where the prompt has completed the
+  /// pending command but the client has not yet committed initialization.
+  Set<String> dropLinkAfterReplyingFor = const {};
+
   /// When true, `write`'s Future never completes but the bytes still arrive.
   ///
   /// `socket.add` hands data to the kernel before `flush` is awaited, so this
@@ -548,7 +564,8 @@ class FakeElm327 extends BaseObdTransport {
 
     // Echo. A real adapter repeats the command until `ATE0` lands, so the reply
     // to the step *before* `ATE0` always begins with the command itself.
-    final echoNow = _echo || (faults.echoNumericCommands && !command.startsWith('AT'));
+    final echoNow =
+        _echo || (faults.echoNumericCommands && !command.startsWith('AT'));
     final reply = echoNow && raw.isNotEmpty ? '$raw\r$body' : body;
 
     if (command == 'ATE0') _echo = false;
@@ -558,7 +575,13 @@ class FakeElm327 extends BaseObdTransport {
         ? reply.replaceAll('>', '')
         : reply;
 
-    void send() => _emitChunked(emit);
+    void send() {
+      _emitChunked(emit);
+      if (dropLinkAfterReplyingFor.contains(command)) {
+        setConnected(false);
+      }
+    }
+
     final latency = slowCommands[command] ?? responseLatency;
 
     // "Wait, I'm busy", sent while the controller is still working and
@@ -572,7 +595,8 @@ class FakeElm327 extends BaseObdTransport {
           '${_ecus.first.responseId} 03 7F ${_hex(int.parse(command.substring(0, 2), radix: 16))} 78';
       for (var i = 0; i < pending; i++) {
         final at = Duration(
-            microseconds: latency.inMicroseconds * (i + 1) ~/ (pending + 1));
+          microseconds: latency.inMicroseconds * (i + 1) ~/ (pending + 1),
+        );
         final timer = Timer(at, () => _emitChunked('$frame\r'));
         _scheduled.add(timer);
       }
@@ -602,9 +626,11 @@ class FakeElm327 extends BaseObdTransport {
     if (_spaces) return text;
     return text
         .split('\r')
-        .map((line) => _dataLine.hasMatch(line.trim())
-            ? line.replaceAll(_hexPairGap, '')
-            : line)
+        .map(
+          (line) => _dataLine.hasMatch(line.trim())
+              ? line.replaceAll(_hexPairGap, '')
+              : line,
+        )
         .join('\r');
   }
 
@@ -672,7 +698,7 @@ class FakeElm327 extends BaseObdTransport {
       return '$identity\r\r>';
     }
     if (command == 'ATI') return '$identity\r>';
-    if (command == 'AT@1') return 'Fake OBD Adapter\r>';
+    if (command == 'AT@1') return '$deviceDescription\r>';
     if (command == 'ATE0' || command == 'ATE1') return 'OK\r>';
     if (command == 'ATL0' || command == 'ATL1') return 'OK\r>';
     if (command == 'ATS0' || command == 'ATS1') {
@@ -716,8 +742,12 @@ class FakeElm327 extends BaseObdTransport {
       _searchPending = false;
       return 'OK\r>';
     }
-    if (command.startsWith('ATAT') || command.startsWith('ATST')) return 'OK\r>';
-    if (command.startsWith('ATCAF') || command.startsWith('ATCFC')) return 'OK\r>';
+    if (command.startsWith('ATAT') || command.startsWith('ATST')) {
+      return 'OK\r>';
+    }
+    if (command.startsWith('ATCAF') || command.startsWith('ATCFC')) {
+      return 'OK\r>';
+    }
     if (command == 'ATRV') return '${faults.voltageText ?? '13.9V'}\r>';
 
     if (command == 'ATDP') {
@@ -758,13 +788,13 @@ class FakeElm327 extends BaseObdTransport {
 
     // Verbatim fixtures win: they exist precisely so the framing code in this
     // file cannot influence what the parser sees.
-    bool reaches(FakeEcu ecu) =>
-        functional
-            ? !ecu.missesFunctionalFor.contains(command.toUpperCase())
-            : ecu.requestId == target;
+    bool reaches(FakeEcu ecu) => functional
+        ? !ecu.missesFunctionalFor.contains(command.toUpperCase())
+        : ecu.requestId == target;
     final literal = _ecus
-        .where((ecu) =>
-            reaches(ecu) && ecu.literalResponses.containsKey(command))
+        .where(
+          (ecu) => reaches(ecu) && ecu.literalResponses.containsKey(command),
+        )
         .expand((ecu) => ecu.literalResponses[command]!)
         .toList();
     if (literal.isNotEmpty) return '${literal.join('\r')}\r>';
@@ -831,7 +861,9 @@ class FakeElm327 extends BaseObdTransport {
 
   /// Renders one ECU's payload as the lines an ELM327 would print.
   List<String> _frame(FakeEcu ecu, List<int> payload) {
-    return protocol.isCan ? _frameCan(ecu, payload) : _frameLegacy(ecu, payload);
+    return protocol.isCan
+        ? _frameCan(ecu, payload)
+        : _frameLegacy(ecu, payload);
   }
 
   List<String> _frameCan(FakeEcu ecu, List<int> payload) {
@@ -851,7 +883,7 @@ class FakeElm327 extends BaseObdTransport {
       // delivered, one `00` filling the frame out to eight.
       final padded = [...hex, ...List.filled(7 - hex.length, '00')];
       return [
-        '${ecu.responseId} ${_hex(payload.length & 0x0F)} ${padded.join(' ')}'
+        '${ecu.responseId} ${_hex(payload.length & 0x0F)} ${padded.join(' ')}',
       ];
     }
 
@@ -875,13 +907,16 @@ class FakeElm327 extends BaseObdTransport {
         // 12-bit total length, high nibble `2` for a Consecutive Frame whose
         // low nibble is the sequence number.
         final pci = seq == 0
-            ? [0x10 | ((payload.length >> 8) & 0x0F), payload.length & 0xFF]
-                .map(_hex)
-                .join(' ')
+            ? [
+                0x10 | ((payload.length >> 8) & 0x0F),
+                payload.length & 0xFF,
+              ].map(_hex).join(' ')
             : _hex(0x20 | (seq & 0x0F));
         lines.add('${ecu.responseId} $pci ${padded.join(' ')}');
       } else {
-        lines.add('${seq.toRadixString(16).toUpperCase()}: ${padded.join(' ')}');
+        lines.add(
+          '${seq.toRadixString(16).toUpperCase()}: ${padded.join(' ')}',
+        );
       }
       index += take;
       seq++;
@@ -916,7 +951,8 @@ class FakeElm327 extends BaseObdTransport {
       // everything to seven made every generated header `87…`, so a test
       // written to prove that a varying length byte still names one controller
       // put two identical headers on the wire and proved nothing.
-      final isKwp = protocol == BusProtocol.kwp2000Slow ||
+      final isKwp =
+          protocol == BusProtocol.kwp2000Slow ||
           protocol == BusProtocol.kwp2000Fast;
       final padded = isKwp
           ? slice
@@ -944,8 +980,8 @@ class FakeElm327 extends BaseObdTransport {
         header[0] = 0x80 | (message.length & 0x3F);
       }
       final full = [...header, ...message];
-      final checksum = protocol == BusProtocol.j1850pwm ||
-              protocol == BusProtocol.j1850vpw
+      final checksum =
+          protocol == BusProtocol.j1850pwm || protocol == BusProtocol.j1850vpw
           ? _j1850Crc(full)
           : full.fold<int>(0, (a, b) => (a + b) & 0xFF);
       lines.add([...full, checksum].map(_hex).join(' '));
@@ -959,7 +995,9 @@ class FakeElm327 extends BaseObdTransport {
     for (final byte in bytes) {
       crc ^= byte;
       for (var bit = 0; bit < 8; bit++) {
-        crc = (crc & 0x80) != 0 ? ((crc << 1) ^ 0x1D) & 0xFF : (crc << 1) & 0xFF;
+        crc = (crc & 0x80) != 0
+            ? ((crc << 1) ^ 0x1D) & 0xFF
+            : (crc << 1) & 0xFF;
       }
     }
     return (~crc) & 0xFF;
@@ -968,7 +1006,10 @@ class FakeElm327 extends BaseObdTransport {
   /// Data bytes per legacy message, service byte included.
   static const int legacyMessageBytes = 7;
 
-  List<String> _applySequenceFaults(List<String> lines, {required int headerLines}) {
+  List<String> _applySequenceFaults(
+    List<String> lines, {
+    required int headerLines,
+  }) {
     final head = lines.take(headerLines).toList();
     final body = lines.skip(headerLines).toList();
 

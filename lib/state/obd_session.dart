@@ -12,11 +12,14 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/field_evidence/evidence_text.dart';
+import '../core/field_evidence/platform_metadata.dart';
 import '../obd/dtc/dtc.dart';
 import '../obd/elm327_client.dart';
 import '../obd/pid/pid.dart';
 import '../obd/freeze_frame.dart';
 import '../obd/polling_engine.dart';
+import '../obd/session_evidence.dart';
 import '../obd/transcript_store.dart';
 import '../obd/telemetry.dart';
 import '../obd/transcript.dart';
@@ -26,6 +29,7 @@ import '../obd/transport/demo_transport.dart';
 import '../obd/transport/obd_transport.dart';
 import '../obd/transport/wifi_transport.dart';
 import 'pid_registry.dart';
+import 'settings.dart';
 
 enum ConnectionPhase {
   disconnected,
@@ -34,6 +38,23 @@ enum ConnectionPhase {
   connected,
   failed,
 }
+
+/// Physical events a passenger can stamp into the same timeline as OBD bytes.
+///
+/// These are intentionally presets rather than free text: one large tap while
+/// parked is safer and less error-prone than typing beside a running vehicle.
+enum FieldEventMarker {
+  ignitionOn('電門 ON'),
+  engineStarted('引擎發動'),
+  throttleBlip('輕踩油門'),
+  roadTestStarted('道路測試開始');
+
+  const FieldEventMarker(this.label);
+
+  final String label;
+}
+
+enum FieldEventRecordResult { persisted, memoryOnly, unavailable }
 
 class ObdConnectionState {
   final ConnectionPhase phase;
@@ -72,7 +93,8 @@ class ObdConnectionState {
 
   bool get isConnected => phase == ConnectionPhase.connected;
   bool get isBusy =>
-      phase == ConnectionPhase.connecting || phase == ConnectionPhase.handshaking;
+      phase == ConnectionPhase.connecting ||
+      phase == ConnectionPhase.handshaking;
 
   ObdConnectionState copyWith({
     ConnectionPhase? phase,
@@ -125,6 +147,21 @@ String describeConnectException(Object error) {
 class ObdSession extends Notifier<ObdConnectionState> {
   Elm327Client? _client;
   PollingEngine? _engine;
+
+  /// Build provenance is compile-time in production and injectable only so
+  /// unit tests can lock the safety boundary without launching an APK.
+  @visibleForTesting
+  bool testRigBuild = isObdTestRigBuild;
+
+  /// Frozen into [_sessionEvidence] when an attempt starts. The exact Android
+  /// application ID is authoritative. Only the exact production Android ID is
+  /// field eligible; every other Android ID fails closed as simulated.
+  @visibleForTesting
+  PlatformMetadata platformMetadata = platformMetadataCache.value;
+
+  bool get _currentSessionIsTestRig =>
+      _sessionEvidence?.testRig ??
+      (testRigBuild || platformMetadata.requiresSimulatedEvidence);
 
   StreamSubscription<InitProgress>? _initSub;
   StreamSubscription<TelemetrySnapshot>? _snapshotSub;
@@ -232,6 +269,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // as soon as this returns; a write that does not finish leaves the
     // previous snapshot intact, which is the whole reason it is staged and
     // renamed rather than written in place.
+    _client?.transcript.recordNote('App 進入背景');
     unawaited(_saveTranscriptSnapshot());
     _pauseEpoch++;
     _foreground = false;
@@ -274,6 +312,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
 
   Future<void> _onAppResumed() {
     _foreground = true;
+    _client?.transcript.recordNote('App 回到前景');
     // First thing, and unconditionally. Timers that came due while the process
     // was frozen are delivered now, in expiry order, and the watchdog's is
     // among them; `_resumeNow` is queued behind the pause still unwinding and
@@ -286,7 +325,6 @@ class ObdSession extends Notifier<ObdConnectionState> {
   }
 
   Future<void> _resumeNow() async {
-
     final client = _client;
     final engine = _engine;
     if (client == null || engine == null) {
@@ -339,10 +377,11 @@ class ObdSession extends Notifier<ObdConnectionState> {
       // A fault-code scan can tell who answered but not who should have, and a
       // controller that stays silent shows up in no count at all.
       // Bounded, because nothing else bounds it. Fired unawaited, this had no
-    // deadline at all — and a scan starting a moment later joined it, so the
-    // census the scan was blocked on could outlive the scan's own budget.
-    unawaited(engine.discoverResponders(
-        deadline: DateTime.now().add(censusBudget)));
+      // deadline at all — and a scan starting a moment later joined it, so the
+      // census the scan was blocked on could outlive the scan's own budget.
+      unawaited(
+        engine.discoverResponders(deadline: DateTime.now().add(censusBudget)),
+      );
     }
   }
 
@@ -360,6 +399,14 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// The last session's traffic, kept after the client is gone.
   ObdTranscript? _lastTranscript;
   String _lastTranscriptHeader = '';
+
+  /// Facts frozen for the attempt whose bytes are in [_attemptTranscript].
+  ///
+  /// Kept beside the transcript rather than rebuilt at export: by then the
+  /// user may have changed vehicle settings or selected another adapter, and a
+  /// plausible header describing the wrong session is worse than no header.
+  SessionEvidenceMetadata? _sessionEvidence;
+  int _evidenceSequence = 0;
 
   /// The transcript worth exporting right now: the live one if there is a
   /// session, otherwise the last one that ended.
@@ -429,20 +476,52 @@ class ObdSession extends Notifier<ObdConnectionState> {
   String _sessionDevice = '';
   String _sessionProtocol = '';
 
+  static String _evidenceHeaderValue(
+    String value, {
+    required String whenEmpty,
+  }) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? whenEmpty : escapeEvidenceText(trimmed);
+  }
+
   String get transcriptHeader {
     final c = _client;
-    final buffer = StringBuffer()
-      ..writeln('# Telltale 傳輸紀錄')
-      ..writeln('# 連線方式：${_sessionKind.isEmpty ? '未連線' : _sessionKind}')
-      ..writeln('# 裝置：${_sessionDevice.isEmpty ? '—' : _sessionDevice}')
-      ..writeln('# 協定：${_sessionProtocol.isEmpty ? '—' : _sessionProtocol}');
+    final evidence = _sessionEvidence;
+    final buffer = StringBuffer();
+    if (evidence == null) {
+      buffer
+        ..writeln('# Telltale 傳輸紀錄')
+        ..writeln(
+          '# 連線方式：${_evidenceHeaderValue(_sessionKind, whenEmpty: '未連線')}',
+        )
+        ..writeln(
+          '# 裝置：${_evidenceHeaderValue(_sessionDevice, whenEmpty: '—')}',
+        );
+    } else if (evidence.transportMetadataCompleted) {
+      buffer.write(evidence.renderHeader());
+    } else {
+      buffer.write(
+        evidence.renderHeader(
+          latestTransportMetadata: c?.transport.diagnosticMetadata ?? const {},
+        ),
+      );
+    }
+    buffer.writeln(
+      '# 協定：${_evidenceHeaderValue(_sessionProtocol, whenEmpty: 'unknown')}',
+    );
     if (c != null) {
       buffer
-        ..writeln('# 轉接器回報：${c.deviceVersion.isEmpty ? '—' : c.deviceVersion}')
-        ..writeln('# ATDPN：${c.protocolNumber.isEmpty ? '—' : c.protocolNumber}')
-        ..writeln('# 匯流排：${c.addressing.family.name}，'
-            '標頭 ${c.addressing.headerHexDigits} 位，'
-            '接收寬度 ${c.addressing.acceptedReceiveWidths.join('/')}');
+        ..writeln(
+          '# 轉接器回報：${_evidenceHeaderValue(c.deviceVersion, whenEmpty: '—')}',
+        )
+        ..writeln(
+          '# ATDPN：${_evidenceHeaderValue(c.protocolNumber, whenEmpty: '—')}',
+        )
+        ..writeln(
+          '# 匯流排：${c.addressing.family.name}，'
+          '標頭 ${c.addressing.headerHexDigits} 位，'
+          '接收寬度 ${c.addressing.acceptedReceiveWidths.join('/')}',
+        );
       // Whether the adapter's account of itself holds together.
       //
       // In the log rather than on a gauge, deliberately. `v1.5` is printed on
@@ -452,9 +531,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
       // also cannot say anything about whether the *readings* are true, and a
       // note that looked like it could would be worse than none.
       final identity = c.adapterIdentity;
-      buffer.writeln('# 轉接器自述：${identity.summaryLine}');
+      buffer.writeln('# 轉接器自述：${escapeEvidenceText(identity.summaryLine)}');
       for (final concern in identity.concerns) {
-        buffer.writeln('#   ⚠ ${concern.summary}');
+        buffer.writeln('#   ⚠ ${escapeEvidenceText(concern.summary)}');
       }
     }
     return buffer.toString();
@@ -474,9 +553,27 @@ class ObdSession extends Notifier<ObdConnectionState> {
     if (trimmed.isEmpty) throw const TransportException('沒有輸入指令');
     final refusal = manualCommandRefusal(trimmed);
     if (refusal != null) throw TransportException(refusal);
-    c.transcript.recordNote('手動送出：$trimmed', DateTime.now());
+    c.transcript.recordNote('手動送出：$trimmed');
     final response = await c.send(trimmed);
     return response.rawLines.join('\n');
+  }
+
+  /// Adds a passenger-entered physical event and persists it immediately.
+  Future<FieldEventRecordResult> recordFieldEvent(
+    FieldEventMarker marker,
+  ) async {
+    final client = _client;
+    if (!state.isConnected ||
+        client == null ||
+        _sessionTransport == TransportKind.demo ||
+        _currentSessionIsTestRig) {
+      return FieldEventRecordResult.unavailable;
+    }
+    client.transcript.recordNote('實車事件：${marker.label}');
+    final persisted = await _saveTranscriptSnapshot();
+    return persisted
+        ? FieldEventRecordResult.persisted
+        : FieldEventRecordResult.memoryOnly;
   }
 
   /// Why a typed command will not be sent, or null if it will.
@@ -530,8 +627,19 @@ class ObdSession extends Notifier<ObdConnectionState> {
       // protocol is in use, `ATD` resets everything to defaults, and a prefix
       // rule would get that exactly backwards.
       const readOnly = {
-        'I', '@1', '@2', '@3', 'RV', 'DP', 'DPN', 'PPS', 'IGN', 'DESC', 'CS',
-        'CV', 'RD',
+        'I',
+        '@1',
+        '@2',
+        '@3',
+        'RV',
+        'DP',
+        'DPN',
+        'PPS',
+        'IGN',
+        'DESC',
+        'CS',
+        'CV',
+        'RD',
       };
       if (readOnly.contains(at)) return null;
       return '手動指令只接受查詢，不接受會改變轉接器設定的指令。'
@@ -557,7 +665,15 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // defined for pre-CAN implementations only, ISO 9141-2 and the J1850
     // pair, where Mode 06 does not replace it.
     const readOnlyServices = {
-      '01', '02', '03', '05', '06', '07', '09', '0A', '22',
+      '01',
+      '02',
+      '03',
+      '05',
+      '06',
+      '07',
+      '09',
+      '0A',
+      '22',
     };
     if (c == '04' || c.startsWith('04')) {
       return '清除故障碼請用故障碼畫面的「清除」按鈕。'
@@ -613,12 +729,12 @@ class ObdSession extends Notifier<ObdConnectionState> {
       _connect(transport, kind);
 
   Future<bool> connectWifi({String? host, int? port}) => _connect(
-        WifiTransport(
-          host: host ?? WifiTransport.defaultHost,
-          port: port ?? WifiTransport.defaultPort,
-        ),
-        TransportKind.wifi,
-      );
+    WifiTransport(
+      host: host ?? WifiTransport.defaultHost,
+      port: port ?? WifiTransport.defaultPort,
+    ),
+    TransportKind.wifi,
+  );
 
   Future<bool> connectClassic(DiscoveredDevice device) {
     // Self-referencing, so the callback can ask whether the transport it
@@ -641,7 +757,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
         // to any more, and the note landed in the *next* attempt's transcript,
         // which is the one record that has to be trustworthy afterwards.
         if (!identical(_inFlightTransport, transport)) return;
-        _attemptTranscript?.recordNote(tier, DateTime.now());
+        _attemptTranscript?.recordNote(tier);
         if (state.isBusy) state = state.copyWith(detail: tier);
       },
     );
@@ -860,9 +976,10 @@ class ObdSession extends Notifier<ObdConnectionState> {
     String prefix = '連線失敗',
     String? detail,
   }) async {
+    _completeEvidence(client, outcome: 'failed');
     // Before the teardown reads it. The sentence on screen is what the user
     // gets; this is what somebody can act on afterwards.
-    _attemptTranscript?.recordNote('$prefix：${detail ?? why}', DateTime.now());
+    _attemptTranscript?.recordNote('$prefix：${detail ?? why}');
     if (_superseded(generation)) {
       // This attempt's own client, not the shared teardown: whoever superseded
       // it has already torn down and published, and `_teardown()` here would
@@ -890,11 +1007,22 @@ class ObdSession extends Notifier<ObdConnectionState> {
     _sessionTransport = kind;
     _sessionDevice = transport.displayName;
     _sessionProtocol = '';
+    final startedAt = DateTime.now().toUtc();
+    _sessionEvidence = SessionEvidenceMetadata(
+      sessionId: _nextEvidenceSessionId(startedAt),
+      startedAt: startedAt,
+      platform: platformMetadata,
+      vehicleProfile: ref.read(vehicleProfileProvider),
+      transportKind: kind.label,
+      deviceName: transport.displayName,
+      // Demo never crosses a physical adapter or ECU. Freeze that provenance
+      // into the evidence itself so its export cannot carry a field header,
+      // even when it runs inside the exact production Android package.
+      testRig: testRigBuild || kind == TransportKind.demo,
+      initialTransportMetadata: transport.diagnosticMetadata,
+    );
     _attemptTranscript = ObdTranscript()
-      ..recordNote(
-        '開始連線：${transport.displayName}（${kind.label}）',
-        DateTime.now(),
-      );
+      ..recordNote('開始連線：${transport.displayName}（${kind.label}）');
     state = ObdConnectionState(
       phase: ConnectionPhase.connecting,
       kind: kind,
@@ -927,7 +1055,8 @@ class ObdSession extends Notifier<ObdConnectionState> {
       // the last few land *after* `connect()` has returned and the phase has
       // moved to connected — writing `handshaking` unconditionally would clobber
       // it, leaving the session live but permanently reporting itself offline.
-      final stillHandshaking = state.phase == ConnectionPhase.connecting ||
+      final stillHandshaking =
+          state.phase == ConnectionPhase.connecting ||
           state.phase == ConnectionPhase.handshaking;
       state = state.copyWith(
         phase: stillHandshaking ? ConnectionPhase.handshaking : null,
@@ -975,6 +1104,8 @@ class ObdSession extends Notifier<ObdConnectionState> {
       return false;
     }
 
+    _completeEvidence(client, outcome: 'connected');
+
     final engine = PollingEngine(client);
     engine.shouldContinue = () => _foreground && !_superseded(generation);
     // The same question, asked where the bytes actually leave. `shouldContinue`
@@ -1021,8 +1152,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // Bounded, because nothing else bounds it. Fired unawaited, this had no
     // deadline at all — and a scan starting a moment later joined it, so the
     // census the scan was blocked on could outlive the scan's own budget.
-    unawaited(engine.discoverResponders(
-        deadline: DateTime.now().add(censusBudget)));
+    unawaited(
+      engine.discoverResponders(deadline: DateTime.now().add(censusBudget)),
+    );
 
     _sessionProtocol = client.protocolDescription.isEmpty
         ? client.protocolNumber
@@ -1036,6 +1168,24 @@ class ObdSession extends Notifier<ObdConnectionState> {
     );
     _startPeriodicSnapshots();
     return true;
+  }
+
+  String _nextEvidenceSessionId(DateTime startedAt) {
+    _evidenceSequence++;
+    final utc = startedAt.toUtc().toIso8601String().replaceAll(
+      RegExp(r'[-:.]'),
+      '',
+    );
+    return '$utc-${_evidenceSequence.toRadixString(36)}';
+  }
+
+  void _completeEvidence(Elm327Client client, {required String outcome}) {
+    final evidence = _sessionEvidence;
+    if (evidence == null || evidence.transportMetadataCompleted) return;
+    _sessionEvidence = evidence.completeTransportMetadata({
+      ...client.transport.diagnosticMetadata,
+      'connectionOutcome': outcome,
+    });
   }
 
   /// Turns a failed handshake into something the driver can act on.
@@ -1072,6 +1222,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// race.
   void _handleConnectionLost(int generation) {
     if (_superseded(generation)) return;
+    _client?.transcript.recordNote('連線事件：轉接器連線中斷');
     _generation++;
     state = state.copyWith(
       phase: ConnectionPhase.failed,
@@ -1168,6 +1319,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
   Future<void> disconnect() async {
     // Invalidates any handshake still in flight, so a connect the user has
     // just abandoned cannot finish and publish itself as live.
+    _client?.transcript.recordNote('連線事件：使用者中斷連線');
     _generation++;
     await _teardown();
     state = const ObdConnectionState();
@@ -1213,23 +1365,31 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// heading, rather than a second rendering that could disagree with it.
   /// Queues a snapshot the way the pause and teardown handlers do.
   @visibleForTesting
-  Future<void> saveTranscriptSnapshotForTest() => _saveTranscriptSnapshot();
+  Future<void> saveTranscriptSnapshotForTest() async {
+    await _saveTranscriptSnapshot();
+  }
 
-  Future<void> _saveTranscriptSnapshot() {
+  @visibleForTesting
+  Future<bool> savePeriodicSnapshotForTest() => _savePeriodicSnapshotIfNeeded();
+
+  @visibleForTesting
+  Future<void> drainTranscriptSnapshotsForTest() => _savingSnapshot;
+
+  Future<bool> _saveTranscriptSnapshot() {
     final record = exportableRecord;
-    if (record == null) return Future<void>.value();
+    if (record == null) return Future<bool>.value(false);
     // Both reads happen now, before anything is awaited, so a save queued
     // behind another one still writes the session it was asked about rather
     // than whatever has since connected.
-    final transcript = record.transcript;
+    final liveTranscript = record.transcript;
+    final transcript = liveTranscript.frozenCopy();
     final header = record.header;
     // The simulator is a session with no vehicle in it. It may be saved — it
     // is still the last thing that happened — but it may not replace a
     // recording that came off an adapter.
-    final fromRealHardware = _sessionTransport != TransportKind.demo;
-    // Stamped here rather than in the timer, so a save from the pause or
-    // teardown handler also silences the next tick.
-    _lastSavedMark = transcript.recorded;
+    final fromRealHardware =
+        _sessionTransport != TransportKind.demo && !_currentSessionIsTestRig;
+    final recordedAtTrigger = liveTranscript.recorded;
 
     // Serialised, the same way teardown already is.
     //
@@ -1242,13 +1402,20 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // corrupt file, and the guard that stops a simulator overwriting hardware
     // asks `load()` first, so a corrupted recording silently withdrew its own
     // protection.
-    final chained = _savingSnapshot.then((_) => transcriptStore.save(
-          transcript,
-          header,
-          fromRealHardware: fromRealHardware,
-        ));
-    _savingSnapshot = chained;
-    return chained;
+    final operation = _savingSnapshot.then((_) async {
+      final saved = await transcriptStore.save(
+        transcript,
+        header,
+        fromRealHardware: fromRealHardware,
+      );
+      if (saved) {
+        _lastSavedTranscript = liveTranscript;
+        _lastSavedMark = recordedAtTrigger;
+      }
+      return saved;
+    });
+    _savingSnapshot = operation.then<void>((_) {});
+    return operation;
   }
 
   /// The tail of the snapshot queue. `TranscriptStore.save` never throws, so
@@ -1263,7 +1430,8 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// foreground left **nothing**, because no handler runs at all. The app
   /// crashing in a car is precisely the session somebody needs to send back,
   /// and it was the one with no record. So the snapshot is no longer only a
-  /// farewell: the most a crash can now cost is one interval.
+  /// farewell: during normal foreground operation, each successful write
+  /// bounds the unsaved tail to roughly one interval.
   ///
   /// Not shorter, because the file is a few hundred kilobytes and this runs
   /// while the same phone is driving gauges off a 20 Hz stream. Not longer,
@@ -1272,10 +1440,13 @@ class ObdSession extends Notifier<ObdConnectionState> {
 
   Timer? _snapshotTimer;
 
-  /// [ObdTranscript.recorded] as of the last write, so a tick with nothing new
-  /// to say writes nothing. Updated by every path that saves, not just the
-  /// timer's — otherwise the first tick after a pause rewrites what the pause
-  /// handler has already put there.
+  /// Transcript identity and [ObdTranscript.recorded] as of the last write, so
+  /// a tick with nothing new to say writes nothing. Both are required: a slow
+  /// save from the previous session may complete after the next one begins,
+  /// and equal entry counts do not make those two transcripts the same state.
+  /// Updated by every path that saves, not just the timer's — otherwise the
+  /// first tick after a pause rewrites what the pause handler already put there.
+  ObdTranscript? _lastSavedTranscript;
   int _lastSavedMark = -1;
 
   void _startPeriodicSnapshots() {
@@ -1284,16 +1455,25 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // by the previous session's final save is a number from a different count.
     // They are very unlikely to collide, and "very unlikely" is a worse reason
     // to skip a write than "impossible" is.
+    _lastSavedTranscript = null;
     _lastSavedMark = -1;
-    _snapshotTimer = Timer.periodic(snapshotInterval, (_) {
-      // The background is the pause handler's job, and it has already written
-      // once. A backgrounded session is also not adding anything.
-      if (!_foreground) return;
-      final record = exportableRecord;
-      if (record == null) return;
-      if (record.transcript.recorded == _lastSavedMark) return;
-      unawaited(_saveTranscriptSnapshot());
-    });
+    _snapshotTimer = Timer.periodic(
+      snapshotInterval,
+      (_) => unawaited(_savePeriodicSnapshotIfNeeded()),
+    );
+  }
+
+  Future<bool> _savePeriodicSnapshotIfNeeded() {
+    // The background is the pause handler's job, and it has already written
+    // once. A backgrounded session is also not adding anything.
+    if (!_foreground) return Future<bool>.value(false);
+    final record = exportableRecord;
+    if (record == null) return Future<bool>.value(false);
+    if (identical(record.transcript, _lastSavedTranscript) &&
+        record.transcript.recorded == _lastSavedMark) {
+      return Future<bool>.value(false);
+    }
+    return _saveTranscriptSnapshot();
   }
 
   void _stopPeriodicSnapshots() {
@@ -1354,8 +1534,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
   }
 }
 
-final obdSessionProvider =
-    NotifierProvider<ObdSession, ObdConnectionState>(ObdSession.new);
+final obdSessionProvider = NotifierProvider<ObdSession, ObdConnectionState>(
+  ObdSession.new,
+);
 
 /// Live telemetry. Replays the engine's current snapshot before subscribing, so
 /// a screen opened mid-drive paints real values on its first frame rather than

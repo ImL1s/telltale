@@ -53,27 +53,88 @@ void main() {
       final t = ObdTranscript();
       final start = DateTime(2026, 8, 16, 12);
       t.recordWrite('0100\r'.codeUnits, start);
-      t.recordRead('41 00\r>'.codeUnits, start.add(const Duration(milliseconds: 412)));
+      t.recordRead(
+        '41 00\r>'.codeUnits,
+        start.add(const Duration(milliseconds: 412)),
+      );
       final text = t.render();
       expect(text, contains('+      0ms'));
       expect(text, contains('+    412ms'));
     });
+
+    test('a wall-clock correction cannot make elapsed time go backwards', () {
+      final t = ObdTranscript();
+      final start = DateTime(2026, 8, 16, 12);
+      t.recordWrite('0100\r'.codeUnits, start);
+      t.recordRead(
+        '41 00\r>'.codeUnits,
+        start.subtract(const Duration(seconds: 5)),
+      );
+
+      final text = t.render();
+      expect(text, isNot(contains('+-')));
+      expect(RegExp(r'\+\s*-\d+ms').hasMatch(text), isFalse);
+      expect(RegExp(r'\+\s+0ms').allMatches(text), hasLength(2));
+    });
+
+    test('literal backslashes cannot masquerade as escaped control bytes', () {
+      final t = ObdTranscript();
+      final at = DateTime(2026);
+      t.recordRead([0x5C, 0x72], at); // The two printable bytes `\\` and `r`.
+      t.recordRead([0x0D], at); // An actual carriage return.
+
+      final lines = t.render().split('\n').where((line) => line.contains('<<'));
+      expect(lines.first, contains(r'\\r'));
+      expect(lines.last, contains(r'\r'));
+      expect(lines.first, isNot(equals(lines.last)));
+    });
   });
 
   group('bounded, and honest about it', () {
-    test('the oldest go first and the export says how many', () {
+    test('the middle goes first and the export says how many', () {
       // Unbounded would be a memory leak in the one place that must never be
       // why the app dies mid-drive.
       final t = ObdTranscript(maxEntries: 3);
       for (var i = 0; i < 10; i++) {
-        t.recordWrite('CMD$i\r'.codeUnits, DateTime(2026).add(Duration(seconds: i)));
+        t.recordWrite(
+          'CMD$i\r'.codeUnits,
+          DateTime(2026).add(Duration(seconds: i)),
+        );
       }
       expect(t.entries.length, 3);
       expect(t.dropped, 7);
+      expect(t.render(), contains('CMD0'));
+      expect(t.render(), contains('CMD8'));
       expect(t.render(), contains('CMD9'));
-      expect(t.render(), isNot(contains('CMD0')));
-      expect(t.render(), contains('7 筆較早的紀錄已因容量上限捨棄'),
-          reason: 'a truncated record must not read as a complete one');
+      expect(t.render(), isNot(contains('CMD1')));
+      expect(
+        t.render(),
+        contains('中間 7 筆紀錄已因容量上限捨棄'),
+        reason: 'a truncated record must not read as a complete one',
+      );
+    });
+
+    test('the handshake head and newest tail survive a long session', () {
+      final t = ObdTranscript(maxEntries: 4000);
+      final start = DateTime(2026);
+      for (var i = 0; i < 5000; i++) {
+        t.recordWrite(
+          'CMD$i\r'.codeUnits,
+          start.add(Duration(milliseconds: i)),
+        );
+      }
+
+      expect(t.entries, hasLength(4000));
+      expect(t.entries.first.text, r'CMD0\r');
+      expect(t.entries[199].text, r'CMD199\r');
+      expect(t.entries[200].text, r'CMD1200\r');
+      expect(t.entries.last.text, r'CMD4999\r');
+      expect(t.dropped, 1000);
+
+      final rendered = t.render();
+      expect(rendered, contains('中間 1000 筆紀錄已因容量上限捨棄'));
+      expect(rendered, contains('+      0ms'));
+      expect(rendered, contains('+   4999ms'));
     });
 
     test('a record with nothing in it says so rather than looking fine', () {
@@ -85,7 +146,10 @@ void main() {
     test('it is carried through to the rendered file', () {
       final t = ObdTranscript();
       t.recordWrite('ATI\r'.codeUnits, DateTime(2026));
-      expect(t.render(header: '# 協定：ISO 15765-4'), startsWith('# 協定：ISO 15765-4'));
+      expect(
+        t.render(header: '# 協定：ISO 15765-4'),
+        startsWith('# 協定：ISO 15765-4'),
+      );
     });
   });
 
@@ -98,6 +162,18 @@ void main() {
       final text = t.render();
       expect(text, contains('-- 開始讀取已儲存故障碼（Mode 03）'));
       expect(text.indexOf('--'), lessThan(text.indexOf('>>')));
+    });
+
+    test('untrusted note text cannot forge or visually reorder lines', () {
+      final t = ObdTranscript()
+        ..recordNote('adapter\n# forged\x00\x1B\u202Ehidden', DateTime(2026));
+
+      final text = t.render();
+      expect(text, contains(r'adapter\n# forged\x00\x1B\u{202E}hidden'));
+      expect(text.split('\n'), isNot(contains('# forged')));
+      expect(text, isNot(contains('\x00')));
+      expect(text, isNot(contains('\x1B')));
+      expect(text, isNot(contains('\u202E')));
     });
   });
 }

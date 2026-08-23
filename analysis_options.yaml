@@ -6,7 +6,7 @@ analyzer:
     strict-raw-types: true
   # Verified on 3.47.0: importing package:flutter/material.dart raises no
   # deprecation, so the material_ui migration stays opt-in and no error
-  # override is needed here. See SPEC_DEVIATIONS.md.
+  # override is needed here. See docs/protocol-deviations.zh-TW.md.
   exclude:
     - build/**
     - android/**

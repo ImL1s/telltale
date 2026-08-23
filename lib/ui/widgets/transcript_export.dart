@@ -45,7 +45,7 @@ Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
   // session's bytes with the new session's adapter and protocol.
   final record = session.exportableRecord;
   if (record == null) return '沒有可匯出的紀錄。';
-  final transcript = record.transcript;
+  final transcript = record.transcript.frozenCopy();
   try {
     final now = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
@@ -66,7 +66,7 @@ Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
       // 連結 — it had taken the payload for a string. The sibling export a
       // file away has always named `text/csv`; this one had nothing.
       //
-      // This is the one instruction `FIELD_GUIDE.md` gives for every situation
+      // This is the one instruction `docs/field-guide.zh-TW.md` gives for every situation
       // it cannot otherwise resolve, so the obvious way to keep the file has
       // to be the working one.
       files: [XFile(file.path, mimeType: 'text/plain')],
@@ -108,7 +108,8 @@ class TranscriptExportButtons extends ConsumerWidget {
       children: [
         if (!compact) ...[
           Text(
-            '這次連線與轉接器之間往返的每一個位元組都會記錄下來。'
+            '這次連線會保留開頭握手與最新的原始往返資料；'
+            '長時間連線若省略中段，檔案會明確標出。'
             '在車上遇到讀不到、判斷不出來的情況時，把紀錄匯出帶回來，'
             '比畫面上的一句訊息有用得多。',
             style: context.texts.bodySmall,

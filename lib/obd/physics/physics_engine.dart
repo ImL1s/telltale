@@ -2,7 +2,7 @@
 ///
 /// Every constant here was re-derived from first principles rather than copied,
 /// because the source spec is reverse-engineering notes rather than a standard.
-/// The derivations are recorded in `SPEC_DEVIATIONS.md`; they agreed with the
+/// The derivations are recorded in `docs/protocol-deviations.zh-TW.md`; they agreed with the
 /// spec in each case.
 ///
 /// These are estimates. Wheel horsepower from OBD speed deltas is a genuinely

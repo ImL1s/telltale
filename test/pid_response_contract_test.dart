@@ -63,7 +63,7 @@ FakeEcu _ecm({Map<String, List<int>> extra = const {}}) => FakeEcu(
 /// This used to sleep a flat 250 ms and hope. Under a full-suite run that is
 /// not always enough, and the snapshot came back empty — so the test failed
 /// with an assertion about a value that was never fetched, which is the
-/// failure mode `TEST_EVIDENCE.md` describes pointing the other way. The same
+/// failure mode `docs/verification/test-evidence.md` describes pointing the other way. The same
 /// flat sleep in front of a *negative* assertion is a false green.
 ///
 /// A PID is "decided" when it has produced either a reading or a fault, which

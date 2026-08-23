@@ -128,7 +128,7 @@ App 完成後交付獨立審查，本檔記錄找到什麼、為什麼會漏、�
 
 ## 一條有反證的
 
-審查者指出 320dp + textScaler 2.0 有「確定的 overflow」。我在 Galaxy S25 Ultra 上實測 320dp（density 160 與 240 兩種）搭配 2.0 倍字級，**logcat 零 RenderFlex/overflow**，文字正確換行。無障礙縮放被 `FittedBox` 抵銷的批評則成立，已依此調整欄數策略。
+審查者指出 320dp + textScaler 2.0 有「確定的 overflow」。我在 Galaxy S24 Ultra 上實測 320dp（density 160 與 240 兩種）搭配 2.0 倍字級，**logcat 零 RenderFlex/overflow**，文字正確換行。無障礙縮放被 `FittedBox` 抵銷的批評則成立，已依此調整欄數策略。
 
 ---
 
@@ -158,7 +158,7 @@ App 完成後交付獨立審查，本檔記錄找到什麼、為什麼會漏、�
 
 ## 實機驗證證據
 
-裝置：Galaxy S25 Ultra（SM-S9280）、Android 16、arm64-v8a。
+裝置：Galaxy S24 Ultra（SM-S9280）、Android 16、arm64-v8a。
 
 | 項目 | 結果 |
 |---|---|

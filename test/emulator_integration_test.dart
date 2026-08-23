@@ -5,9 +5,16 @@
 /// disagree with mine. That is the entire point — every other test in this
 /// suite is ultimately my code checking my own assumptions.
 ///
-/// Skipped unless the emulator is running:
+/// Skipped unless the emulator is running. From `app/`, start it with a private
+/// PID directory; never bypass the wrapper with `python -m elm`:
 ///
-///     "$SP/harness/elmvenv/bin/python" -m elm -n 35000 -s car -b batch.log &
+///     ELM_PID_DIR="$(mktemp -d "${TMPDIR:-/tmp}/telltale-elm.XXXXXX")"
+///     chmod 700 "$ELM_PID_DIR"
+///     "$SP/harness/elmvenv/bin/python" tool/ble_test_rig/emulator_entrypoint.py \
+///       --pid-directory "$ELM_PID_DIR" -n 35000 -s car \
+///       -b "$ELM_PID_DIR/batch.log" &
+///     flutter test test/emulator_integration_test.dart \
+///       --dart-define=ELM_ORACLE_REQUIRED=true
 library;
 
 import 'dart:io';
@@ -19,7 +26,8 @@ import 'package:torque_obd/obd/polling_engine.dart';
 import 'package:torque_obd/obd/transport/wifi_transport.dart';
 
 const _host = '127.0.0.1';
-const _port = 35000;
+const _port = int.fromEnvironment('ELM_ORACLE_PORT', defaultValue: 35000);
+const _oracleRequired = bool.fromEnvironment('ELM_ORACLE_REQUIRED');
 
 /// Whether the thing on the port is the oracle these tests were written for.
 ///
@@ -37,8 +45,11 @@ const _port = 35000;
 Future<bool> _oracleIsIrcama() async {
   Socket? socket;
   try {
-    socket = await Socket.connect(_host, _port,
-        timeout: const Duration(seconds: 2));
+    socket = await Socket.connect(
+      _host,
+      _port,
+      timeout: const Duration(seconds: 2),
+    );
     final replies = StringBuffer();
     socket.listen(
       (bytes) => replies.write(String.fromCharCodes(bytes)),
@@ -104,11 +115,17 @@ void main() {
   /// so in the same numbers as a real one.
   bool oracleReady() {
     if (available) return true;
+    const message =
+        'Ircama/ELM327-emulator not answering on $_host:$_port. Start '
+        '`tool/ble_test_rig/emulator_entrypoint.py` with an owner-only '
+        '`--pid-directory`; do not invoke `python -m elm` directly. A '
+        'different simulator on that port is not valid for these fixtures.';
+    if (_oracleRequired) {
+      fail(message);
+    }
     markTestSkipped(
-      'Ircama/ELM327-emulator not answering on $_host:$_port — start it '
-      'with `python3 -m elm -n $_port -b out.log`. A different simulator on '
-      'that port is skipped rather than failed: it answers these fixtures '
-      'differently, and a red result would blame this app for that.',
+      '$message Re-run with `--dart-define=ELM_ORACLE_REQUIRED=true` when '
+      'collecting oracle evidence so this condition is a failure.',
     );
     return false;
   }
@@ -135,8 +152,11 @@ void main() {
       await sub.cancel();
 
       final trace = progress.values
-          .map((p) => '${p.step.command}=${p.status.name}'
-              '${p.detail == null ? '' : '(${p.detail})'}')
+          .map(
+            (p) =>
+                '${p.step.command}=${p.status.name}'
+                '${p.detail == null ? '' : '(${p.detail})'}',
+          )
           .join(', ');
 
       expect(ok, isTrue, reason: 'handshake trace: $trace');
@@ -168,8 +188,7 @@ void main() {
       expect(vin, hasLength(17));
     });
 
-    test('an unanswered scan is a failure, never a clean bill of health',
-        () async {
+    test('an unanswered scan is a failure, never a clean bill of health', () async {
       if (!oracleReady()) return;
       // This emulator does not model functional addressing: with `7DF`
       // selected it answers Mode 03 with `NO DATA`, though it answers the same
@@ -199,8 +218,7 @@ void main() {
       );
     });
 
-    test('a reply with the wrong service byte is refused, not decoded',
-        () async {
+    test('a reply with the wrong service byte is refused, not decoded', () async {
       if (!oracleReady()) return;
       // This oracle answers Mode 03 inconsistently — `41 00` in one state,
       // `43 00` in another — and its author documents that it deliberately
@@ -221,8 +239,11 @@ void main() {
       if (response.bytes.first == 0x43) {
         // A well-formed answer: a healthy vehicle, decoded honestly.
         expect(
-          DtcDecoder.decodeResponse(response.bytes, DtcKind.stored,
-              hasCountByte: true),
+          DtcDecoder.decodeResponse(
+            response.bytes,
+            DtcKind.stored,
+            hasCountByte: true,
+          ),
           isEmpty,
         );
       } else {

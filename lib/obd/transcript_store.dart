@@ -61,7 +61,7 @@ class StoredTranscript {
 /// Reads and writes the one snapshot.
 class TranscriptStore {
   TranscriptStore({Future<Directory> Function()? directory})
-      : _directory = directory ?? getApplicationDocumentsDirectory;
+    : _directory = directory ?? getApplicationDocumentsDirectory;
 
   /// Injected so a test can point this somewhere disposable. Documents rather
   /// than the temporary directory, which the system is free to clear exactly
@@ -79,14 +79,14 @@ class TranscriptStore {
   /// refusing to overwrite a simulator recording is nothing.
   static const _hardwareMarker = '#### HARDWARE ';
 
-  Future<File> _file() async =>
-      File('${(await _directory()).path}/$_fileName');
+  Future<File> _file() async => File('${(await _directory()).path}/$_fileName');
 
   /// Writes [transcript] under [header], replacing whatever was there.
   ///
   /// Never throws. A snapshot that fails to save must not take down the
   /// session it was recording — the in-memory copy is still the primary one,
-  /// and this is the belt to its braces.
+  /// and this is the belt to its braces. Returns false on a storage failure so
+  /// a manual event marker can avoid claiming it was persisted.
   ///
   /// [fromRealHardware] decides whether it may replace a recording made from
   /// one. It may not, and the scenario is the ordinary one rather than a
@@ -98,17 +98,21 @@ class TranscriptStore {
   /// with no prompt and nothing on screen having mentioned that a recording
   /// existed. A session with no hardware in it has no diagnostic value about a
   /// car, and it must not be able to destroy one that has.
-  Future<void> save(
+  Future<bool> save(
     ObdTranscript transcript,
     String header, {
     required bool fromRealHardware,
   }) async {
+    // Capture before the first await. Storage lookup and the demo-vs-hardware
+    // guard can both yield long enough for live OBD traffic to arrive; a save
+    // requested by an event marker must describe that exact moment.
+    final snapshot = transcript.frozenCopy();
     try {
-      if (transcript.isEmpty) return;
+      if (snapshot.isEmpty) return true;
       final file = await _file();
       if (!fromRealHardware) {
         final existing = await load();
-        if (existing != null && existing.fromRealHardware) return;
+        if (existing != null && existing.fromRealHardware) return true;
       }
       // Written whole, to a temporary neighbour, then renamed. A process that
       // dies midway through writing this file would otherwise replace a
@@ -120,13 +124,15 @@ class TranscriptStore {
         '$_hardwareMarker${fromRealHardware ? '1' : '0'}\n'
         '$header'
         '$_headerMarker\n'
-        '${transcript.renderHex()}',
+        '${snapshot.renderHex()}',
         flush: true,
       );
       await staging.rename(file.path);
+      return true;
     } on Object {
       // Deliberately silent. There is nothing a driver could do about it and
       // nothing this app should stop doing because of it.
+      return false;
     }
   }
 
@@ -149,10 +155,11 @@ class TranscriptStore {
         final markerEnd = text.indexOf('\n', bodyStart);
         if (markerEnd < 0) return null;
         fromRealHardware =
-            text.substring(bodyStart + _hardwareMarker.length, markerEnd) != '0';
+            text.substring(bodyStart + _hardwareMarker.length, markerEnd) !=
+            '0';
         bodyStart = markerEnd + 1;
       }
-      final split = text.indexOf(_headerMarker, bodyStart);
+      final split = _standaloneHeaderMarker(text, bodyStart);
       if (split < 0) return null;
       return StoredTranscript(
         fromRealHardware: fromRealHardware,
@@ -163,6 +170,18 @@ class TranscriptStore {
     } on Object {
       return null;
     }
+  }
+
+  /// Finds the header/body sentinel only when it occupies a complete line.
+  ///
+  /// Adapter identity strings are untrusted and may contain the sentinel text
+  /// as ordinary data. Treating any substring as the delimiter would truncate
+  /// that header and move the remainder into the recovered transcript.
+  static int _standaloneHeaderMarker(String text, int start) {
+    if (text.startsWith('$_headerMarker\n', start)) return start;
+    const markerLine = '\n$_headerMarker\n';
+    final precedingBreak = text.indexOf(markerLine, start);
+    return precedingBreak < 0 ? -1 : precedingBreak + 1;
   }
 
   /// Removes the snapshot. Called once the user has taken it away.

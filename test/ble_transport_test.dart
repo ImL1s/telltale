@@ -280,6 +280,10 @@ void main() {
 
       expect(transport.isConnected, isTrue);
       expect(fake.inputProperties, [BleInputProperty.indication]);
+      expect(
+        transport.diagnosticMetadata,
+        containsPair('subscriptionKind', 'indication'),
+      );
     });
 
     test('a notify-capable adapter subscribes to notifications', () async {
@@ -287,6 +291,28 @@ void main() {
       await transport.connect();
 
       expect(fake.inputProperties, [BleInputProperty.notification]);
+      expect(transport.diagnosticMetadata, containsPair('requestedMtu', 185));
+      expect(
+        transport.diagnosticMetadata,
+        containsPair('mtuRequestOutcome', 'succeeded'),
+      );
+      expect(
+        transport.diagnosticMetadata,
+        containsPair('selectedServiceUuid', _nordicService),
+      );
+      expect(
+        transport.diagnosticMetadata,
+        containsPair('selectedWriteCharacteristicUuid', _nordicWrite),
+      );
+      expect(
+        transport.diagnosticMetadata,
+        containsPair('selectedNotifyCharacteristicUuid', _nordicNotify),
+      );
+      expect(
+        transport.diagnosticMetadata,
+        containsPair('subscriptionKind', 'notification'),
+      );
+      expect(transport.diagnosticMetadata, isNot(contains('negotiatedMtu')));
     });
 
     test('a refused MTU costs throughput, not the link', () async {
@@ -300,6 +326,10 @@ void main() {
 
       expect(fake.requestedMtu, 185);
       expect(transport.isConnected, isTrue);
+      expect(
+        transport.diagnosticMetadata,
+        containsPair('mtuRequestOutcome', 'failed'),
+      );
     });
 
     test('a device with no serial endpoint is refused and the link released',
@@ -469,6 +499,18 @@ void main() {
       expect(entries.single.$2, contains(_deviceId));
     });
 
+    test('keeps a missing scan RSSI unknown', () async {
+      fake.advertisements = [
+        BleDevice(deviceId: _deviceId, name: 'OBDII', rssi: null),
+      ];
+
+      final entries = await BleTransport.scanEntries(
+        timeout: const Duration(milliseconds: 50),
+      ).toList();
+
+      expect(entries.single.$3, isNull);
+    });
+
     test('closes when the scan deadline expires, and stops the radio',
         () async {
       // The scan itself takes no duration: there is no plugin-side timer and
@@ -513,6 +555,14 @@ void main() {
     test('falls back to the address when the remembered name is empty', () {
       const remembered = BleAdapterHandle(id: _deviceId, name: '');
       expect(BleTransport(remembered).displayName, _deviceId);
+    });
+
+    test('scan RSSI is evidence, not part of adapter identity', () {
+      const first = BleAdapterHandle(id: _deviceId, name: 'OBDII', rssi: -55);
+      const later = BleAdapterHandle(id: _deviceId, name: 'OBDII', rssi: -72);
+
+      expect(first, later);
+      expect(first.hashCode, later.hashCode);
     });
   });
 }

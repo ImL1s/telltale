@@ -64,35 +64,35 @@ enum Elm327ErrorCode {
 
   /// Message for the connection status strip. Written for a driver.
   String get description => switch (this) {
-        Elm327ErrorCode.none => '',
-        // Not "the vehicle does not support this".
-        //
-        // `NO DATA` is the *adapter* saying nothing arrived before its own
-        // timeout — a busy ECU, a receive filter, or one aggressive timing
-        // window produces it exactly as an absent sensor does. Reading it as a
-        // capability claim is the mistake this whole codebase is organised
-        // against, and it was still being told to the user in those words.
-        //
-        // It is also used for whole *services*: a Mode 03 fault-code read that
-        // goes unanswered surfaced as "this vehicle does not support that
-        // PID", in the same tree that says elsewhere, correctly, that silence
-        // is not a clean answer.
-        Elm327ErrorCode.noData => '沒有收到回應（可能是暫時無回應，或車輛不支援）',
-        Elm327ErrorCode.busInitError => '匯流排初始化失敗',
-        Elm327ErrorCode.canError => 'CAN 匯流排錯誤',
-        Elm327ErrorCode.unableToConnect => '無法與 ECU 通訊，請確認電門已開啟',
-        Elm327ErrorCode.stopped => '傳輸被中斷',
-        Elm327ErrorCode.bufferFull => '轉接器緩衝區溢位',
-        Elm327ErrorCode.busBusy => '匯流排忙碌',
-        Elm327ErrorCode.busError => '匯流排錯誤，可能是接線問題',
-        Elm327ErrorCode.dataError => '收到的資料不正確',
-        Elm327ErrorCode.feedbackError => '訊號回授錯誤',
-        Elm327ErrorCode.lowVoltageReset => '電壓過低導致轉接器重置',
-        Elm327ErrorCode.activityAlert => '匯流排活動警示',
-        Elm327ErrorCode.lowPowerAlert => '轉接器即將進入低功耗模式',
-        Elm327ErrorCode.internalError => '轉接器內部錯誤',
-        Elm327ErrorCode.unknownCommand => '轉接器不支援此指令',
-      };
+    Elm327ErrorCode.none => '',
+    // Not "the vehicle does not support this".
+    //
+    // `NO DATA` is the *adapter* saying nothing arrived before its own
+    // timeout — a busy ECU, a receive filter, or one aggressive timing
+    // window produces it exactly as an absent sensor does. Reading it as a
+    // capability claim is the mistake this whole codebase is organised
+    // against, and it was still being told to the user in those words.
+    //
+    // It is also used for whole *services*: a Mode 03 fault-code read that
+    // goes unanswered surfaced as "this vehicle does not support that
+    // PID", in the same tree that says elsewhere, correctly, that silence
+    // is not a clean answer.
+    Elm327ErrorCode.noData => '沒有收到回應（可能是暫時無回應，或車輛不支援）',
+    Elm327ErrorCode.busInitError => '匯流排初始化失敗',
+    Elm327ErrorCode.canError => 'CAN 匯流排錯誤',
+    Elm327ErrorCode.unableToConnect => '無法與 ECU 通訊，請確認電門已開啟',
+    Elm327ErrorCode.stopped => '傳輸被中斷',
+    Elm327ErrorCode.bufferFull => '轉接器緩衝區溢位',
+    Elm327ErrorCode.busBusy => '匯流排忙碌',
+    Elm327ErrorCode.busError => '匯流排錯誤，可能是接線問題',
+    Elm327ErrorCode.dataError => '收到的資料不正確',
+    Elm327ErrorCode.feedbackError => '訊號回授錯誤',
+    Elm327ErrorCode.lowVoltageReset => '電壓過低導致轉接器重置',
+    Elm327ErrorCode.activityAlert => '匯流排活動警示',
+    Elm327ErrorCode.lowPowerAlert => '轉接器即將進入低功耗模式',
+    Elm327ErrorCode.internalError => '轉接器內部錯誤',
+    Elm327ErrorCode.unknownCommand => '轉接器不支援此指令',
+  };
 }
 
 /// One parsed reply.
@@ -285,16 +285,16 @@ class ObdResponse {
   });
 
   ObdResponse withHeadersEnabled(bool value) => ObdResponse(
-        rawLines: rawLines,
-        hexPayload: hexPayload,
-        bytes: bytes,
-        frames: frames,
-        errorCode: errorCode,
-        batteryVoltage: batteryVoltage,
-        headersEnabled: value,
-        attributedSources: attributedSources,
-        observedFrames: observedFrames,
-      );
+    rawLines: rawLines,
+    hexPayload: hexPayload,
+    bytes: bytes,
+    frames: frames,
+    errorCode: errorCode,
+    batteryVoltage: batteryVoltage,
+    headersEnabled: value,
+    attributedSources: attributedSources,
+    observedFrames: observedFrames,
+  );
 
   bool get isSuccess => errorCode == Elm327ErrorCode.none;
 
@@ -400,7 +400,7 @@ class Elm327Client {
   /// The handshake.
   ///
   /// Two deliberate departures from the spec's table — both documented in
-  /// `SPEC_DEVIATIONS.md`:
+  /// `docs/protocol-deviations.zh-TW.md`:
   ///
   ///  * `ATCRA 7B0` is **omitted**. With the transmit header set to `7E0`, the
   ///    ECU answers on `7E8`; filtering receives to `7B0` would discard every
@@ -508,6 +508,7 @@ class Elm327Client {
   Completer<bool>? _draining;
   StreamSubscription<List<int>>? _rxSub;
   StreamSubscription<bool>? _connectionSub;
+  bool _transportLost = false;
   Timer? _watchdog;
 
   /// When the last command was written, regardless of whether it is still
@@ -563,14 +564,17 @@ class Elm327Client {
     // seconds back. The suspension does not extend what the caller asked for.
     if (_pending != null) {
       _pendingTimeout?.cancel();
-      _pendingTimeout =
-          Timer(_withinDeadline(commandTimeout), _onCommandTimeout);
+      _pendingTimeout = Timer(
+        _withinDeadline(commandTimeout),
+        _onCommandTimeout,
+      );
     }
   }
 
   String deviceVersion = '';
   String deviceIdentity = '';
   String protocolDescription = '';
+
   /// Everything that crossed the wire this connection.
   ///
   /// Always recording, not a developer switch. The one thing a person cannot
@@ -587,8 +591,10 @@ class Elm327Client {
   /// character is a hex digit — and one hex digit on its own is not a byte
   /// pair, which is why this needs a rule of its own rather than the general
   /// reply parser's.
-  static final RegExp _protocolNumberLine =
-      RegExp(r'^A?[0-9A-Ca-c]$', caseSensitive: false);
+  static final RegExp _protocolNumberLine = RegExp(
+    r'^A?[0-9A-Ca-c]$',
+    caseSensitive: false,
+  );
   double? _batteryVoltage;
   DateTime? _batteryVoltageAt;
 
@@ -633,9 +639,11 @@ class Elm327Client {
   /// Connects the transport and runs the handshake. Returns false if a step
   /// marked critical failed.
   Future<bool> connect() async {
+    _transportLost = false;
     await transport.connect();
     transcript.recordNote(
-        '連線建立：${transport.displayName}（${transport.kind.label}）', DateTime.now());
+      '連線建立：${transport.displayName}（${transport.kind.label}）',
+    );
     _rxSub = transport.incoming.listen(_onBytes);
 
     // React to the link dropping the moment the transport notices, rather than
@@ -643,12 +651,18 @@ class Elm327Client {
     // OBD port reports disconnection immediately; the watchdog is the backstop
     // for links that go quiet without saying so.
     _connectionSub = transport.connectionChanges.listen((connected) {
-      if (connected || !isInitialized) return;
+      if (connected) return;
+      _transportLost = true;
+      final wasInitialized = isInitialized;
       isInitialized = false;
       _watchdog?.cancel();
       _watchdog = null;
       _failPending(const TransportException('連線已中斷。'));
-      onConnectionLost?.call();
+      // During the handshake, failing the pending command lets connect() and
+      // its caller publish the precise failed-attempt state. Only a session
+      // that had already completed initialization needs the asynchronous
+      // connection-lost callback and generation teardown.
+      if (wasInitialized) onConnectionLost?.call();
     });
 
     lastRxAt = DateTime.now();
@@ -656,9 +670,11 @@ class Elm327Client {
     if (ok) {
       await _readProgrammableParameters();
       await _disambiguateDualWidthRendering();
-      _startWatchdog();
+      if (isInitialized && !_transportLost && transport.isConnected) {
+        _startWatchdog();
+      }
     }
-    return ok;
+    return ok && isInitialized && !_transportLost && transport.isConnected;
   }
 
   /// Asks the adapter how it is configured, once, and tolerates a refusal.
@@ -689,8 +705,9 @@ class Elm327Client {
       ppsProbe = reply.errorCode == Elm327ErrorCode.unknownCommand
           ? PpsProbe.refused
           : PpsProbe.read;
-      programmableParameters =
-          ProgrammableParameters.parse(reply.rawLines.join('\n'));
+      programmableParameters = ProgrammableParameters.parse(
+        reply.rawLines.join('\n'),
+      );
     } on Object {
       // Unread, which is the state every consumer already handles.
       ppsProbe = PpsProbe.unavailable;
@@ -707,10 +724,10 @@ class Elm327Client {
   /// parameters. (A popular identification app is reported to have bricked an
   /// STN1170 by writing them, which is a strong argument for reading only.)
   AdapterIdentity get adapterIdentity => AdapterIdentity(
-        version: deviceVersion,
-        identity: deviceIdentity,
-        pps: ppsProbe,
-      );
+    version: deviceVersion,
+    identity: deviceIdentity,
+    pps: ppsProbe,
+  );
 
   /// Turns the byte spaces back on when the identifier width is ambiguous.
   ///
@@ -740,9 +757,7 @@ class Elm327Client {
     try {
       final reply = await send('ATS1');
       if (_saidOk(reply)) {
-        transcript.recordNote(
-            '此匯流排同時接受 11/29 位識別碼，已開啟位元組空白以避免歧義',
-            DateTime.now());
+        transcript.recordNote('此匯流排同時接受 11/29 位識別碼，已開啟位元組空白以避免歧義');
       }
     } on Object {
       // An adapter that will not do it leaves the parser's refusal in place.
@@ -778,7 +793,7 @@ class Elm327Client {
     // invisible downstream and every one of them is what somebody would be
     // looking for. `_onBytes(const [])` is also how this class re-enters
     // itself to drain a buffered second reply; an empty chunk records nothing.
-    transcript.recordRead(chunk, lastRxAt);
+    transcript.recordRead(chunk);
     // The datasheet notes an ELM327 may occasionally insert a NULL byte into
     // the stream and instructs host software to discard them. With a
     // whitelist parser a stray 0x00 inside `41 0C 1A F8` invalidates the whole
@@ -862,8 +877,10 @@ class Elm327Client {
     if (seen <= _pendingSeen) return;
     _pendingSeen = seen;
     _pendingTimeout?.cancel();
-    _pendingTimeout =
-        Timer(_withinDeadline(responsePendingTimeout), _onCommandTimeout);
+    _pendingTimeout = Timer(
+      _withinDeadline(responsePendingTimeout),
+      _onCommandTimeout,
+    );
   }
 
   /// How many `7F xx 78` replies this exchange has already been extended for.
@@ -956,9 +973,7 @@ class Elm327Client {
     _pendingTimeout?.cancel();
     _pendingTimeout = Timer(_withinDeadline(protocolSearchTimeout), () {
       _outOfSync = true;
-      _failPending(
-        TimeoutException('協定搜尋逾時，車輛可能未開啟電門', protocolSearchTimeout),
-      );
+      _failPending(TimeoutException('協定搜尋逾時，車輛可能未開啟電門', protocolSearchTimeout));
     });
   }
 
@@ -1097,9 +1112,7 @@ class Elm327Client {
     // screen that has gone — is refused at the *first* write of its exchange,
     // which is where the decision belongs.
     if (!completesCommittedTransaction && !(mayTransmit?.call(owner) ?? true)) {
-      throw const OperationRetiredException(
-        '這個工作階段已經結束或退到背景，指令沒有送出。',
-      );
+      throw const OperationRetiredException('這個工作階段已經結束或退到背景，指令沒有送出。');
     }
     // The caller's budget, applied to each write rather than to the operation
     // as a whole.
@@ -1167,7 +1180,7 @@ class Elm327Client {
       // Recorded before the write, not after it. A write that never returns is
       // the case worth having on record, and recording on success would be the
       // one time the transcript stays silent.
-      transcript.recordWrite(wire, DateTime.now());
+      transcript.recordWrite(wire);
       await transport.write(wire).timeout(_withinDeadline(writeTimeout));
     } on Object catch (e) {
       // …and taken back only when the transport says it never started.
@@ -1259,9 +1272,7 @@ class Elm327Client {
   /// marked out of sync and resynchronised before anything else is sent.
   void _onCommandTimeout() {
     _outOfSync = true;
-    _failPending(
-      TimeoutException('等待回應逾時', commandTimeout),
-    );
+    _failPending(TimeoutException('等待回應逾時', commandTimeout));
   }
 
   /// Waits out whatever the adapter still owes us, then clears the desync.
@@ -1279,7 +1290,7 @@ class Elm327Client {
     // Worth a line of its own. A resync is the app saying the stream is out of
     // step, and the bytes around it read very differently once you know that
     // is what was happening.
-    transcript.recordNote('連線不同步，開始重新對齊', DateTime.now());
+    transcript.recordNote('連線不同步，開始重新對齊');
     _buffer.clear();
     final drain = Completer<bool>();
     _draining = drain;
@@ -1319,9 +1330,7 @@ class Elm327Client {
     if (!sawPrompt && window < resyncTimeout) {
       // The rest of the window this client allows, minus what was spent.
       _resyncGraceUntil = started.add(resyncTimeout);
-      throw TimeoutException(
-        '這次操作的時間上限到了，連線同步尚未完成。請重新操作。',
-      );
+      throw TimeoutException('這次操作的時間上限到了，連線同步尚未完成。請重新操作。');
     }
     if (!sawPrompt) {
       // Clearing the flag here — which is what this method used to do
@@ -1347,9 +1356,7 @@ class Elm327Client {
       _watchdog?.cancel();
       _watchdog = null;
       scheduleMicrotask(() => onConnectionLost?.call());
-      throw const TransportException(
-        '轉接器沒有回應同步請求，連線已中斷。請重新連線。',
-      );
+      throw const TransportException('轉接器沒有回應同步請求，連線已中斷。請重新連線。');
     }
     _outOfSync = false;
   }
@@ -1413,7 +1420,8 @@ class Elm327Client {
           // Proceeding past that sends the query on whatever header the adapter
           // really holds, and the answer comes back from the wrong ECU looking
           // exactly like the right one.
-          final acknowledged = ack.isSuccess &&
+          final acknowledged =
+              ack.isSuccess &&
               ack.rawLines.any((l) => l.trim().toUpperCase() == 'OK');
           if (!acknowledged) {
             throw TransportException('轉接器拒絕切換標頭 $header');
@@ -1421,8 +1429,13 @@ class Elm327Client {
           _currentHeader = header;
           committed = true;
         }
-        completer.complete(await _sendNow(command, timeout ?? commandTimeout,
-            completesCommittedTransaction: committed));
+        completer.complete(
+          await _sendNow(
+            command,
+            timeout ?? commandTimeout,
+            completesCommittedTransaction: committed,
+          ),
+        );
       } on Object catch (e, st) {
         if (!completer.isCompleted) completer.completeError(e, st);
       }
@@ -1540,9 +1553,7 @@ class Elm327Client {
         // blocking newer commands and, on a link that stays quiet,
         // disconnecting the session on behalf of work nobody was waiting for.
         if (!(mayTransmit?.call(owner) ?? true)) {
-          throw const OperationRetiredException(
-            '這個工作階段已經結束或退到背景，指令沒有送出。',
-          );
+          throw const OperationRetiredException('這個工作階段已經結束或退到背景，指令沒有送出。');
         }
         if (deadline != null && !deadline.isAfter(DateTime.now())) {
           throw TimeoutException('已超過這次操作的時間上限，$command 沒有送出。');
@@ -1586,14 +1597,22 @@ class Elm327Client {
           // reaches the bus; the caller decides what an unattributed reply
           // entitles it to claim.
           final legacyHeadersWereOn = _headersOn;
-          final legacyHeadersOn =
-              _saidOk(await _sendNow('ATH1', commandTimeout,
-                  owner: owner, deadline: deadline));
+          final legacyHeadersOn = _saidOk(
+            await _sendNow(
+              'ATH1',
+              commandTimeout,
+              owner: owner,
+              deadline: deadline,
+            ),
+          );
           try {
             completer.complete(
-              (await _sendNow(command, timeout ?? globalTimeout,
-                      owner: owner, deadline: deadline))
-                  .withHeadersEnabled(legacyHeadersOn || legacyHeadersWereOn),
+              (await _sendNow(
+                command,
+                timeout ?? globalTimeout,
+                owner: owner,
+                deadline: deadline,
+              )).withHeadersEnabled(legacyHeadersOn || legacyHeadersWereOn),
             );
           } finally {
             if (legacyHeadersOn && !legacyHeadersWereOn) {
@@ -1609,21 +1628,21 @@ class Elm327Client {
                 }
               }
               if (canRestore) {
-              // A refusal is not a desynchronisation.
-              //
-              // `_sendNow` returning at all means the prompt arrived, so the
-              // stream is in step — the adapter simply declined to turn
-              // headers off. Marking the link out of sync sent the *next*
-              // command into `_resync`, which drains waiting for a prompt from
-              // a command nobody issued, times out after three seconds, and
-              // tears the session down. A fault-code scan would succeed and
-              // every gauge would then disconnect three seconds later.
-              //
-              // Nothing needs recovering. `_applyRenderingState` only commits
-              // `_headersOn` on a literal `OK`, so the model still says headers
-              // are on, which is exactly what is true — and the parser handles
-              // headered replies. A timeout is different and still throws,
-              // which is where a real desync would be caught.
+                // A refusal is not a desynchronisation.
+                //
+                // `_sendNow` returning at all means the prompt arrived, so the
+                // stream is in step — the adapter simply declined to turn
+                // headers off. Marking the link out of sync sent the *next*
+                // command into `_resync`, which drains waiting for a prompt from
+                // a command nobody issued, times out after three seconds, and
+                // tears the session down. A fault-code scan would succeed and
+                // every gauge would then disconnect three seconds later.
+                //
+                // Nothing needs recovering. `_applyRenderingState` only commits
+                // `_headersOn` on a literal `OK`, so the model still says headers
+                // are on, which is exactly what is true — and the parser handles
+                // headered replies. A timeout is different and still throws,
+                // which is where a real desync would be caught.
                 // Explicitly exempt, because omitting `owner` never was.
                 // `mayTransmit(null)` is still consulted and the production gate
                 // refuses *every* owner while the app is backgrounded — so a scan
@@ -1631,8 +1650,11 @@ class Elm327Client {
                 // the rest of the session, and the poll loop pays those bytes on
                 // every reply. Restoring state this exchange changed is the one
                 // write that must outlive the exchange.
-                await _sendNow('ATH0', commandTimeout,
-                    completesCommittedTransaction: true);
+                await _sendNow(
+                  'ATH0',
+                  commandTimeout,
+                  completesCommittedTransaction: true,
+                );
               }
             }
           }
@@ -1653,9 +1675,15 @@ class Elm327Client {
         // `ATH1`-refusing adapter from working into a hard error.
         final headersWereOn = _headersOn;
         final headersOn =
-            _saidOk(await _sendNow('ATH1', commandTimeout,
-                    owner: owner, deadline: deadline)) ||
-                headersWereOn;
+            _saidOk(
+              await _sendNow(
+                'ATH1',
+                commandTimeout,
+                owner: owner,
+                deadline: deadline,
+              ),
+            ) ||
+            headersWereOn;
 
         try {
           // Unknown from the moment the write leaves. Same rule as
@@ -1663,17 +1691,24 @@ class Elm327Client {
           // does not mean the adapter kept the old header, so the model must
           // stop claiming to know which one it holds.
           _currentHeader = null;
-          final ack = await _sendNow('ATSH $functional', commandTimeout,
-              owner: owner, deadline: deadline);
+          final ack = await _sendNow(
+            'ATSH $functional',
+            commandTimeout,
+            owner: owner,
+            deadline: deadline,
+          );
           if (!_saidOk(ack)) {
             throw TransportException('轉接器拒絕切換為功能定址 $functional');
           }
           _currentHeader = functional;
 
           completer.complete(
-            (await _sendNow(command, timeout ?? globalTimeout,
-                    owner: owner, deadline: deadline))
-                .withHeadersEnabled(headersOn),
+            (await _sendNow(
+              command,
+              timeout ?? globalTimeout,
+              owner: owner,
+              deadline: deadline,
+            )).withHeadersEnabled(headersOn),
           );
         } finally {
           // Restore the quieter rendering for the polling loop, which does not
@@ -1730,8 +1765,11 @@ class Elm327Client {
               // the rest of the session, and the poll loop pays those bytes on
               // every reply. Restoring state this exchange changed is the one
               // write that must outlive the exchange.
-              await _sendNow('ATH0', commandTimeout,
-                  completesCommittedTransaction: true);
+              await _sendNow(
+                'ATH0',
+                commandTimeout,
+                completesCommittedTransaction: true,
+              );
             }
           }
         }
@@ -1836,7 +1874,10 @@ class Elm327Client {
       _emitProgress(step, i, InitStatus.running);
 
       try {
-        final response = await send(step.command, timeout: const Duration(seconds: 4));
+        final response = await send(
+          step.command,
+          timeout: const Duration(seconds: 4),
+        );
         _captureIdentity(step.command, response);
 
         // `?` from an optional probe such as AT@1 means "this adapter does not
@@ -1849,13 +1890,18 @@ class Elm327Client {
         if (!response.isSuccess && step.isCritical) {
           allCriticalPassed = false;
           // The sentence, not the identifier.
-        //
-        // This rendered as 初始化在 0100 失敗（unableToConnect） — a Dart enum
-        // name in English inside a Chinese sentence, at the exact moment
-        // somebody is standing at a car deciding whether the app is broken.
-        // Every code already carries a driver-facing description a few
-        // hundred lines up; they were written and never used here.
-        _emitProgress(step, i, InitStatus.failed, response.errorCode.description);
+          //
+          // This rendered as 初始化在 0100 失敗（unableToConnect） — a Dart enum
+          // name in English inside a Chinese sentence, at the exact moment
+          // somebody is standing at a car deciding whether the app is broken.
+          // Every code already carries a driver-facing description a few
+          // hundred lines up; they were written and never used here.
+          _emitProgress(
+            step,
+            i,
+            InitStatus.failed,
+            response.errorCode.description,
+          );
           continue;
         }
 
@@ -1886,8 +1932,9 @@ class Elm327Client {
       }
     }
 
-    isInitialized = allCriticalPassed;
-    return allCriticalPassed;
+    isInitialized =
+        allCriticalPassed && !_transportLost && transport.isConnected;
+    return isInitialized;
   }
 
   /// Picks the first line that is not the adapter echoing our own command.
@@ -1935,8 +1982,10 @@ class Elm327Client {
     // Unknown counts as "not handled", which costs one redundant request and
     // cannot cost a fault code.
     if (programmableParameters.responsePendingHandled != true) return false;
-    final match = RegExp(r'ELM327\s+v?(\d+)\.(\d+)', caseSensitive: false)
-        .firstMatch(deviceVersion);
+    final match = RegExp(
+      r'ELM327\s+v?(\d+)\.(\d+)',
+      caseSensitive: false,
+    ).firstMatch(deviceVersion);
     if (match == null) return false;
     final major = int.tryParse(match.group(1)!) ?? 0;
     final minor = int.tryParse(match.group(2)!) ?? 0;
@@ -2002,17 +2051,21 @@ class Elm327Client {
   }
 
   String? _detailFor(String command) => switch (command) {
-        'ATZ' || 'ATI' => deviceVersion,
-        'AT@1' => deviceIdentity,
-        'ATRV' => batteryVoltage != null
-            ? '${batteryVoltage!.toStringAsFixed(1)} V'
-            : null,
-        'ATDP' => protocolDescription,
-        'ATDPN' => protocolNumber,
-        _ => null,
-      };
+    'ATZ' || 'ATI' => deviceVersion,
+    'AT@1' => deviceIdentity,
+    'ATRV' =>
+      batteryVoltage != null ? '${batteryVoltage!.toStringAsFixed(1)} V' : null,
+    'ATDP' => protocolDescription,
+    'ATDPN' => protocolNumber,
+    _ => null,
+  };
 
-  void _emitProgress(InitStep step, int index, InitStatus status, [String? detail]) {
+  void _emitProgress(
+    InitStep step,
+    int index,
+    InitStatus status, [
+    String? detail,
+  ]) {
     if (_initProgress.isClosed) return;
     _initProgress.add(
       InitProgress(
@@ -2107,6 +2160,7 @@ class Elm327Client {
   // ------------------------------------------------------------- parsing ----
 
   static final RegExp _seqPrefix = RegExp(r'^[0-9A-Fa-f]{1,2}:\s*');
+
   /// `ATRV` answers `12.6V`. The `V` must follow the digits immediately and the
   /// value must be a plausible battery voltage — a looser pattern reads the
   /// version banner `ELM327 v2.1` as 327 volts, because `327` is followed by a
@@ -2127,17 +2181,20 @@ class Elm327Client {
   /// does not match a plain byte-pair line — the whole point is telling the two
   /// renderings apart, because with headers off the address is absent and with
   /// them on it must not be read as data.
-  static final RegExp _headeredCanLine =
-      RegExp(r'^([0-9A-Fa-f]{3}|[0-9A-Fa-f]{8})((?: ?[0-9A-Fa-f]{2})+)$');
+  static final RegExp _headeredCanLine = RegExp(
+    r'^([0-9A-Fa-f]{3}|[0-9A-Fa-f]{8})((?: ?[0-9A-Fa-f]{2})+)$',
+  );
 
   /// The two CAN widths, separately, for callers that know which bus they are
   /// on. [_headeredCanLine] accepts either and must not be used where the
   /// width is known, because the wrong alternative will happily consume
   /// payload as an address.
-  static final RegExp _headeredCan11Line =
-      RegExp(r'^([0-9A-Fa-f]{3})((?: ?[0-9A-Fa-f]{2})+)$');
-  static final RegExp _headeredCan29Line =
-      RegExp(r'^([0-9A-Fa-f]{8})((?: ?[0-9A-Fa-f]{2})+)$');
+  static final RegExp _headeredCan11Line = RegExp(
+    r'^([0-9A-Fa-f]{3})((?: ?[0-9A-Fa-f]{2})+)$',
+  );
+  static final RegExp _headeredCan29Line = RegExp(
+    r'^([0-9A-Fa-f]{8})((?: ?[0-9A-Fa-f]{2})+)$',
+  );
 
   /// Whether [check] is the right check byte for [message] on this bus.
   ///
@@ -2193,8 +2250,9 @@ class Elm327Client {
   /// on every non-CAN bus even with `ATH1` — which, once global operations
   /// began *requiring* attribution, would have refused every legacy fault-code
   /// scan outright.
-  static final RegExp _headeredLegacyLine =
-      RegExp(r'^([0-9A-Fa-f]{6})((?: ?[0-9A-Fa-f]{2})+)$');
+  static final RegExp _headeredLegacyLine = RegExp(
+    r'^([0-9A-Fa-f]{6})((?: ?[0-9A-Fa-f]{2})+)$',
+  );
 
   /// Every controller address visible in [lines], whatever else is wrong.
   ///
@@ -2206,10 +2264,11 @@ class Elm327Client {
   /// and this set is read as an answer — `attributedSources` feeds "somebody
   /// replied", and a fragment of headerless payload has not replied.
   Set<String> _sourcesIn(List<String> lines) => Set.unmodifiable(
-      _observedFramesIn(lines)
-          .where((f) => f.evidence != ObservedEvidence.candidate)
-          .map((f) => f.sourceId!)
-          .where((id) => id.isNotEmpty));
+    _observedFramesIn(lines)
+        .where((f) => f.evidence != ObservedEvidence.candidate)
+        .map((f) => f.sourceId!)
+        .where((id) => id.isNotEmpty),
+  );
 
   /// What could be *identified* in [lines], with payloads kept.
   ///
@@ -2292,8 +2351,8 @@ class Elm327Client {
       final legacy = isLegacy ? _headeredLegacyLine.firstMatch(stripped) : null;
       final headered = isLegacy
           ? (legacy == null
-              ? null
-              : (id: legacy.group(1)!, payload: legacy.group(2)!))
+                ? null
+                : (id: legacy.group(1)!, payload: legacy.group(2)!))
           : _canLine(stripped);
       if (headered != null) {
         final id = headered.id.toUpperCase();
@@ -2363,16 +2422,18 @@ class Elm327Client {
           continue;
         } else {
           final operand = isLegacy ? _legacyOperand(body) : _canOperand(body);
-          frames.add(ObdFrame(
-            body,
-            sourceId: isLegacy ? _legacyResponder(id) : id,
-            service: service,
-            payload: payload,
-            operand: operand,
-            evidence: service == null
-                ? ObservedEvidence.present
-                : ObservedEvidence.answered,
-          ));
+          frames.add(
+            ObdFrame(
+              body,
+              sourceId: isLegacy ? _legacyResponder(id) : id,
+              service: service,
+              payload: payload,
+              operand: operand,
+              evidence: service == null
+                  ? ObservedEvidence.present
+                  : ObservedEvidence.answered,
+            ),
+          );
           continue;
         }
       }
@@ -2392,13 +2453,15 @@ class Elm327Client {
       final compact = stripped.replaceAll(' ', '').toUpperCase();
       final id = _speculativeSourceIn(compact, isLegacy: isLegacy);
       if (id == null) continue;
-      frames.add(ObdFrame(
-        const [],
-        sourceId: id,
-        evidence: knownResponders.contains(id)
-            ? ObservedEvidence.present
-            : ObservedEvidence.candidate,
-      ));
+      frames.add(
+        ObdFrame(
+          const [],
+          sourceId: id,
+          evidence: knownResponders.contains(id)
+              ? ObservedEvidence.present
+              : ObservedEvidence.candidate,
+        ),
+      );
     }
     return List.unmodifiable(frames);
   }
@@ -2479,7 +2542,10 @@ class Elm327Client {
     // Stripped here as well as on arrival: an ELM327 can insert a NULL anywhere
     // in the stream, and one landing mid-line would otherwise fail the hex
     // whitelist and discard a perfectly good reply.
-    final text = ascii.decode(frame.where((b) => b != 0x00).toList(), allowInvalid: true);
+    final text = ascii.decode(
+      frame.where((b) => b != 0x00).toList(),
+      allowInvalid: true,
+    );
     final lines = text
         .split(String.fromCharCode(_crByte))
         .map((l) => l.trim())
@@ -2518,7 +2584,8 @@ class Elm327Client {
         rawLines: lines,
         errorCode: error,
         attributedSources: Set.unmodifiable(
-            observed.map((f) => f.sourceId!).where((id) => id.isNotEmpty)),
+          observed.map((f) => f.sourceId!).where((id) => id.isNotEmpty),
+        ),
         observedFrames: observed,
       );
     }
@@ -2582,8 +2649,7 @@ class Elm327Client {
       // mistake in the other direction.
       final looksHeadered = lines.any((l) {
         final trimmed = l.trim();
-        return _headeredCanLine.hasMatch(trimmed) ||
-            _canLine(trimmed) != null;
+        return _headeredCanLine.hasMatch(trimmed) || _canLine(trimmed) != null;
       });
       if (headered.isSuccess || looksHeadered) return headered;
     }
@@ -2654,10 +2720,10 @@ class Elm327Client {
   /// not data.
   ObdResponse _parseMultiFrame(List<String> lines, double? volts) {
     ObdResponse reject() => ObdResponse(
-          rawLines: lines,
-          errorCode: Elm327ErrorCode.dataError,
-          batteryVoltage: volts,
-        );
+      rawLines: lines,
+      errorCode: Elm327ErrorCode.dataError,
+      batteryVoltage: volts,
+    );
 
     int? declared;
     final segments = <List<int>>[];
@@ -2720,8 +2786,9 @@ class Elm327Client {
     // Longer is normal — the final CAN frame is zero-padded to eight bytes —
     // but only the declared length is payload.
     final payload = assembled.sublist(0, declared);
-    final hexPayload =
-        payload.map((b) => b.toRadixString(16).toUpperCase().padLeft(2, '0')).join();
+    final hexPayload = payload
+        .map((b) => b.toRadixString(16).toUpperCase().padLeft(2, '0'))
+        .join();
 
     return ObdResponse(
       rawLines: lines,
@@ -2824,9 +2891,13 @@ class Elm327Client {
         damaged = true;
         continue;
       }
-      frames.add(ObdFrame(payload,
+      frames.add(
+        ObdFrame(
+          payload,
           sourceId: _legacyResponder(match.group(1)!.toUpperCase()),
-          service: _serviceOfPayload(payload)));
+          service: _serviceOfPayload(payload),
+        ),
+      );
     }
     // No legacy frame at all means this was not a legacy reply; fall through
     // rather than judging it. Damage only counts once attribution is
@@ -2872,10 +2943,7 @@ class Elm327Client {
   /// payload is a negative response with code `78`. A refusal with any other
   /// code is terminal and must not be discarded.
   static bool _isPendingSingleFrame(List<int> body) =>
-      body.length >= 4 &&
-      body[0] == 0x03 &&
-      body[1] == 0x7F &&
-      body[3] == 0x78;
+      body.length >= 4 && body[0] == 0x03 && body[1] == 0x7F && body[3] == 0x78;
 
   /// The service a *payload* is about, once the framing is off it.
   static int? _serviceOfPayload(List<int> payload) {
@@ -3057,14 +3125,15 @@ class Elm327Client {
     // Deterministic order. It no longer decides anything, but a set's
     // iteration order must not decide which damaged reading is reported
     // either.
-    final ordered = [
-      if (widths.isEmpty) ...const [3, 8] else ...widths,
-    ]..sort((a, b) {
-        final own = addressing.headerHexDigits;
-        if (a == own) return -1;
-        if (b == own) return 1;
-        return b - a;
-      });
+    final ordered =
+        [
+          if (widths.isEmpty) ...const [3, 8] else ...widths,
+        ]..sort((a, b) {
+          final own = addressing.headerHexDigits;
+          if (a == own) return -1;
+          if (b == own) return 1;
+          return b - a;
+        });
 
     final shaped = <({String id, String payload})>[];
     ({String id, String payload})? firstSeen;
@@ -3187,10 +3256,12 @@ class Elm327Client {
     return (id: match.group(1)!, payload: payload);
   }
 
-  static final RegExp _dlcCan11Line =
-      RegExp(r'^([0-9A-Fa-f]{3}) ?([0-9A-Fa-f])((?: ?[0-9A-Fa-f]{2})+)$');
-  static final RegExp _dlcCan29Line =
-      RegExp(r'^([0-9A-Fa-f]{8}) ?([0-9A-Fa-f])((?: ?[0-9A-Fa-f]{2})+)$');
+  static final RegExp _dlcCan11Line = RegExp(
+    r'^([0-9A-Fa-f]{3}) ?([0-9A-Fa-f])((?: ?[0-9A-Fa-f]{2})+)$',
+  );
+  static final RegExp _dlcCan29Line = RegExp(
+    r'^([0-9A-Fa-f]{8}) ?([0-9A-Fa-f])((?: ?[0-9A-Fa-f]{2})+)$',
+  );
 
   ObdResponse _parseHeaderedCan(List<String> lines, double? volts) {
     // Read from every line up front, so that rejecting on the *first* damaged
@@ -3198,12 +3269,12 @@ class Elm327Client {
     // happened to answer in.
     final canSources = _sourcesIn(lines);
     ObdResponse reject() => ObdResponse(
-          rawLines: lines,
-          errorCode: Elm327ErrorCode.dataError,
-          attributedSources: canSources,
-          observedFrames: _observedFramesIn(lines),
-          batteryVoltage: volts,
-        );
+      rawLines: lines,
+      errorCode: Elm327ErrorCode.dataError,
+      attributedSources: canSources,
+      observedFrames: _observedFramesIn(lines),
+      batteryVoltage: volts,
+    );
 
     final groups = <String, List<List<int>>>{};
     final order = <String>[];
@@ -3291,15 +3362,23 @@ class Elm327Client {
         }
         final service = _serviceOf(body);
         // Answered by a later terminal message about the same service…
-        final answered = bodies.skip(i + 1).any((later) =>
-            !_isPendingSingleFrame(later) && _serviceOf(later) == service);
+        final answered = bodies
+            .skip(i + 1)
+            .any(
+              (later) =>
+                  !_isPendingSingleFrame(later) && _serviceOf(later) == service,
+            );
         // …or superseded by a later `7F xx 78` about it, which the standard
         // says restarts the five-second window. A controller saying "still
         // working" twice is one controller still working; keeping both frames
         // handed the reassembler two single frames for one source and turned
         // continuing work into `DATA ERROR`.
-        final restated = bodies.skip(i + 1).any((later) =>
-            _isPendingSingleFrame(later) && _serviceOf(later) == service);
+        final restated = bodies
+            .skip(i + 1)
+            .any(
+              (later) =>
+                  _isPendingSingleFrame(later) && _serviceOf(later) == service,
+            );
         if (!answered && !restated) kept.add(body);
       }
       if (kept.isNotEmpty && kept.length != bodies.length) groups[id] = kept;
@@ -3309,8 +3388,13 @@ class Elm327Client {
     for (final id in order) {
       final assembled = _reassembleIsoTp(groups[id]!);
       if (assembled == null) return reject();
-      frames.add(ObdFrame(assembled,
-          sourceId: id, service: _serviceOfPayload(assembled)));
+      frames.add(
+        ObdFrame(
+          assembled,
+          sourceId: id,
+          service: _serviceOfPayload(assembled),
+        ),
+      );
     }
 
     // `bytes` is the first responder's message. Anything that must cope with
@@ -3413,7 +3497,9 @@ class Elm327Client {
       if (upper.contains(entry.key)) return entry.value;
     }
     // `ERR` followed by two hex digits is the ELM327's internal fault report.
-    if (RegExp(r'\bERR\d{2}\b').hasMatch(upper)) return Elm327ErrorCode.internalError;
+    if (RegExp(r'\bERR\d{2}\b').hasMatch(upper)) {
+      return Elm327ErrorCode.internalError;
+    }
     // A bare `?` is the adapter rejecting the command. Only treat it as an
     // error when it is the entire reply, since `?` can legitimately appear
     // inside a version banner.

@@ -39,10 +39,15 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: write
 
 env:
   FLUTTER_VERSION: "3.47.0"
+  # Reviewed community-signing lineage from v1.0.3-beta.1. Comparing only the
+  # APK with the secret keystore would let an accidentally uploaded Play,
+  # debug, or rotated key validate itself.
+  COMMUNITY_CERT_SHA256: "7e97b3dd0b3f11a9a593cf8d182d49032490022938cecaafde90b53d5825414d"
 
 jobs:
   apk:
@@ -53,22 +58,98 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Resolve and validate the release tag
+        id: release_tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::Release tag must be vX.Y.Z or vX.Y.Z-prerelease; got $TAG"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$TAG" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # An exact tag ref prevents a same-named branch from winning checkout
+          # during workflow_dispatch.
+          ref: refs/tags/${{ steps.release_tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
-      - run: flutter pub get
+      - name: Verify tag, main head, and app version agree
+        env:
+          TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]
+          tag_version_name=${BASH_REMATCH[1]}
+          pub_version=$(awk '$1 == "version:" { print $2; exit }' pubspec.yaml)
+          version_name=${pub_version%%+*}
+          version_code=${pub_version##*+}
+          if [ -z "$pub_version" ] || [ "$version_name" = "$pub_version" ] ||
+             ! [[ "$version_code" =~ ^[0-9]+$ ]]; then
+            echo "::error::pubspec.yaml must contain version: X.Y.Z+N"
+            exit 1
+          fi
+          if [ "$tag_version_name" != "$version_name" ]; then
+            echo "::error::Tag $TAG does not match pubspec versionName $version_name"
+            exit 1
+          fi
+
+          tag_ref="refs/tags/$TAG"
+          git show-ref --verify --quiet "$tag_ref"
+          tag_commit=$(git rev-list -n 1 "$tag_ref")
+          head_commit=$(git rev-parse HEAD)
+          git fetch --no-tags origin \
+            +refs/heads/main:refs/remotes/origin/main
+          main_commit=$(git rev-parse refs/remotes/origin/main)
+          if [ "$head_commit" != "$tag_commit" ] || [ "$head_commit" != "$main_commit" ]; then
+            echo "::error::Release tag must peel to the current main head"
+            echo "tag=$tag_commit checkout=$head_commit main=$main_commit"
+            exit 1
+          fi
+
+          printf 'APP_VERSION=%s\nAPP_VERSION_NAME=%s\nAPP_VERSION_CODE=%s\nCOMMIT_SHA=%s\n' \
+            "$pub_version" "$version_name" "$version_code" "$head_commit" \
+            >> "$GITHUB_ENV"
+
+      - name: Require successful exact-head main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          runs=$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f branch=main \
+            -f event=push \
+            -f status=success \
+            -f head_sha="$COMMIT_SHA" \
+            -f per_page=100)
+          run_url=$(jq -r --arg sha "$COMMIT_SHA" \
+            '[.workflow_runs[] | select(.head_sha == $sha and .conclusion == "success")] | first | .html_url // empty' \
+            <<< "$runs")
+          if [ -z "$run_url" ]; then
+            echo "::error::No successful main CI push run exists for $COMMIT_SHA"
+            exit 1
+          fi
+          echo "exact-head CI: $run_url"
+
+      - run: |
+          flutter pub get
+          git diff --exit-code -- pubspec.lock
 
       # Nothing is published from a tree that has not passed. A release build is
       # the one artifact where "the tests were probably fine" is not good enough,
@@ -107,50 +188,81 @@ jobs:
           # unreadable keystore fails much later and much less legibly.
           keytool -list -keystore android/community.jks \
             -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
-          echo "signing key loaded"
+          key_fingerprint=$(keytool -list -v -keystore android/community.jks \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" \
+            | awk -F': ' '/SHA256:/ { gsub(":", "", $2); print tolower($2); exit }')
+          if [ "$key_fingerprint" != "$COMMUNITY_CERT_SHA256" ]; then
+            echo "::error::The restored keystore is not the reviewed community key"
+            echo "expected=$COMMUNITY_CERT_SHA256 actual=${key_fingerprint:-missing}"
+            exit 1
+          fi
+          echo "reviewed community signing key loaded"
 
       # One universal APK rather than per-ABI splits. Splits are a third the
       # size, but they also mean a person sideloading has to know which of four
       # files matches their phone, and picking wrong gives an install error with
       # no explanation. One file that always works is the right default for an
       # audience that is here because they did not want to build it themselves.
-      - run: flutter build apk --release
+      - run: flutter build apk --release --flavor field
 
       - name: Describe what was built
         id: describe
         run: |
           set -euo pipefail
-          APK=build/app/outputs/flutter-apk/app-release.apk
+          APK=build/app/outputs/flutter-apk/app-field-release.apk
           test -f "$APK"
-          echo "sha256=$(sha256sum "$APK" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "size=$(du -h "$APK" | cut -f1)" >> "$GITHUB_OUTPUT"
 
-          # Publish the signing certificate's fingerprint. It is what lets
-          # somebody confirm that a later download came from the same key as the
-          # one they already trusted, without taking this file's word for it.
-          #
-          # Best-effort: apksigner's location is a property of the runner image,
-          # not of this project, and a release must not fail to publish because
-          # a convenience line could not be computed.
-          FP="unavailable on this runner"
-          BUILD_TOOLS=$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/* 2>/dev/null | sort -V | tail -1 || true)
-          if [ -n "$BUILD_TOOLS" ] && [ -x "$BUILD_TOOLS/apksigner" ]; then
-            FP=$("$BUILD_TOOLS/apksigner" verify --print-certs "$APK" \
-                   | grep -i 'SHA-256 digest' | head -1 | awk '{print $NF}') || FP="unavailable"
+          sdk_root=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
+          test -n "$sdk_root"
+          build_tools=$(find "$sdk_root/build-tools" -mindepth 1 -maxdepth 1 \
+            -type d | sort -V | tail -n 1)
+          test -n "$build_tools"
+          AAPT=$build_tools/aapt
+          APKSIGNER=$build_tools/apksigner
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+
+          badging=$($AAPT dump badging "$APK")
+          grep -Fq "package: name='com.cbstudio.telltale' versionCode='$APP_VERSION_CODE' versionName='$APP_VERSION_NAME'" \
+            <<< "$badging"
+          grep -Fq "application-label:'Telltale'" <<< "$badging"
+          if grep -Eiq "com\.cbstudio\.telltale\.rig|Telltale Rig|versionName='[^']*-rig" \
+              <<< "$badging"; then
+            echo "::error::A rig identity reached the field release path"
+            exit 1
           fi
-          echo "fingerprint=$FP" >> "$GITHUB_OUTPUT"
 
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > apk-certs.txt
+          apk_fingerprint=$(awk -F': ' \
+            'tolower($1) ~ /signer #[0-9]+ certificate sha-256 digest/ { print tolower($2); exit }' \
+            apk-certs.txt)
+          key_fingerprint=$(keytool -list -v -keystore android/community.jks \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" \
+            | awk -F': ' '/SHA256:/ { gsub(":", "", $2); print tolower($2); exit }')
+          test -n "$apk_fingerprint"
+          test -n "$key_fingerprint"
+          test "$apk_fingerprint" = "$key_fingerprint"
+          test "$apk_fingerprint" = "$COMMUNITY_CERT_SHA256"
+
+          {
+            echo "sha256=$(sha256sum "$APK" | cut -d' ' -f1)"
+            echo "size=$(du -h "$APK" | cut -f1)"
+            echo "fingerprint=$apk_fingerprint"
+            echo "version=$APP_VERSION"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.COMMUNITY_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.COMMUNITY_KEY_ALIAS }}
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
           set -euo pipefail
-          cp build/app/outputs/flutter-apk/app-release.apk \
+          cp build/app/outputs/flutter-apk/app-field-release.apk \
              "telltale-${TAG}.apk"
+          sha256sum "telltale-${TAG}.apk" > SHA256SUMS
 
           # SemVer says everything after the first hyphen is a pre-release
           # identifier. v1.0.1 is a release; v1.0.1-beta.1 is not.
@@ -164,24 +276,23 @@ jobs:
             cat >> notes.md <<'PRE'
           > **Pre-release.** What has been verified, and what has not:
           >
-          > - Every screen walked against the built-in demo simulator, and the
-          >   protocol layer run in CI against an ELM327 simulator this project did
-          >   not write — plus a second one, on the private side, whose server
-          >   cannot be published.
-          > - **Never connected to a real vehicle.** Bluetooth LE is verified as
-          >   far as scanning and permissions; no ELM327 adapter of any kind has
-          >   been connected to this build.
-          > - `TEST_EVIDENCE.md` and `DEVICE_VERIFICATION.md` record exactly what
-          >   was checked, including the checks that turned out to be worthless.
+          > - The protocol layer passes the simulated ELM327 rigs, including
+          >   framing and fault-injection checks.
+          > - A physical Samsung phone completed a real Bluetooth LE/GATT session
+          >   over the phone's and Mac's actual radios against the Mac-hosted rig.
+          > - **Not yet verified:** the purchased CAR25 adapter, any other physical
+          >   ELM327 adapter, a vehicle ECU/CAN bus, or a real vehicle.
+          > - `docs/verification/test-evidence.md` and
+          >   `docs/verification/device-verification.md` record the exact boundary.
           >
           > If you have an adapter and a car, this is the build to try. Settings →
           > 匯出紀錄 exports a verbatim transcript of everything the adapter said;
           > an issue with that file attached is the most useful thing you can send.
           >
-          > **預發行版本。** 每個畫面都對內建模擬器走過，協定層在 CI 裡跑過一個
-          > 第三方 ELM327 模擬器（私有端還有第二個，它的 server 無法公開），
-          > 但**從未連過真車** —— 藍牙 LE 只驗到掃描與權限，
-          > 沒有連過任何一顆 ELM327 轉接器。有轉接器又有車的話，這就是該試的版本；
+          > **預發行版本。** 模擬 ELM327、分段與故障注入測試已通過；Samsung 實體手機
+          > 也已用真實藍牙無線電與 Android GATT，連上 Mac 主機的 BLE rig。
+          > 但 CAR25／購買的實體轉接器、車輛 ECU／CAN 與真車仍未驗證。
+          > 詳細證據界線見 `docs/verification/`。有轉接器又有車的話，這就是該試的版本；
           > 出問題請到「設定 → 匯出紀錄」把逐字紀錄存下來，附在 issue 裡送回來。
 
           PRE
@@ -205,9 +316,10 @@ jobs:
           **This build is signed with the community key, not the Google Play
           key.** It therefore cannot update — and cannot be updated by — an
           install that came from the Play Store; Android will refuse with a
-          signature mismatch. Uninstall one before installing the other. The two
-          keys are separate on purpose: sharing them would let anything that
-          compromised CI publish a replacement for a store install.
+          signature mismatch. Export any diagnostic records you need before
+          switching: uninstalling removes Telltale's local app data. The two keys
+          are separate on purpose: sharing them would let anything that compromised
+          CI publish a replacement for a store install.
 
           Verify before installing:
 
@@ -222,16 +334,23 @@ jobs:
 
           **這份是社群簽章金鑰簽的，不是 Google Play 的上架金鑰。** 所以它無法用來更新
           從 Play 商店安裝的版本，反之亦然 —— Android 會以簽章不符拒絕。要換過去請先解除
-          安裝。兩把金鑰刻意分開：共用的話，任何入侵 CI 的人就能發布一個能取代商店安裝的版本。
+          安裝；解除安裝會刪除 Telltale 本機資料，請先匯出要保留的診斷紀錄。兩把金鑰刻意
+          分開：共用的話，任何入侵 CI 的人就能發布一個能取代商店安裝的版本。
 
           安裝前請先核對 SHA-256。
           EOF
 
-          gh release create "$TAG" "telltale-${TAG}.apk" \
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; published assets are immutable by policy"
+            exit 1
+          fi
+
+          release_args=()
+          [ -n "$PRERELEASE" ] && release_args+=("$PRERELEASE")
+          gh release create "$TAG" "telltale-${TAG}.apk" SHA256SUMS \
             --title "Telltale ${TAG}" \
             --notes-file notes.md \
-            --verify-tag $PRERELEASE || \
-          gh release upload "$TAG" "telltale-${TAG}.apk" --clobber
+            --verify-tag "${release_args[@]}"
 
       - name: Shred the signing material
         if: always()

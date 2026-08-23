@@ -795,7 +795,7 @@ void main() {
       // cruise", a measurement, and exporting it for "not known" put a
       // fabricated input into the derived power figures.
       //
-      // The gap reset itself is **not covered**, and `TEST_EVIDENCE.md` says
+      // The gap reset itself is **not covered**, and `docs/verification/test-evidence.md` says
       // so rather than this file pretending otherwise. Isolating it needs an
       // observable that survives `accelerationMaxAge`, which expires the value
       // after two seconds anyway — so a naive "assert null after a 4s gap"
@@ -2445,7 +2445,7 @@ void main() {
     // A test that passes either way is worse than none — it is the exact
     // failure mode this file's header is about — so it was removed rather than
     // adjusted until it went green. The guard is reasoned, not demonstrated,
-    // and `TEST_EVIDENCE.md` says so.
+    // and `docs/verification/test-evidence.md` says so.
 
     test('R7 H-07: a backgrounded session puts nothing on the bus', () async {
       // Lifecycle was checked by the callers, which is not where the bytes go
@@ -4681,7 +4681,7 @@ void main() {
         () async {
       // Cursor/Grok, round 23. The existing test asserted that `ATCRA` and
       // `ATCFC0` are absent from `initSequence` — a list — which stays true if
-      // `connect()` emitted them as extras. `SPEC_DEVIATIONS.md` exists
+      // `connect()` emitted them as extras. `docs/protocol-deviations.zh-TW.md` exists
       // because those two commands break real vehicles: `ATCRA 7B0` filters
       // the ECU's replies away, and `ATCFC0` disables the flow control ISO
       // 15765-4 requires, stopping every reply longer than seven bytes at its
@@ -6338,7 +6338,7 @@ void main() {
   group('a request built from a definition that is gone', () {
     test('R8-7: an old queued request does not write the new definition',
         () async {
-      // `TEST_EVIDENCE.md` listed this guard as "reasoned, not demonstrated":
+      // `docs/verification/test-evidence.md` listed this guard as "reasoned, not demonstrated":
       // the first test written for it passed with the guard removed, because
       // at the moment the definitions were swapped no request from the old set
       // happened to be outstanding, and the scheduler offers no way to say
@@ -7248,7 +7248,7 @@ void main() {
   });
 
   group('an adapter that cannot attribute is not an adapter that lies', () {
-    // Round 7, and the closing half of a gap `TEST_EVIDENCE.md` had recorded
+    // Round 7, and the closing half of a gap `docs/verification/test-evidence.md` had recorded
     // as awaiting hardware. It never needed hardware — only for two states to
     // stop sharing one branch. The gate read `functionalHeader == null`, a
     // stand-in for "is this legacy", which would have silently begun
@@ -8258,7 +8258,7 @@ void main() {
     /// The attribution gates take their flag from an exact-`44` test, so both
     /// of these reached the user as an adapter-limitation notice with 清除
     /// still live — over a bus where a controller was mid-erase or had just
-    /// finished. `FIELD_GUIDE.md` tells people a live button means nothing was
+    /// finished. `docs/field-guide.zh-TW.md` tells people a live button means nothing was
     /// cleared.
     for (final probe in const [
       (label: 'response-pending', reply: '7F 04 78'),

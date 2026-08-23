@@ -2,7 +2,7 @@
 ///
 /// Every formula and range here was cross-checked against the SAE J1979
 /// standard values rather than taken from the reverse-engineering spec alone —
-/// see `SPEC_DEVIATIONS.md`. Where the spec and the standard agreed, the shared
+/// see `docs/protocol-deviations.zh-TW.md`. Where the spec and the standard agreed, the shared
 /// value is used; nothing in this table is spec-only.
 library;
 

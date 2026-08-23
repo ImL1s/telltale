@@ -7,8 +7,40 @@
 順序是有意義的：**第 1 步一定要在 build 之前**，第 5 節那道閘門一定要在上傳
 之前。中間的步驟可以查著做，那兩個不行。
 
-以下相對路徑與指令都以 `app/` 為工作目錄；從 repository 根目錄開始時先執行
-`cd app`。
+以下相對路徑與指令都以 Flutter App 根目錄為工作目錄：在私有 `torque` checkout
+先執行 `cd app`；公開 `telltale` checkout 的 repository 根目錄本身就是 App 根目錄。
+
+---
+
+## 0. GitHub community APK 與 Google Play 是兩條發布線
+
+公開 [`ImL1s/telltale`](https://github.com/ImL1s/telltale) 的 tag 會觸發
+`.github/workflows/release.yml`，由 GitHub Actions 內的 **community key** 產生
+universal `field` APK。這把金鑰不是 Play upload key；兩邊的 APK 不能
+相互覆蓋安裝，這是故意的安全邊界。
+
+GitHub APK 發布順序：
+
+1. 只在私有 `torque/app/` 修改，依 `CLAUDE.md` 的 fail-closed rsync recipe
+   單向同步到公開 repo；不得 force-push。
+2. 確認公開 `main` 的 exact-head CI 通過，而且 `pubspec.yaml` 的
+   `versionName` 與 tag 主版號一致。
+3. 尚未完成購買轉接器／實車驗證時使用預發行 tag，例如
+   `v1.0.4-beta.1`；不得用穩定版 tag 隱藏這個缺口。
+4. 推送 annotated tag，等 Release workflow 自己測試、建置、簽章與上傳：
+
+   ```bash
+   git tag -a v1.0.4-beta.1 -m "Telltale v1.0.4 beta 1"
+   git push origin v1.0.4-beta.1
+   ```
+
+5. 從 GitHub Release **重新下載** APK，核對 SHA-256、套件
+   `com.cbstudio.telltale`、versionCode／versionName、community certificate fingerprint，
+   再安裝到測試手機啟動。Release workflow 的產物才是公開來源；
+   **不要上傳**本機 Play-key `app-field-release.apk`、debug APK 或 `rig` APK。
+
+這些步驟只宣告 GitHub community APK 發布。它不等於 Google Play
+production、不等於實車驗證，也不等於公開上架已可在每個區域下載。
 
 ---
 
@@ -80,12 +112,12 @@ release 打包任務丟 `GradleException` 而不是靜靜退回 debug 金鑰。�
 ## 3. Build
 
 ```bash
-~/fvm/versions/3.47.0/bin/flutter build appbundle --release
+~/fvm/versions/3.47.0/bin/flutter build appbundle --release --flavor field
 ```
 
 （工具鏈是 Flutter 3.47.0 / Dart 3.13.0，`flutter` 不在 PATH。）
 
-產物在 `build/app/outputs/bundle/release/app-release.aab`。Play 只收 AAB，
+產物在 `build/app/outputs/bundle/fieldRelease/app-field-release.aab`。Play 只收 AAB，
 `--release` 的 APK 是給第 5 節那道閘門用的。
 
 ## 4. Play 上架身分
@@ -107,7 +139,7 @@ release 打包任務丟 `GradleException` 而不是靜靜退回 debug 金鑰。�
 
 原本掛在正式版草稿上的 bundle 是 **versionCode 1，2026-08-17 建的** —— 那是 BLE 套件
 置換**之前**。它裡面是 `flutter_blue_plus`，而該套件的授權 Section 3 明文禁止付費散布
-（見 `SPEC_DEVIATIONS.md` §5）。原始碼修好了，那個已上傳的產物沒有：按下送審就會把整個
+（見 `docs/protocol-deviations.zh-TW.md` §5）。原始碼修好了，那個已上傳的產物沒有：按下送審就會把整個
 置換要避免的違規原封不動送出去，被一個按鈕原地復活。
 
 **歷史快照（2026-08-18；每次送審前都要重新讀 Play Console）**：正式版的有效草稿
@@ -125,7 +157,7 @@ release 打包任務丟 `GradleException` 而不是靜靜退回 debug 金鑰。�
 1. 確認 `grep -n universal_ble pubspec.yaml` 有命中，而 `flutter_blue_plus` 只出現在
    解釋為什麼不用它的註解裡
 2. 依第 1 節把 `version:` bump（versionCode 只能往上，1 與 2 都已消耗）
-3. 重新 `flutter build appbundle --release`
+3. 重新 `flutter build appbundle --release --flavor field`
 4. 上傳新 AAB 並確認軌道頁顯示的「有效草稿版本」就是它
 5. 走第 5 節的實機閘門，才輪到送審
 
@@ -135,13 +167,13 @@ release 打包任務丟 `GradleException` 而不是靜靜退回 debug 金鑰。�
 這一步。**
 
 release rollout 是不可逆的：按下去那一秒使用者就看到 bug 了。而這個 App 的
-測試套件從來沒有連過真的 ELM327、也沒有連過車（見 `TEST_EVIDENCE.md`），所以
+測試套件從來沒有連過真的 ELM327、也沒有連過車（見 `docs/verification/test-evidence.md`），所以
 「綠燈」能保證的範圍比直覺小得多。
 
 ```bash
-~/fvm/versions/3.47.0/bin/flutter build apk --release
+~/fvm/versions/3.47.0/bin/flutter build apk --release --flavor field
 ADB=~/Library/Android/sdk/platform-tools/adb
-$ADB install -r -g build/app/outputs/flutter-apk/app-release.apk
+$ADB install -r -g build/app/outputs/flutter-apk/app-field-release.apk
 ```
 
 裝的必須是 **release** 建置，不是 debug —— 簽章、以及那道會在缺 keystore 時
@@ -157,7 +189,7 @@ $ADB install -r -g build/app/outputs/flutter-apk/app-release.apk
 
 ## 5.5 你裝的那個 APK，不是使用者會拿到的那個
 
-第 5 節那條 `flutter build apk --release` 產出的東西，**跟 Play 發給測試人員的
+第 5 節那條 `flutter build apk --release --flavor field` 產出的東西，**跟 Play 發給測試人員的
 產物是兩個不同的檔案**，差在兩個地方，兩個都可能自己壞掉：
 
 **一、簽章。** 這個 App 開了 **Play App Signing**，所以有兩把金鑰：
