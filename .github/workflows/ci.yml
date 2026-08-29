@@ -93,6 +93,32 @@ jobs:
             exit 1
           fi
 
+  vehicle-catalogs:
+    name: vehicle catalogs — offline updater tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.4"
+          architecture: x64
+
+      # These checks are deliberately offline. Live official-source freshness
+      # checks are a maintainer operation, not a deterministic pull-request gate.
+      - name: Compile and test vehicle catalog updaters
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            tool/update_us_vehicle_catalog.py \
+            tool/update_us_vpic_makes.py
+          python3 -m unittest discover \
+            -s test/tool -p 'test_*.py' -v
+
   apple:
     name: Apple compile gates
     runs-on: macos-latest
