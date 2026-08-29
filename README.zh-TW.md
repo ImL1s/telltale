@@ -12,6 +12,20 @@ OBD2 故障診斷。它的設計原則是誠實呈現不確定性，不把格式
 
 > **一個看起來合理的錯數字，比沒有數字更糟。**
 
+## App 截圖與實車示範
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ImL1s/telltale/main/store/01-connect.png" width="30%" alt="Telltale 連線方式畫面">
+  <img src="https://raw.githubusercontent.com/ImL1s/telltale/main/store/02-dashboard.png" width="30%" alt="Telltale 即時遙測儀表板">
+  <img src="https://raw.githubusercontent.com/ImL1s/telltale/main/store/03-dtc-freeze.png" width="30%" alt="Telltale Demo ECU 故障碼與凍結幀畫面">
+</p>
+
+[![觀看 Toyota GT86 與 BLE ELM327 隱私遮蔽示範](https://raw.githubusercontent.com/ImL1s/telltale/main/store/feature-1024x500.png)](https://youtu.be/Ugyg4RXhjVQ)
+
+**[在 YouTube 觀看 Toyota GT86 與 BLE ELM327 實車示範](https://youtu.be/Ugyg4RXhjVQ)。**
+影片記錄一組 Samsung 手機、轉接器與車輛的實際連線，實車 VIN 已遮蔽；這是該組合
+的實測證據，不代表所有手機、轉接器或車輛都相容。
+
 ## 下載與安裝
 
 **[前往 GitHub Releases 下載 APK](https://github.com/ImL1s/telltale/releases)。**

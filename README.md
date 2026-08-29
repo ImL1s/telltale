@@ -13,6 +13,21 @@ into confident-looking results.
 
 > **A plausible wrong number is worse than no number.**
 
+## Screenshots and vehicle demo
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ImL1s/telltale/main/store/01-connect.png" width="30%" alt="Telltale connection screen">
+  <img src="https://raw.githubusercontent.com/ImL1s/telltale/main/store/02-dashboard.png" width="30%" alt="Telltale live telemetry dashboard">
+  <img src="https://raw.githubusercontent.com/ImL1s/telltale/main/store/03-dtc-freeze.png" width="30%" alt="Telltale Demo ECU fault-code and freeze-frame screen">
+</p>
+
+[![Watch the privacy-safe Toyota GT86 and BLE ELM327 demo](https://raw.githubusercontent.com/ImL1s/telltale/main/store/feature-1024x500.png)](https://youtu.be/Ugyg4RXhjVQ)
+
+**[Watch the Toyota GT86 and BLE ELM327 demo on YouTube](https://youtu.be/Ugyg4RXhjVQ).**
+It shows one real Samsung, adapter, and vehicle combination. The vehicle VIN is
+redacted; the demo is evidence for that observed setup, not a universal
+compatibility claim.
+
 ## Download and install
 
 **[Download an APK from GitHub Releases](https://github.com/ImL1s/telltale/releases).**
