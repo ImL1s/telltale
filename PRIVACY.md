@@ -1,6 +1,6 @@
 # Telltale 隱私權政策
 
-最後更新：2026 年 8 月 24 日
+最後更新：2026 年 8 月 29 日
 
 ## 一句話版本
 
@@ -22,7 +22,7 @@ Telltale 不會收集個人資料，也不會把任何資料傳送到我們或�
 
 | 內容 | 為什麼 |
 |---|---|
-| 你的車輛設定（排氣量、車重、風阻係數等） | 推算馬力與油耗需要 |
+| 你的車輛設定（排氣量、車重、風阻係數與逐欄來源等） | 推算馬力與油耗需要；來源資訊用來避免把預設值說成官方規格 |
 | 你自訂的 PID 定義 | 這是你寫的東西 |
 | 上次使用的轉接器與 Wi-Fi 位址 | 下次不用再找一遍 |
 | 介面設定（深色／淺色、儀表樣式） | 記住你的選擇 |
@@ -43,6 +43,8 @@ ELM327 轉接器開啟一條 TCP 連線 —— 那是一個區域位址（通常
 `192.168.0.10:35000`），Android 沒有更精確的權限可以表達「只連本地」。
 
 App 不會發出任何其他網路要求。你可以在飛航模式下（開著藍牙）完整使用它。
+官方車型目錄與來源 manifest 已包在 App 內；只有維護者更新原始碼快照的工具會下載
+官方公開資料，安裝在手機上的 App 不會送出 VIN 或車型搜尋。
 
 ## 權限說明
 
@@ -91,7 +93,7 @@ Telltale 以 GPL-3.0 授權開放原始碼。本政策所述的每一項，你�
 
 # Telltale Privacy Policy
 
-Last updated: 24 August 2026
+Last updated: 29 August 2026
 
 ## In one sentence
 
@@ -105,9 +107,10 @@ initiates is to the ELM327 adapter you configure.
 
 ## What the app stores on your device
 
-Vehicle profile, your custom PID definitions, the last adapter used, interface
-preferences, and a diagnostic transcript of the most recent session. These are
-written to the app's private storage and are not sent to our servers.
+Vehicle profile and its per-field source references, your custom PID
+definitions, the last adapter used, interface preferences, and a diagnostic
+transcript of the most recent session. These are written to the app's private
+storage and are not sent to our servers.
 
 The **diagnostic transcript** records the raw bytes exchanged with the adapter,
 including the VIN and fault codes the vehicle reports. The app never uploads it
@@ -124,6 +127,10 @@ The `INTERNET` permission is not used to reach the internet. It opens a TCP
 connection to a Wi-Fi ELM327 adapter on a local address — Android has no
 narrower permission for "local network only". The app makes no other network
 requests and works fully in aeroplane mode with Bluetooth on.
+
+The official vehicle catalog and its source manifest are bundled with the app.
+Only the maintainer's source-update tool downloads the public official data;
+the installed app does not transmit a VIN or vehicle search.
 
 ## Permissions
 
