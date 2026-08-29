@@ -31,7 +31,7 @@ compatibility claim.
 ## Download and install
 
 **[Download an APK from GitHub Releases](https://github.com/ImL1s/telltale/releases).**
-Open the newest prerelease and select its `.apk` asset. Release binaries are not
+Open the latest release and select its `.apk` asset. Release binaries are not
 stored in the source tree.
 
 GitHub APKs use a community signing key. They cannot update, or be updated by,

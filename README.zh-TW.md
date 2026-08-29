@@ -29,7 +29,7 @@ OBD2 故障診斷。它的設計原則是誠實呈現不確定性，不把格式
 ## 下載與安裝
 
 **[前往 GitHub Releases 下載 APK](https://github.com/ImL1s/telltale/releases)。**
-打開最新的 prerelease，選擇其中的 `.apk` 檔；原始碼目錄不會保存 release 產物。
+打開最新版本，選擇其中的 `.apk` 檔；原始碼目錄不會保存 release 產物。
 
 GitHub APK 使用社群簽章，無法更新 Google Play 版，也無法由 Play 版直接更新。
 兩者互換時必須先解除安裝；解除安裝會刪除 App 本機資料，請先匯出需要保留的內容。
