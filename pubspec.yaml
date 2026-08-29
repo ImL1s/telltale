@@ -112,6 +112,10 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
 
+  assets:
+    - assets/vehicle_catalog/us_epa_vehicles.csv
+    - assets/vehicle_catalog/us_epa_vehicles.manifest.json
+
   # Fonts are bundled rather than fetched at runtime: demo mode must work with
   # no network, and a runtime fetch shows a fallback-font flash on first frame.
   fonts:

@@ -1,0 +1,48 @@
+{
+  "coverage": {
+    "does_not_assert": [
+      "global make/model completeness",
+      "curb weight",
+      "torque",
+      "drag coefficient",
+      "volumetric efficiency"
+    ],
+    "market": "United States",
+    "model_year_policy": "1984 through the latest configurations in the source snapshot",
+    "vehicle_scope": "FuelEconomy.gov Find-a-Car configurations"
+  },
+  "dataset": "U.S. EPA FuelEconomy.gov Find-a-Car vehicle configurations",
+  "output": {
+    "columns": [
+      "epa_id",
+      "year",
+      "make",
+      "model",
+      "base_model",
+      "transmission",
+      "drive",
+      "fuel_type",
+      "fuel_type_primary",
+      "fuel_type_secondary",
+      "alternative_vehicle_type",
+      "displacement_l",
+      "cylinders",
+      "modified_on"
+    ],
+    "file": "us_epa_vehicles.csv",
+    "row_count": 50242,
+    "sha256": "6dc8aed9232a88844e18f0160e94eeaa75abc0dcf8a36286e3166797f4933331",
+    "size_bytes": 6808484,
+    "unique_make_count": 146,
+    "year_max": 2027,
+    "year_min": 1984
+  },
+  "schema_version": 2,
+  "source": {
+    "archive_url": "https://www.fueleconomy.gov/feg/epadata/vehicles.csv.zip",
+    "landing_page": "https://www.fueleconomy.gov/feg/download.shtml",
+    "last_modified": "Fri, 07 Aug 2026 13:13:33 GMT",
+    "retrieved_at_utc": "2026-08-29T15:08:19+00:00",
+    "sha256": "66a2948c425c3cf8ad61a184a12296099ef368217d3012b3f7531dcc9c5e2649"
+  }
+}

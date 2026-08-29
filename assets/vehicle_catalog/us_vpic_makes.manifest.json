@@ -1,0 +1,32 @@
+{
+  "coverage": {
+    "does_not_assert": [
+      "global brand completeness",
+      "consumer model availability",
+      "vehicle specifications",
+      "physical parameters"
+    ],
+    "identity_semantics": "vPIC make record; entries are not necessarily distinct consumer-facing brands",
+    "market": "United States",
+    "vehicle_scope": "vPIC make/manufacturer identities registered for vehicles intended for sale or importation into the United States"
+  },
+  "dataset": "U.S. NHTSA vPIC make records",
+  "output": {
+    "columns": [
+      "make_id",
+      "make_name"
+    ],
+    "file": "us_vpic_makes.csv",
+    "row_count": 12351,
+    "sha256": "58b84c162e2cb3a47a6245c117002e337a2b00eedab074382d8ff762bea9cda5",
+    "size_bytes": 292986
+  },
+  "schema_version": 1,
+  "source": {
+    "endpoint_url": "https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json",
+    "etag": null,
+    "last_modified": null,
+    "retrieved_at_utc": "2026-08-29T15:11:00+00:00",
+    "sha256": "6efad9b16d1179ff051c450e9abfecefd77319fa08c71af9c90c9aeafeab668a"
+  }
+}

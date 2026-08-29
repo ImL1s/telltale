@@ -1,0 +1,4 @@
+id,year,make,model,baseModel,trany,drive,fuelType,fuelType1,fuelType2,atvType,displ,cylinders,modifiedOn
+300,2024,Zeta Motors,"Comet, Touring",Comet,Automatic 8-spd,All-Wheel Drive,Premium,Premium Gasoline,,Hybrid,2.5,4,2026-08-01
+12,1984,Alpha Auto,One,One,Manual 5-spd,Rear-Wheel Drive,Regular,Regular Gasoline,,,1.6,4,2026-07-01
+205,2020,Beta Works,Volt X,Volt,Automatic (variable gear ratios),Front-Wheel Drive,Electricity,Electricity,,EV,,0,2026-07-15
