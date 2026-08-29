@@ -5,15 +5,40 @@ rounds were manual screen walks; the 2026-08-23 BLE run used Flutter's
 integration-test driver on the same physical phone so a locked screen could not
 turn UI automation into a false negative.
 
-**There is still no purchased ELM327 adapter and no vehicle.** The strongest
-link tested is now a physical Android BLE stack connecting over the air to a Mac
-CoreBluetooth Nordic UART peripheral, with an independent ELM327 emulator behind
-that peripheral. What that does and does not establish is the point of this
-file; `docs/verification/test-evidence.md` covers the automated suite.
+There is now one bounded purchased-adapter and real-vehicle observation. The
+maintainer used the CARLZS LAB `CL-OBDII-M25B` over Bluetooth LE to connect
+Telltale to a Toyota GT86. This does not retroactively turn the historical rig
+rounds below into vehicle evidence, and it does not establish broad adapter or
+GT86 compatibility. What each observation does and does not establish is the
+point of this file; `docs/verification/test-evidence.md` covers the automated
+suite.
 
 Round 9 added a proxy in that socket that logs every byte and can hold a reply
 back, which is how the timing findings were tested and how one of them was
 found to have been testing nothing at all.
+
+## 2026-08-27 — purchased BLE adapter on a Toyota GT86
+
+The maintainer identified the vehicle as a Toyota GT86 and the purchased
+adapter as a CARLZS LAB `CL-OBDII-M25B` (NCC `CCAH22LP5300T8`). On 2026-08-29,
+a fresh inspection of the same Samsung `SM-S9280` found:
+
+- Telltale `1.0.4+5` still installed with the remembered adapter `OBDBLE`;
+- Bluetooth LE recorded as the last transport; and
+- a 407 KB recovered Telltale session dated 2026-08-27 13:36.
+
+The vehicle identity and fact of the GT86 connection come from the maintainer's
+direct field report. The retained phone state independently confirms the exact
+app, phone, adapter label, transport, date, and existence of a substantial
+session record. The raw transcript was not exported or reviewed for this
+documentation update because it can contain VIN and device identifiers.
+
+This closes the earlier blanket gap of “no purchased adapter and no vehicle”
+for **this one connection**. It does not establish the GT86 model year, ECU
+calibration, adapter identity replies, PID accuracy, DTC coverage, sustained
+polling rate, crank behavior, or compatibility with another unit or listing
+revision. See `docs/hardware-compatibility.md` for the public purchase-link and
+affiliate-disclosure boundary.
 
 ## 2026-08-23 — physical Samsung-to-Mac BLE/GATT rig
 
@@ -42,8 +67,9 @@ central writes, and 58 notification chunks; Android logcat independently showed
 the GATT connection, MTU, service discovery, and UART service selection.
 
 This is **physical phone + physical BLE radios + real GATT**, but the peripheral
-and ECU conversation are still test infrastructure. It does not establish the
-purchased CAR25 adapter's firmware/profile/timing, Bluetooth Classic, an
+and ECU conversation in this 2026-08-23 run are still test infrastructure. At
+that time it did not establish the purchased adapter's firmware/profile/timing,
+Bluetooth Classic, an
 indicate-only adapter, a real ECU/CAN response, ignition/crank behavior, Android
 Doze delivery, or any vehicle result. The lifecycle callbacks were injected by
 the test, not delivered by the operating system.
@@ -73,10 +99,10 @@ attached for an isolated Wi-Fi rig run; it is not radio or phone evidence.
 - Rig logs were created owner-only, and the Android rig package/evidence paths
   are isolated and explicitly marked as simulated.
 
-This proves host orchestration and real TCP behavior. It does **not** prove an
-Android permission flow, a second-device GATT connection, the purchased
-adapter's firmware or Bluetooth profile, an ECU response, or any vehicle
-behavior. Those remain separate physical gates.
+This host-only continuation proved orchestration and real TCP behavior. At that
+round it did **not** prove an Android permission flow, a second-device GATT
+connection, the purchased adapter's firmware or Bluetooth profile, an ECU
+response, or any vehicle behavior; those were still separate physical gates.
 
 ## The three links exercised
 
@@ -86,8 +112,9 @@ behavior. Those remain separate physical gates.
 | **Wi-Fi → `Ircama/ELM327-emulator`** | The phone's real `WifiTransport` opening a real TCP socket to an ELM327 implementation nobody here wrote, reached over `adb reverse tcp:35000 tcp:35000`. Protocol handshake, framing, timing and error paths are all its, not ours. |
 | **BLE → CoreBluetooth rig → Ircama** | A physical Samsung phone crossing real BLE radios, Android GATT, Nordic UART discovery/subscription, writes and notifications. The peripheral host and ECU remain simulated. |
 
-Bluetooth Classic and purchased-adapter behavior were exercised only as far as
-an absent adapter allows. The BLE rig goes further, but remains a rig.
+In these pre-purchase rounds, Bluetooth Classic and purchased-adapter behavior
+were exercised only as far as an absent adapter allowed. The BLE rig went
+further, but remained a rig.
 
 ## Verified over the Wi-Fi link
 
@@ -294,11 +321,11 @@ on that build: Wi-Fi handshake, telemetry and the qualified 無法確認 verdict
 demo scan → 清除 → auto-rescan → 已回應的控制器都沒有故障碼. `logcat` clean of
 Flutter errors on both.
 
-The legacy change is the one this walkthrough *cannot* cover: there is still no
-legacy vehicle and no adapter, so J1850 / ISO 9141 / KWP remain fixtures. What
-changed is that those fixtures now carry the checksum the datasheet says
-`ATH1` prints, which they did not before — so the code and the fixtures agree
-with the document rather than with each other.
+The legacy change is the one this walkthrough *could not* cover: at that round
+there was no legacy vehicle/adapter pairing, so J1850 / ISO 9141 / KWP remained
+fixtures. What changed is that those fixtures now carry the checksum the
+datasheet says `ATH1` prints, which they did not before — so the code and the
+fixtures agree with the document rather than with each other.
 
 ### Re-walked after round 16
 
@@ -516,7 +543,7 @@ than inheriting the debug build's preferences.
   matter for a shrunk build — no `ClassNotFoundException`, `NoSuchMethodError`
   or `MissingPluginException`.
 
-## Verified over Bluetooth, without an adapter
+## Verified over Bluetooth in the pre-adapter round
 
 More than anticipated, because the *failure* path exercises nearly everything
 the success path would.
@@ -540,7 +567,8 @@ the success path would.
 - **BLE scanning** runs and returns real nearby devices. Permissions granted,
   scan started, results rendered.
 
-Neither transport has ever completed a session, because that needs an adapter.
+In that round neither transport completed a session, because there was no
+adapter available.
 
 ## Verified through the UI on the demo link
 
@@ -573,17 +601,17 @@ Neither transport has ever completed a session, because that needs an adapter.
   everything the shrinker might remove, so this is where a missing keep rule
   or a stripped native symbol would show.
 
-## What this does not establish
+## What that pre-adapter round did not establish
 
-- **Any real adapter.** Every clone behaviour modelled in this project is one
-  someone described. The emulator is 11-bit CAN only, offers no functional
+- **Any real adapter.** At that point every clone behaviour modelled in this
+  project was one someone described. The emulator is 11-bit CAN only, offers no functional
   addressing, and answers `ATSP3` with `OK` while still reporting `A6` — it
   does not refuse, it quietly misleads.
 - **Any legacy bus.** J1850, ISO 9141-2 and ISO 14230-4 exist here only as
   fixtures written from the datasheet by the same person who wrote the code
   they test.
 - **A completed Bluetooth session of either kind.** Enumeration, scanning and
-  the failure cascade are covered; the handshake over RFCOMM or GATT is not.
+  the failure cascade were covered; the handshake over RFCOMM or GATT was not.
 - **The permission matrix on API 29/30/31+**, which needs those OS versions
   and not this one.
 - **The fork's remaining native races** — cancel before the socket is
@@ -625,10 +653,11 @@ What the corrected run establishes:
   advertisement rather than an accumulated list.
 - No Flutter exception in logcat during scan.
 
-What it does not establish: **nothing was connected to.** Scanning exercises
-discovery, permissions and the radio; `connect()`, service discovery, the
-notify/indicate branch and the MTU request were exercised only against the
-fake platform. The first real ELM327 BLE adapter remains the test that matters.
+What that 2026-08-18 run did not establish: **nothing was connected to.**
+Scanning exercises discovery, permissions and the radio; `connect()`, service
+discovery, the notify/indicate branch and the MTU request were exercised only
+against the fake platform. At round 10, the first real ELM327 BLE adapter
+remained the test that mattered.
 
 Also compiled on the two platforms that have no device coverage at all, purely
 to establish that the new dependency builds there: `flutter build macos --debug`
@@ -1026,16 +1055,135 @@ a false all-clear on a diagnostic screen. This is that fix, on a phone, against
 a third-party implementation, refusing to give the answer that would have been
 comfortable.
 
-What is still untested, and it is now a short list: a real ELM327's timing, a
-clone's quirks, `SEARCHING...` on a physical bus, a link that drops when the
-engine cranks, and every PID formula against an ECU rather than a simulator's
-canned values.
+At the end of round 20, what was still untested was a short list: a real
+ELM327's timing, a clone's quirks, `SEARCHING...` on a physical bus, a link that
+drops when the engine cranks, and every PID formula against an ECU rather than
+a simulator's canned values.
+
+## 2026-08-24 — the Wi-Fi route lease, from red tests to the release build on the phone
+
+The previous session left five tests for a `WifiRouteBinder` and no
+implementation — the deferred fix named in `wifi_transport.dart`'s own comment:
+bind the socket to the Wi-Fi network for exactly the moment it is created, so
+an adapter hotspot Android refuses to trust cannot silently send the connect
+out over cellular. This session took the fix: a bind → connect →
+release-immediately lease in the transport, an Android platform-channel binder
+over `ConnectivityManager` (TRANSPORT_WIFI, validated or not — the hotspot
+never validates), a loopback bypass in the binder so every `adb reverse` rig
+stays out of the gamble, and the bind's cost deducted from the one connect
+budget.
+
+One of the five tests could never have passed as written: it awaited
+`peer.done` on the server side, and `Socket.done` is `IOSink.done` — it
+completes on a *local* close and never observes the remote end dying (measured:
+both `destroy()` and `close()` left it hanging). The assertion now listens to
+the peer's stream, which an implementation that leaks the socket still fails.
+
+**Host evidence.** `flutter analyze` clean; the full suite green with exactly
+13 skipped, twice — before and after the final edits. Then all 13 were made to
+actually run: Ircama's five against a live emulator, the freeze-frame oracle's
+seven against the third-party virtual server, and the chaos oracle through the
+TCP fault proxy three times — close, no_prompt, corrupt — each failing closed
+at the intended initialization command.
+
+**Emulator.** `demo_rig_test` and `classic_rig_test` passed; classic also
+produced one genuine-looking failure on its first run and the integration
+driver twice hung after `Installing … 8.1s` with the test never starting,
+killed after 30 minutes each. Recorded as an emulator-driver environment
+problem: the same tests pass on the phone in seconds.
+
+**Phone (SM-S9280), the part that matters.** Four rig tests, four passes, each
+in 2–6 seconds: Demo, Classic through the mocked plugin boundary, Wi-Fi over
+`adb reverse` loopback, and Wi-Fi against `192.168.1.135` — the first
+execution of the real `bindProcessToNetwork` path on real hardware: One UI
+found its Wi-Fi network, bound, connected across the air to an ELM327
+implementation nobody here wrote, released, and the session reached live
+polling and persisted its clearly-simulated evidence.
+
+**BLE rig, honestly.** Two fresh advertising windows, and the phone never saw
+`TelltaleELM`, while the bridge logged `is_advertising: true` once per second
+throughout. That is round 17's Apple-peripheral visibility problem resurfaced,
+not a regression — nothing in this session touched BLE code — and the
+2026-08-23 GATT run remains the standing hardware evidence. Stopped after two
+attempts rather than retried into significance.
+
+**The release build, driven live.** `--release --flavor field`, signed with
+the upload key (digest checked byte-identical before installing), installed
+over 1.0.4+5 with no uninstall — `dataDir` unchanged, and the connect screen
+proved it by offering the remembered adapter from a previous round. Wi-Fi to
+Ircama at `192.168.1.135:35000` on the phone's real radio through the R8-shrunk
+binder path: `AUTO, ISO 15765-4 (CAN 11/500)`, six gauges at 8 PIDs/s,
+單筆模式 correctly on, `13.3 V` from a real `ATRV`. The new connect-screen
+wording about the route binding renders. Disconnected through 設定, back to a
+clean connect screen. `logcat`: zero `E/flutter`, zero `FATAL EXCEPTION`, zero
+`ClassNotFoundException` / `NoSuchMethodError` / `MissingPluginException`.
+
+**A field defect the suite was already testing for, and blessing.** Driving
+the release build through the remembered-adapter shortcut — 直接連線, which no
+successful Wi-Fi session had ever used before — connected, completed the
+handshake 14/14, started polling (the emulator's log shows the poll traffic),
+and **stayed on the connection screen**. A live session, gauges turning
+nowhere, under a screen that looks like nothing happened. The mechanism: the
+wizard hides the shortcut card for the whole busy phase, which unmounts the
+widget whose context initiated the connect; when the await resolved, the
+`context.mounted` check quietly dropped the navigation. All three transports'
+shortcuts shared the path.
+
+The instructive part is that `remembered_adapter_navigation_test.dart` already
+existed, asserted exactly "success opens the dashboard", and passed — its mock
+resolved within a microtask, before the next frame could rebuild the tree, so
+the card never unmounted and the dead-context path never ran. The fix to the
+*test* is a gate the test holds open across one pumped frame, which turned all
+three success cases red against the shipped code; the fix to the *code* is
+taking the app-scoped router before the first await. Re-walked on the phone:
+直接連線 now lands on a live dashboard.
+
+**The adapter dying mid-session, twice, honestly reported.** The Ircama
+instance wedged during one walk (its single-client socket was still held by
+the rig test's never-closed session), and a second wedge was staged
+deliberately with `SIGSTOP`. Both times the app reported
+轉接器停止回應，連線已中斷 with the completed init panel above it — and the
+staged one proved the teardown closes the TCP socket (the Mac-side connection
+cleared within the watchdog window), as does the UI's 中斷連線. A wedged
+adapter cannot strand a half-open socket that would hold a real single-client
+ELM327's port hostage on reconnect.
+
+**Three review rounds, and what each changed.** A dual review (Codex GPT-5.6
+max + Fable 5 xhigh) ran before anything was called done. Round 1 produced the
+compensating release for an abandoned bind (channel FIFO guarantees it lands
+after a late native bind), a catch-all lease release so an injectable
+connector cannot leak the process binding through a novel exception shape,
+and the budget/ordering tests. Round 2 confirmed those and left one open item
+— bind succeeding proves nothing about the destination — which round 3's
+shape closed: the host crosses the channel (numeric literals only, checked on
+both sides so the synchronous handler can never be handed a DNS lookup), the
+Wi-Fi whose link subnet contains the adapter is preferred, the never-validated
+one next, and a genuine tie at the top **refuses** with
+`ambiguous_wifi_network` rather than deterministically binding a coin flip
+that would time out identically on every retry with the adapter taking the
+blame. Known native refusals now reach the screen as actionable 繁體中文
+rather than transcript English. Each round's fixes were re-run on the phone;
+the final binary's walk is the one above. Remaining known gap from review: the
+Kotlin selection logic has compile-and-review coverage only — this project has
+no native test harness, and `sameSubnet` was instead checked by a reviewer's
+independent 913,825-case reference model.
+
+**What this does not establish.** The adversarial network condition the binder
+exists for — an internet-less hotspot the phone has never accepted, with
+cellular live and Samsung's hand-off armed — was not staged today; the home
+Wi-Fi validates, so the bind executed but was not what saved the connection.
+Dual-STA ambiguity handling likewise refused or resolved only on paper and in
+Dart-side tests. At the end of this 2026-08-24 round, the standing gaps were no
+purchased adapter, no vehicle, and no completed Bluetooth session against a
+real ELM327. The 2026-08-27 observation at the top of this file later closed
+that blanket gap for one purchased BLE adapter and one GT86 connection only;
+it did not add the missing protocol-level transcript review.
 
 ## What would move this forward, in order of value
 
-1. One real adapter, one real car, ignition on, engine off, stationary. Most of
-   the protocol findings from rounds 5–9 would be confirmed or refuted in an
-   afternoon.
-2. A cheap clone as a second adapter — nearly every protocol fix in this
-   project is about clone behaviour.
-3. A legacy vehicle, which is the weakest evidence in the whole repository.
+1. Privately review the retained 2026-08-27 transcript, then publish only a
+   redacted protocol summary that cannot expose VIN or device identifiers.
+2. Repeat a documented stationary ignition-on and engine-on sequence with the
+   same adapter, recording identity replies, protocol, polling, and failures.
+3. Test a second adapter and a legacy vehicle; one GT86 connection cannot
+   establish clone-to-clone or vehicle-generation compatibility.

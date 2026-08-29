@@ -104,16 +104,18 @@ void main() {
     );
 
     pauseApp(tester);
-    final recovered = await waitForStoredTranscript(
-      tester,
-      (value) => value.body.contains('App 回到前景'),
-    );
-    expect(recovered, isNotNull, reason: 'resume marker was not persisted');
-    final resumedAt = recovered!.body.lastIndexOf('App 回到前景');
-    final probeAt = recovered.body.indexOf(r'>> ATRV\r', resumedAt);
+    // The predicate demands the full shape the assertion below will read: a
+    // snapshot can be persisted after the resume marker but before the probe
+    // is recorded, and sampling that window is a race, not a finding. A
+    // probe that genuinely never happens still fails here, as a null.
+    final recovered = await waitForStoredTranscript(tester, (value) {
+      final resumedAt = value.body.lastIndexOf('App 回到前景');
+      return resumedAt >= 0 &&
+          value.body.indexOf(r'>> ATRV\r', resumedAt) >= resumedAt;
+    });
     expect(
-      probeAt,
-      greaterThan(resumedAt),
+      recovered,
+      isNotNull,
       reason: 'resume must prove the Wi-Fi link before polling becomes live',
     );
     resumeApp(tester);

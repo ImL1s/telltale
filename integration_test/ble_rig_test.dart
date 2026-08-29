@@ -10,13 +10,15 @@
 /// **Why this is an integration test rather than an `adb shell input` script.**
 /// A phone that is a useful BLE target has a secure lockscreen, and `input tap`
 /// goes to the lockscreen, not to the app behind it. This driver injects widget
-/// events directly, so it runs whether or not anyone is looking at the screen —
-/// which turns "unlock your phone and stand here while I tap" into "plug it in".
+/// events directly, while the isolated Android `rig` flavor is allowed to wake
+/// and appear over that lockscreen. The field flavor has neither permission.
+/// Together those pieces turn "unlock your phone and stand here while I tap"
+/// into "plug it in" without weakening the installed field app.
 ///
 /// Before running, start the peripheral on a **second machine** (a Mac cannot
 /// see its own):
 ///
-///     app/tool/ble_test_rig/run.sh
+///     tool/ble_test_rig/run.sh --start
 ///
 /// Then, with a device attached:
 ///

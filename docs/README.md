@@ -6,6 +6,8 @@ certifications of an adapter, diagnosis, repair, vehicle, or safety outcome.
 
 ## User guides
 
+- [Hardware compatibility](hardware-compatibility.md) — field-observed adapter
+  combinations, purchase-link disclosures, and the limits of each observation.
 - [Field guide](field-guide.zh-TW.md) — choosing a transport, collecting useful
   evidence, and troubleshooting safely at the vehicle (Traditional Chinese).
 - [Privacy policy](../PRIVACY.md) — local data, permissions, diagnostic exports,

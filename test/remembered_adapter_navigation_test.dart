@@ -6,6 +6,8 @@
 /// returned success value. These tests cross that UI/state/navigation seam.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +26,14 @@ class _ReconnectSession extends ObdSession {
   _ReconnectSession(this.succeeds);
 
   final bool succeeds;
+
+  /// Held open by the test across a pumped frame. A real handshake spends
+  /// seconds busy, and the wizard hides the shortcut card that whole time —
+  /// unmounting the widget whose context initiated the connect. A mock that
+  /// resolves before the next frame keeps that context alive and waves
+  /// through a navigation that a real phone drops on the floor. The gate is
+  /// what forces the unmount to happen first, the way it does in a car.
+  final Completer<void> gate = Completer<void>();
   TransportKind? attemptedKind;
   String? attemptedId;
   int? attemptedPort;
@@ -35,12 +45,16 @@ class _ReconnectSession extends ObdSession {
     attemptedKind = kind;
     attemptedId = id;
     attemptedPort = port;
+    state = const ObdConnectionState(phase: ConnectionPhase.connecting);
+    await gate.future;
     if (succeeds) {
       state = ObdConnectionState(
         phase: ConnectionPhase.connected,
         kind: kind,
         deviceName: id,
       );
+    } else {
+      state = const ObdConnectionState(phase: ConnectionPhase.failed);
     }
     return succeeds;
   }
@@ -130,6 +144,11 @@ void main() {
       );
 
       await tester.tap(find.text('直接連線'));
+      // One frame with the attempt in flight: the wizard hides the shortcut
+      // card here, which is exactly when its context dies on a real phone.
+      await tester.pump();
+      expect(find.text('直接連線'), findsNothing);
+      session.gate.complete();
       await tester.pumpAndSettle();
 
       expect(find.text('dashboard reached'), findsOneWidget);
@@ -149,6 +168,8 @@ void main() {
     );
 
     await tester.tap(find.text('直接連線'));
+    await tester.pump();
+    session.gate.complete();
     await tester.pumpAndSettle();
 
     expect(find.text('dashboard reached'), findsNothing);

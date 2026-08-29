@@ -94,8 +94,10 @@ The integration test must find `TelltaleELM`, complete initialization, and
 reach the dashboard; absence is a failure, not a skip. The explicit Android
 `rig` flavor uses the isolated `com.cbstudio.telltale.rig` application ID and
 `Telltale Rig` label, so it coexists with and does not clear the field app's
-local data. Normal `field` debug builds keep `com.cbstudio.telltale` and remain
-valid for physical-adapter debugging.
+local data. The rig Activity may wake and appear over a secure keyguard so an
+unattended run is not paused before scanning; that exception exists only in the
+isolated rig manifest. Normal `field` builds keep ordinary lock-screen behavior,
+use `com.cbstudio.telltale`, and remain valid for physical-adapter debugging.
 The bridge accepts commands and sends notifications only when exactly one
 central is subscribed; zero, multiple, or mismatched centrals fail closed.
 

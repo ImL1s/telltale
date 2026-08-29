@@ -38,6 +38,23 @@ adapter or vehicle evidence. Bluetooth Classic
 is Android-only in practice because Apple platforms do not expose general
 RFCOMM/SPP accessories to third-party apps.
 
+## Field-tested adapter
+
+The maintainer has used Telltale over Bluetooth LE with a
+**CARLZS LAB CL-OBDII-M25B** (`OBDBLE`, NCC `CCAH22LP5300T8`) on a Toyota
+GT86. The same Samsung `SM-S9280` still holds a 407 KB recovered Telltale
+session dated 2026-08-27.
+
+**[View this adapter on Shopee](https://s.shopee.tw/3LQPiOY7uv)** — this is a
+maintainer affiliate link. A qualifying purchase may pay the maintainer a
+commission; you are free to search for or buy the same model elsewhere.
+
+This is one observed adapter/phone/vehicle combination, not certification or
+a promise that every listing variant, phone, vehicle, PID, or firmware behaves
+the same. Check the exact model and NCC number before buying. See the
+[hardware compatibility notes](docs/hardware-compatibility.md) for the evidence
+boundary.
+
 ## Build and test
 
 Use the pinned Flutter 3.47.0 toolchain:
@@ -60,8 +77,12 @@ is the real-use application; the isolated `rig` flavor is test infrastructure.
 
 The real Samsung-to-Mac BLE GATT radio path has passed with a simulated ELM327
 peripheral. This proves physical BLE discovery, GATT connection, UART writes,
-and notifications on that path. It does **not** verify a purchased adapter such
-as CAR25, its firmware or profile, an ECU/CAN bus, or any real vehicle.
+and notifications on that path. Separately, the field observation above proves
+that one purchased CL-OBDII-M25B setup connected Telltale to one Toyota GT86
+and left a substantial session record. The raw vehicle transcript is not
+published because it can contain VIN and device identifiers, and it was not
+reviewed for this documentation change. The observation therefore does **not**
+certify adapter firmware, PID accuracy, DTC coverage, or general GT86 support.
 
 Verification reports describe bounded evidence, not certification or a safety
 guarantee. Start with [test evidence](docs/verification/test-evidence.md) and

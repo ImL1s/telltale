@@ -7,6 +7,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/widgets.dart' show AppLifecycleListener;
@@ -14,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/field_evidence/evidence_text.dart';
 import '../core/field_evidence/platform_metadata.dart';
+import '../core/network/android_wifi_route_binder.dart';
 import '../obd/dtc/dtc.dart';
 import '../obd/elm327_client.dart';
 import '../obd/pid/pid.dart';
@@ -732,6 +734,11 @@ class ObdSession extends Notifier<ObdConnectionState> {
     WifiTransport(
       host: host ?? WifiTransport.defaultHost,
       port: port ?? WifiTransport.defaultPort,
+      // Only Android reroutes sockets away from an internet-less Wi-Fi, so
+      // only Android gets a binder. dart:io Platform, not
+      // defaultTargetPlatform: the flutter_test harness pretends every host
+      // is Android, and a host-run test must not acquire a phantom lease.
+      routeBinder: Platform.isAndroid ? AndroidWifiRouteBinder() : null,
     ),
     TransportKind.wifi,
   );

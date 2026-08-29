@@ -8,7 +8,11 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## Unreleased
 
-No changes yet.
+### Documentation
+
+- Added a bounded Toyota GT86 field observation for the exact purchased BLE
+  adapter, with an adjacent Shopee affiliate disclosure and no publication of
+  the identifier-bearing raw vehicle transcript.
 
 ## 1.0.4+5 — 2026-08-24
 

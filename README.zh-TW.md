@@ -34,6 +34,21 @@ Android 是裝置、UI 與 BLE rig 路徑的主要實體測試平台。iOS 與 m
 只支援 Android，因為 Apple
 平台不向一般第三方 App 開放通用 RFCOMM/SPP 配件。
 
+## 已實車連線的轉接器
+
+維護者已用 **CARLZS LAB CL-OBDII-M25B**（`OBDBLE`、NCC
+`CCAH22LP5300T8`）透過 Bluetooth LE 讓 Telltale 連接 Toyota GT86。同一支
+Samsung `SM-S9280` 目前仍保留一份日期為 2026-08-27、大小 407 KB 的 Telltale
+復原工作階段紀錄。
+
+**[在蝦皮查看這支轉接器](https://s.shopee.tw/3LQPiOY7uv)** —— 這是維護者的推廣
+分潤連結；符合條件的購買可能讓維護者取得佣金，你也可以自行搜尋或向其他通路購買
+同型號。
+
+這只代表一組轉接器、手機與車輛的實際觀察，不是認證，也不保證同一賣場的所有
+版本、所有手機、車輛、PID 或韌體行為相同。購買前請核對完整型號與 NCC 號碼；
+證據邊界見[硬體相容性說明](docs/hardware-compatibility.md)。
+
 ## 建置與測試
 
 使用固定的 Flutter 3.47.0 工具鏈：
@@ -55,8 +70,11 @@ App；隔離的 `rig` flavor 是測試基礎設施。
 ## 驗證邊界
 
 Samsung 實體手機到 Mac 的 BLE GATT 無線路徑，已搭配模擬 ELM327 peripheral 通過。
-這證明該路徑上的實體 BLE 掃描、GATT 連線、UART 寫入與通知，但**不代表**已驗證
-CAR25 等購入轉接器、其韌體或 profile、ECU/CAN 匯流排或任何實車。
+這證明該路徑上的實體 BLE 掃描、GATT 連線、UART 寫入與通知。上面的實車觀察則
+另外證明一組購入的 CL-OBDII-M25B 曾讓 Telltale 連上 Toyota GT86，並留下足量的
+工作階段紀錄。原始實車紀錄可能含 VIN 與裝置識別資訊，因此未公開，這次文件更新
+也沒有用它驗證每一筆 OBD 回覆；所以這項觀察**不代表**已認證轉接器韌體、PID
+準確度、DTC 涵蓋率或所有 GT86。
 
 驗證文件只描述有邊界的證據，不是認證或安全保證。請先閱讀
 [測試證據](docs/verification/test-evidence.md)與

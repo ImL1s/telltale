@@ -2,5 +2,17 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application
         android:label="Telltale Rig"
-        tools:replace="android:label"/>
+        tools:replace="android:label">
+        <!--
+          Integration tests inject widget events directly, but Android pauses a
+          normal Activity behind a secure keyguard. That stops the engine before
+          the BLE scan begins and makes an unattended rig run time out without
+          ever touching GATT. Only the isolated .rig package may wake and appear
+          over the lock screen; the field application keeps ordinary behavior.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"/>
+    </application>
 </manifest>

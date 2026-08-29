@@ -19,6 +19,194 @@ Future<void> _waitUntil(
 }
 
 void main() {
+  group('WifiTransport Android route lease', () {
+    test('binds before connect and restores immediately afterward', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      final events = <String>[];
+      late final WifiTransport transport;
+      final binder = _RecordingBinder(
+        events,
+        // The route must be restored before the connection is offered to
+        // anyone; observing isConnected from inside release() is what pins
+        // that ordering rather than just bind/connect/release adjacency.
+        beforeRelease: () => expect(
+          transport.isConnected,
+          isFalse,
+          reason: 'release must run before the connection is offered',
+        ),
+      );
+      transport = WifiTransport(
+        host: InternetAddress.loopbackIPv4.host,
+        port: server.port,
+        routeBinder: binder,
+        socketConnector: (host, port, timeout) async {
+          events.add('connect');
+          return Socket.connect(host, port, timeout: timeout);
+        },
+      );
+      addTearDown(transport.disconnect);
+
+      await transport.connect();
+      final peer = await server.first;
+      addTearDown(peer.destroy);
+
+      expect(events, const ['bind', 'connect', 'release']);
+      expect(transport.isConnected, isTrue);
+    });
+
+    test('a bind that outlives the budget skips the socket entirely', () async {
+      final events = <String>[];
+      final transport = WifiTransport(
+        host: '192.0.2.1',
+        connectTimeout: const Duration(milliseconds: 100),
+        routeBinder: _RecordingBinder(
+          events,
+          delay: const Duration(milliseconds: 150),
+        ),
+        socketConnector: (host, port, timeout) async {
+          events.add('connect');
+          throw StateError('must not connect on an exhausted budget');
+        },
+      );
+
+      await expectLater(
+        transport.connect(),
+        throwsA(
+          isA<TransportException>().having(
+            (error) => error.message,
+            'message',
+            contains('逾時'),
+          ),
+        ),
+      );
+
+      expect(events, const ['bind', 'release']);
+      expect(transport.isConnected, isFalse);
+    });
+
+    test('an unexpected connector failure still restores the route', () async {
+      // Socket.connect only throws SocketException/TimeoutException, but the
+      // connector is injectable; a refactor must not be able to leak the
+      // process-wide binding through a new exception shape.
+      final events = <String>[];
+      final transport = WifiTransport(
+        host: '192.0.2.1',
+        routeBinder: _RecordingBinder(events),
+        socketConnector: (host, port, timeout) async {
+          events.add('connect');
+          throw StateError('unexpected shape');
+        },
+      );
+
+      await expectLater(transport.connect(), throwsA(isA<StateError>()));
+
+      expect(events, const ['bind', 'connect', 'release']);
+      expect(transport.isConnected, isFalse);
+    });
+
+    test('restores the route when socket connection fails', () async {
+      final events = <String>[];
+      final binder = _RecordingBinder(events);
+      final transport = WifiTransport(
+        host: '192.0.2.1',
+        routeBinder: binder,
+        socketConnector: (host, port, timeout) async {
+          events.add('connect');
+          throw const SocketException('refused');
+        },
+      );
+
+      await expectLater(transport.connect(), throwsA(isA<TransportException>()));
+
+      expect(events, const ['bind', 'connect', 'release']);
+      expect(transport.isConnected, isFalse);
+    });
+
+    test('route selection failure is clear and skips socket I/O', () async {
+      var connected = false;
+      final transport = WifiTransport(
+        host: '192.168.0.10',
+        routeBinder: _UnavailableBinder(),
+        socketConnector: (host, port, timeout) async {
+          connected = true;
+          throw StateError('must not connect');
+        },
+      );
+
+      await expectLater(
+        transport.connect(),
+        throwsA(
+          isA<TransportException>()
+              .having((error) => error.cause, 'cause', isA<WifiRouteException>())
+              .having(
+                (error) => error.message,
+                'message',
+                allOf(contains('Wi-Fi'), contains('192.168.0.10')),
+              ),
+        ),
+      );
+      expect(connected, isFalse);
+    });
+
+    test('binding time is deducted from the one connect budget', () async {
+      Duration? socketBudget;
+      final transport = WifiTransport(
+        host: '192.0.2.1',
+        connectTimeout: const Duration(milliseconds: 200),
+        routeBinder: _DelayedBinder(const Duration(milliseconds: 80)),
+        socketConnector: (host, port, timeout) async {
+          socketBudget = timeout;
+          throw const SocketException('refused');
+        },
+      );
+
+      await expectLater(transport.connect(), throwsA(isA<TransportException>()));
+
+      expect(socketBudget, isNotNull);
+      expect(socketBudget!, lessThan(const Duration(milliseconds: 160)));
+      expect(socketBudget!, greaterThan(Duration.zero));
+    });
+
+    test('a failed restore rejects and destroys the new connection', () async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(server.close);
+      final transport = WifiTransport(
+        host: InternetAddress.loopbackIPv4.host,
+        port: server.port,
+        routeBinder: _RestoreFailureBinder(),
+      );
+
+      await expectLater(
+        transport.connect(),
+        throwsA(
+          isA<TransportException>().having(
+            (error) => error.message,
+            'message',
+            contains('路由'),
+          ),
+        ),
+      );
+      final peer = await server.first;
+      // `peer.done` is IOSink.done — it completes only on a *local* close and
+      // never observes the remote end dying, so it would hang here forever.
+      // Listening to the stream is how a peer actually sees the destroy: EOF
+      // completes it, an RST errors it, and an implementation that leaks the
+      // socket does neither and times out.
+      final peerSawClose = Completer<void>();
+      peer.listen(
+        (_) {},
+        onDone: peerSawClose.complete,
+        onError: (Object _) => peerSawClose.complete(),
+      );
+      await expectLater(
+        peerSawClose.future.timeout(const Duration(seconds: 2)),
+        completes,
+      );
+      expect(transport.isConnected, isFalse);
+    });
+  });
+
   group('WifiTransport loopback socket', () {
     test('write before connect is refused before any network I/O', () async {
       final transport = WifiTransport(host: InternetAddress.loopbackIPv4.host);
@@ -190,4 +378,65 @@ void main() {
       },
     );
   });
+}
+
+final class _RecordingBinder implements WifiRouteBinder {
+  _RecordingBinder(this.events, {this.delay = Duration.zero, this.beforeRelease});
+
+  final List<String> events;
+  final Duration delay;
+  final void Function()? beforeRelease;
+
+  @override
+  Future<WifiRouteLease> bindForHost(String host) async {
+    if (delay > Duration.zero) await Future<void>.delayed(delay);
+    events.add('bind');
+    return _RecordingLease(events, beforeRelease);
+  }
+}
+
+final class _RecordingLease implements WifiRouteLease {
+  _RecordingLease(this.events, this.beforeRelease);
+
+  final List<String> events;
+  final void Function()? beforeRelease;
+
+  @override
+  Future<void> release() async {
+    beforeRelease?.call();
+    events.add('release');
+  }
+}
+
+final class _UnavailableBinder implements WifiRouteBinder {
+  @override
+  Future<WifiRouteLease> bindForHost(String host) {
+    throw const WifiRouteException('no matching Wi-Fi route');
+  }
+}
+
+final class _DelayedBinder implements WifiRouteBinder {
+  _DelayedBinder(this.delay);
+
+  final Duration delay;
+
+  @override
+  Future<WifiRouteLease> bindForHost(String host) async {
+    await Future<void>.delayed(delay);
+    return const NoopWifiRouteLease();
+  }
+}
+
+final class _RestoreFailureBinder implements WifiRouteBinder {
+  @override
+  Future<WifiRouteLease> bindForHost(String host) async {
+    return _RestoreFailureLease();
+  }
+}
+
+final class _RestoreFailureLease implements WifiRouteLease {
+  @override
+  Future<void> release() {
+    throw const WifiRouteException('restore failed');
+  }
 }

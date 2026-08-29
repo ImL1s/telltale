@@ -732,8 +732,9 @@ class _WifiBody extends StatelessWidget {
       children: [
         Text(
           '請先將手機連上轉接器發出的 Wi-Fi 熱點，再輸入其位址。'
-          '第一次連上時，系統會問「此 Wi-Fi 無法連上網際網路，是否繼續使用」—— '
-          '要選繼續使用，否則手機會改走行動數據，連不到轉接器。',
+          '系統若問「此 Wi-Fi 無法連上網際網路，是否繼續使用」，選繼續使用。'
+          '在 Android 上，App 連線時會嘗試把流量固定在 Wi-Fi 路由，'
+          '避免被行動數據搶走。',
           style: context.texts.bodyMedium,
         ),
         const SizedBox(height: Spacing.lg),
@@ -1370,6 +1371,16 @@ class _LastAdapterCard extends ConsumerWidget {
     WidgetRef ref,
     LastAdapter last,
   ) async {
+    // Taken before the first await, because this card does not survive its
+    // own tap: the wizard hides it for the whole busy phase, so by the time
+    // the connect resolves this context is unmounted and a mounted-check
+    // here would silently drop the navigation — a live session polling
+    // behind a connection screen that looks like nothing happened. The
+    // router is app-scoped and outlives the card. Navigating even if the
+    // user wandered elsewhere during the attempt is deliberate: the session
+    // coming up is the thing they just asked for, and the dashboard is
+    // where it is visible.
+    final router = GoRouter.of(context);
     final session = ref.read(obdSessionProvider.notifier);
     late final bool ok;
     // Rebuilt from the stored identifiers rather than from a device object,
@@ -1406,9 +1417,8 @@ class _LastAdapterCard extends ConsumerWidget {
         // Nothing to remember, and nothing to shorten.
         return;
     }
-    if (!context.mounted) return;
     if (ok) {
-      context.go(DashboardScreen.path);
+      router.go(DashboardScreen.path);
     }
   }
 }
