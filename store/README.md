@@ -14,6 +14,18 @@
 | `03-dtc-freeze.png` | 1080×2340 | 24-bit PNG | 手機截圖：故障碼與凍結幀 |
 | `05-performance.png` | 1080×2340 | 24-bit PNG | 手機截圖：性能量測 |
 | `06-skins.png` | 1080×2340 | 24-bit PNG | 手機截圖：面盤外觀 |
+| `preview-gt86-vin-redacted.mp4` | 1920×1080 | H.264 MP4 | Google Play YouTube 預覽影片來源；GT86 實車 VIN 已遮蔽 |
+
+## 隱私檢查
+
+- `03-dtc-freeze.png` 顯示的是內建 Demo ECU 的固定測試 VIN
+  `1D4GP00R55B123456`，不是實車或使用者資料。Play 商店目前可只使用其餘四張截圖；
+  若要重新加入這張，應在素材文案中清楚標示為 Demo 資料。
+- 原始 GT86 實車錄影曾短暫顯示真實 VIN，因此**不得直接上傳**。
+  `preview-gt86-vin-redacted.mp4` 已裁掉 Android 狀態列與手勢列，將 VIN 欄位遮蔽，
+  並以模糊背景輸出為 16:9 標準影片，避免被 YouTube 歸類為 Shorts。
+  Play Console 的影片欄位只接受 YouTube 網址，應把這個遮蔽版上傳為公開或不公開影片，
+  關閉廣告、允許嵌入且不設年齡限制。
 
 ## 為什麼沒有 `04-`
 
