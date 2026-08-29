@@ -8,6 +8,10 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## Unreleased
 
+No changes yet.
+
+## 1.0.5+6 — 2026-08-29
+
 ### Added
 
 - Added an explicit whole-profile confirmation state. Any raw PID the vehicle
