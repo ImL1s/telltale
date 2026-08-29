@@ -8,7 +8,34 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## Unreleased
 
-No changes yet.
+## 1.0.6+7 — 2026-08-29
+
+### Added
+
+- Added a hash-checked, offline U.S. EPA Find-a-Car catalog containing 50,242
+  configurations, 146 make labels, and model years 1984–2027, plus exact
+  year/make/model/configuration browsing in Settings. Only unambiguous engine
+  displacement and compatible conventional gasoline/diesel fields are applied;
+  hybrid fuel, mass, torque, drag, VE, and transmission-efficiency inputs remain
+  unknown.
+- Added an auditable U.S. NHTSA vPIC make-identity snapshot with 12,351
+  vPIC make records. It is intentionally not described as a complete global
+  consumer-brand list or as vehicle specification evidence.
+- Added session-only VIN identity state. It is reset at every connection
+  boundary, while the existing raw diagnostic transcript may still contain the
+  VIN as disclosed in the privacy policy; conflicting controllers leave
+  identity unknown.
+- Added per-field vehicle-profile provenance with source, revision, market,
+  record locator, retrieval time, and snapshot SHA-256 in saved assumptions and
+  exported session evidence.
+
+### Changed
+
+- Vehicle-profile evidence now distinguishes generic defaults, user input,
+  exact official records, ambiguity, and conflicts. A manual value is not
+  marked session-confirmed until the driver explicitly reviews the full profile.
+- The supported engine-displacement range now includes the 8.4 L factory
+  configurations present in the official EPA Find-a-Car snapshot.
 
 ## 1.0.5+6 — 2026-08-29
 
