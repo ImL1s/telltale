@@ -42,6 +42,9 @@ GitHub APK 使用社群簽章，無法更新 Google Play 版，也無法由 Play
 - 不需轉接器或車輛的內建 Demo ECU
 - 即時 PID 儀表、故障碼、凍結幀、排放就緒、自訂 PID，以及由使用者主動匯出
   的診斷紀錄
+- 內建經完整性檢查、完全離線的美國 EPA Find-a-Car 快照：50,242 筆精確配置、
+  146 個 make／廠牌（製造商部門）標籤、年式 1984–2027。只套用語意能與公式設定逐欄對上的官方資料，
+  不推測車重、扭力、風阻、VE 或傳動效率
 - 每組車輛設定都套用安全確認流程：未確認車重、VE、風阻與驅動方式前，
   車輛有回覆的 OBD 實測值仍可顯示，但不會用通用預設值冒充實車的馬力、扭力或油耗；
   每次重新連線都會自動失效，避免把上一台車的設定套到下一台
@@ -109,7 +112,7 @@ Samsung 實體手機到 Mac 的 BLE GATT 無線路徑，已搭配模擬 ELM327 p
 | `integration_test/` | 裝置與隔離 rig 流程 |
 | `tool/` | 可重現的模擬器與驗證工具 |
 | `android/`、`ios/`、`macos/` | 平台整合 |
-| `assets/` | 內附字型與圖示 |
+| `assets/` | 內附字型、圖示與官方車輛資料快照 |
 
 ## 文件
 
@@ -118,6 +121,7 @@ Samsung 實體手機到 Mac 的 BLE GATT 無線路徑，已搭配模擬 ELM327 p
 | [文件索引](docs/README.md) | 所有使用、證據與維護者文件 |
 | [實車指南](docs/field-guide.zh-TW.md) | 安全的實車流程與故障排除 |
 | [協定差異](docs/protocol-deviations.zh-TW.md) | 標準查證與硬體行為註記 |
+| [車輛資料來源](docs/vehicle-data-sources.md) | 官方快照、欄位語意、雜湊與市場邊界 |
 | [版本紀錄](CHANGELOG.md) | 各版本可見變更 |
 | [貢獻指南](CONTRIBUTING.md) | 開發與 pull request 要求 |
 
@@ -136,4 +140,6 @@ Telltale 不會主動上傳資料。本機診斷匯出可能含 VIN、裝置、�
 
 歡迎依[貢獻指南](CONTRIBUTING.md)參與。Telltale 採
 [GPL-3.0](LICENSE) 授權，與 Ian Hawkins 的 Torque / Torque Pro 無關，也不是其
-官方或衍生版本。請自行承擔使用風險；任何診斷結果都不保證車輛可安全行駛。
+官方或衍生版本。隨 App 提供的官方車輛資料快照另有
+[來源與重用聲明](assets/vehicle_catalog/NOTICE.md)。請自行承擔使用風險；任何診斷
+結果都不保證車輛可安全行駛。

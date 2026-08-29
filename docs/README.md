@@ -27,6 +27,8 @@ certifications of an adapter, diagnosis, repair, vehicle, or safety outcome.
   remediation status.
 - [Protocol deviations](protocol-deviations.zh-TW.md) — standards research and
   implementation decisions that affect hardware behaviour (Traditional Chinese).
+- [Vehicle data sources](vehicle-data-sources.md) — official offline snapshots,
+  reproducibility hashes, per-field semantics, market coverage, and known gaps.
 
 ## Maintainer documents
 

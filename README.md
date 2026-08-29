@@ -46,6 +46,10 @@ export anything you need first because uninstalling removes local app data.
 - A built-in Demo ECU that needs no adapter or vehicle
 - Live PID dashboards, fault codes, freeze frames, readiness, custom PIDs, and
   user-triggered diagnostic transcript export
+- An integrity-checked, fully offline U.S. EPA Find-a-Car snapshot with 50,242
+  exact configurations across 146 make labels and model years 1984–2027. Only
+  source fields whose meaning matches the physics profile are applied; the app
+  does not infer mass, torque, drag, VE, or transmission efficiency
 - A fail-closed flow shared by every configured vehicle profile: any raw PID
   the vehicle answers remains visible, but profile-derived horsepower, torque,
   and fuel estimates stay hidden until the driver reviews and confirms the
@@ -121,7 +125,7 @@ and identified commercial test layers.
 | `integration_test/` | Device and isolated rig flows |
 | `tool/` | Deterministic simulators and verification tooling |
 | `android/`, `ios/`, `macos/` | Platform integration |
-| `assets/` | Bundled fonts and icons |
+| `assets/` | Bundled fonts, icons, and official vehicle-data snapshots |
 
 ## Documentation
 
@@ -130,6 +134,7 @@ and identified commercial test layers.
 | [Documentation index](docs/README.md) | All user, evidence, and maintainer documents |
 | [Field guide](docs/field-guide.zh-TW.md) | Safe real-car workflow and troubleshooting (zh-TW) |
 | [Protocol deviations](docs/protocol-deviations.zh-TW.md) | Standards and hardware-behaviour notes (zh-TW) |
+| [Vehicle data sources](docs/vehicle-data-sources.md) | Official snapshots, field semantics, hashes, and market limits |
 | [Changelog](CHANGELOG.md) | User-visible changes by version |
 | [Contributing](CONTRIBUTING.md) | Development and pull-request requirements |
 
@@ -151,5 +156,6 @@ and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
 Contributions are welcome under the [contributor guide](CONTRIBUTING.md).
 Telltale is licensed under [GPL-3.0](LICENSE). It is not affiliated with Ian
 Hawkins' Torque or Torque Pro and is neither an official nor derivative version
-of either product. Use it at your own risk; no diagnostic result guarantees that
-a vehicle is safe to operate.
+of either product. The bundled official vehicle-data snapshots keep their own
+[source and reuse notices](assets/vehicle_catalog/NOTICE.md). Use the app at your
+own risk; no diagnostic result guarantees that a vehicle is safe to operate.
