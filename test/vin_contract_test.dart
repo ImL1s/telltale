@@ -279,7 +279,7 @@ void main() {
 
       await expectLater(
         engine.readVin(),
-        throwsA(isA<DtcReadException>()),
+        throwsA(isA<VinIdentityConflictException>()),
         reason: 'two valid but different VINs is a conflict to report, not a '
             'race to resolve',
       );

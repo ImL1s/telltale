@@ -141,12 +141,12 @@ class ObdTranscript {
   /// dashboard polling and kept only repetitive PID traffic.
   final int preservedHeadEntries;
 
-  /// Additional bounded capacity for explicit physical-event markers.
+  /// Additional bounded capacity for evidence and physical-event markers.
   ///
   /// A normal dashboard session can evict most of its middle while polling.
-  /// Losing "engine started" or "road test began" with it makes the retained
-  /// wire bytes impossible to correlate, so those rare notes get their own
-  /// small, bounded overflow lane.
+  /// Losing "engine started", "road test began", or the profile provenance
+  /// in force makes the retained wire bytes impossible to correlate, so those
+  /// rare notes get their own small, bounded overflow lane.
   final int maxPinnedNotes;
 
   final Duration Function()? _elapsedClock;
@@ -171,7 +171,7 @@ class ObdTranscript {
   /// How many were discarded to stay within [maxEntries].
   int get dropped => _dropped;
 
-  /// How many explicit field markers exceeded [maxPinnedNotes].
+  /// How many pinned evidence/event markers exceeded [maxPinnedNotes].
   ///
   /// Included in [dropped], but exposed separately so an evidence export can
   /// distinguish repetitive traffic loss from a physical event it could not
@@ -270,7 +270,8 @@ class ObdTranscript {
     );
   }
 
-  /// Records an explicit physical event that survives ordinary ring eviction.
+  /// Records evidence or an explicit physical event that survives ordinary
+  /// ring eviction.
   ///
   /// Still bounded by [maxPinnedNotes]. If a passenger somehow records more
   /// than that, overflow follows the same honest dropped-entry path as wire
@@ -335,8 +336,8 @@ class ObdTranscript {
         ? ''
         : '（+$first ms ～ +$last ms）';
     final markerLoss = _droppedPinnedNotes == 0
-        ? '開頭握手、全部實車事件與最新資料仍保留。'
-        : '其中 $_droppedPinnedNotes 筆是超過事件容量上限的實車事件；'
+        ? '開頭握手、全部證據／實車事件與最新資料仍保留。'
+        : '其中 $_droppedPinnedNotes 筆是超過容量上限的證據／實車事件；'
               '開頭握手與最新資料仍保留。';
     return '# 中間 $_dropped 筆紀錄已因容量上限捨棄$range；$markerLoss';
   }

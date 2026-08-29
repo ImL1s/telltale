@@ -3158,7 +3158,7 @@ class PollingEngine {
       }
       if (decoded.isEmpty) return null;
       if (decoded.length > 1) {
-        throw DtcReadException(
+        throw VinIdentityConflictException(
           '有 ${decoded.length} 個控制器回報了不同的車身碼（VIN），'
           '無法確認這輛車的身分。可能有模組被更換或設定錯誤。',
         );
@@ -3243,7 +3243,7 @@ class PollingEngine {
       if (decoded.length > 1) {
         // Same rule as CAN: a conflict is the moment identity becomes
         // unknown, not the moment to pick one.
-        throw DtcReadException(
+        throw VinIdentityConflictException(
           '有 ${decoded.length} 個控制器回報了不同的車身碼（VIN），'
           '無法確認這輛車的身分。可能有模組被更換或設定錯誤。',
         );

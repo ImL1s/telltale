@@ -32,6 +32,7 @@ import '../obd/transport/obd_transport.dart';
 import '../obd/transport/wifi_transport.dart';
 import 'pid_registry.dart';
 import 'settings.dart';
+import 'vehicle_identity.dart';
 
 enum ConnectionPhase {
   disconnected,
@@ -184,6 +185,25 @@ class ObdSession extends Notifier<ObdConnectionState> {
       if (previous?.isConfirmed != next.isConfirmed) {
         syncActivePids(ref.read(activePidsProvider));
       }
+      if (previous == null ||
+          SessionEvidenceMetadata.vehicleProfileSnapshotJson(previous) ==
+              SessionEvidenceMetadata.vehicleProfileSnapshotJson(next)) {
+        return;
+      }
+      final client = _client;
+      final transcript = _attemptTranscript;
+      if (client == null ||
+          transcript == null ||
+          !identical(client.transcript, transcript) ||
+          _sessionEvidenceGeneration != _generation) {
+        return;
+      }
+      transcript.recordPinnedNote(
+        SessionEvidenceMetadata.vehicleProfileChangeNote(
+          next,
+          recordedAt: DateTime.now().toUtc(),
+        ),
+      );
     });
 
     // A vehicle session is foreground-only, and saying so explicitly is the
@@ -416,6 +436,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// user may have changed vehicle settings or selected another adapter, and a
   /// plausible header describing the wrong session is worse than no header.
   SessionEvidenceMetadata? _sessionEvidence;
+  int? _sessionEvidenceGeneration;
   int _evidenceSequence = 0;
 
   /// The transcript worth exporting right now: the live one if there is a
@@ -1024,6 +1045,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     await ref
         .read(vehicleProfileProvider.notifier)
         .invalidateForVehicleBoundary();
+    ref.read(vehicleIdentityProvider.notifier).reset();
     if (_superseded(generation)) {
       await transport.disconnect();
       return false;
@@ -1047,6 +1069,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
       testRig: testRigBuild || kind == TransportKind.demo,
       initialTransportMetadata: transport.diagnosticMetadata,
     );
+    _sessionEvidenceGeneration = generation;
     _attemptTranscript = ObdTranscript()
       ..recordNote('開始連線：${transport.displayName}（${kind.label}）');
     state = ObdConnectionState(
@@ -1253,6 +1276,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     unawaited(
       ref.read(vehicleProfileProvider.notifier).invalidateForVehicleBoundary(),
     );
+    ref.read(vehicleIdentityProvider.notifier).reset();
     state = state.copyWith(
       phase: ConnectionPhase.failed,
       error: '轉接器停止回應，連線已中斷。',
@@ -1330,6 +1354,46 @@ class ObdSession extends Notifier<ObdConnectionState> {
     return engine.readVin(deadline: deadline);
   }
 
+  /// Reads the current vehicle's self-reported VIN into session-only identity
+  /// state without turning an optional identity read into a connection failure.
+  ///
+  /// This identity state is never persisted across a connection boundary. The
+  /// raw ELM327 exchange can still remain in the diagnostic transcript under
+  /// the existing privacy contract. Two controllers reporting different
+  /// complete VINs is represented as a conflict and neither candidate is kept
+  /// as identity state.
+  Future<VehicleIdentity> refreshVehicleIdentity({DateTime? deadline}) async {
+    final identity = ref.read(vehicleIdentityProvider.notifier);
+    final engine = _engine;
+    final generation = _generation;
+    if (engine == null) {
+      identity.markUnavailable();
+      return ref.read(vehicleIdentityProvider);
+    }
+
+    bool stillOwnsSession() =>
+        !_superseded(generation) && identical(_engine, engine);
+
+    try {
+      final vin = await engine.readVin(deadline: deadline);
+      if (stillOwnsSession()) identity.reportVin(vin);
+    } on VinIdentityConflictException {
+      if (stillOwnsSession()) identity.reportConflict();
+    } on DtcReadException {
+      // Identity is useful context, not a prerequisite for raw OBD telemetry.
+      // An unsupported Mode 09 response must not make this helper claim an
+      // identity or throw through the settings screen. The ownership check is
+      // equally important on failure: a retired request commonly completes
+      // only after disconnect has disposed its client.
+      if (stillOwnsSession()) identity.markUnavailable();
+    } on TimeoutException {
+      if (stillOwnsSession()) identity.markUnavailable();
+    } on TransportException {
+      if (stillOwnsSession()) identity.markUnavailable();
+    }
+    return ref.read(vehicleIdentityProvider);
+  }
+
   /// The vehicle's own fault-lamp summary, or null if it could not be read.
   Future<MilStatus?> readMilStatus({DateTime? deadline}) async =>
       _engine?.readMilStatus(deadline: deadline);
@@ -1357,6 +1421,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     await ref
         .read(vehicleProfileProvider.notifier)
         .invalidateForVehicleBoundary();
+    ref.read(vehicleIdentityProvider.notifier).reset();
     state = const ObdConnectionState();
   }
 

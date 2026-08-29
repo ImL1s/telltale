@@ -1,11 +1,37 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/core/field_evidence/platform_metadata.dart';
+import 'package:torque_obd/obd/physics/vehicle_evidence.dart';
 import 'package:torque_obd/obd/physics/vehicle_profile.dart';
 import 'package:torque_obd/obd/session_evidence.dart';
+
+const _epaEvidence = EvidenceRef(
+  sourceId: 'us-epa-fueleconomy-vehicles',
+  publisher: 'U.S. EPA / U.S. DOE',
+  sourceUrl: 'https://www.fueleconomy.gov/feg/download.shtml',
+  revision: '2026-08-07',
+  retrievedAt: '2026-08-29T14:28:23+00:00',
+  sha256: '6dc8aed9232a88844e18f0160e94eeaa75abc0dcf8a36286e3166797f4933331',
+  market: 'United States',
+  locator: 'epa_id=12345',
+  year: 2024,
+  make: 'Example',
+  model: 'Roadster',
+  trim: '2.0 RWD 6MT',
+);
 
 void main() {
   group('field evidence header', () {
     test('renders a deterministic evidence manifest', () {
+      const profile = VehicleProfile(
+        displacementL: 1.8,
+        massKg: 1420,
+        volumetricEfficiency: 88,
+        fuelType: FuelType.gasoline,
+        drivetrain: Drivetrain.fwd,
+        isConfirmed: true,
+      );
       final evidence = SessionEvidenceMetadata(
         sessionId: '20260821T031405000Z-7',
         startedAt: DateTime.utc(2026, 8, 21, 3, 14, 5),
@@ -19,14 +45,7 @@ void main() {
           model: 'SM-S9380',
           sdkInt: '36',
         ),
-        vehicleProfile: const VehicleProfile(
-          displacementL: 1.8,
-          massKg: 1420,
-          volumetricEfficiency: 88,
-          fuelType: FuelType.gasoline,
-          drivetrain: Drivetrain.fwd,
-          isConfirmed: true,
-        ),
+        vehicleProfile: profile,
         transportKind: 'Wi-Fi',
         deviceName: 'OBD-II',
         initialTransportMetadata: const {
@@ -47,14 +66,75 @@ void main() {
           '# App：1.0.3 (4)\n'
           '# 平台：android 16 (SDK 36)\n'
           '# 手機：Samsung SM-S9380\n'
-          '# 車輛設定：1.8 L · 1420 kg · VE 88% · 汽油 · 前輪驅動\n'
-          '# 車輛設定狀態：已確認\n'
+          '# 連線開始車輛設定快照（UTC 2026-08-21T03:14:05.000Z）：'
+          '1.8 L · 1420 kg · VE 88% · 汽油 · 前輪驅動\n'
+          '# 連線開始車輛設定 JSON：'
+          '${SessionEvidenceMetadata.vehicleProfileSnapshotJson(profile)}\n'
+          '# 連線開始車輛設定狀態：已確認\n'
+          '# 連線開始車輛設定來源：官方／原廠 0/8 · 手動輸入 0/8 · 通用 8/8 · 科學模型 0/8\n'
+          '# 連線開始車輛設定解析：官方精確 0/8 · 本次確認 8/8 · 未解析 0/8 · 歧義 0/8 · 衝突 0/8\n'
           '# 連線方式：Wi-Fi\n'
           '# 裝置：OBD-II\n'
           '# 連線資訊.wifi.host：192.168.0.10\n'
           '# 連線資訊.wifi.port：35000\n',
         ),
       );
+
+      final profileJsonLine = evidence
+          .renderHeader()
+          .split('\n')
+          .singleWhere((line) => line.startsWith('# 連線開始車輛設定 JSON：'));
+      final profileJson = jsonDecode(
+        profileJsonLine.substring('# 連線開始車輛設定 JSON：'.length),
+      ) as Map<String, dynamic>;
+      expect(profileJson['fields'], isA<Map<String, dynamic>>());
+      expect(profileJson['fields'], hasLength(8));
+      expect(profileJson['dragCoefficient'], 0.3);
+      expect(profileJson['frontalAreaM2'], 2.2);
+      expect(profileJson['rollingResistance'], 0.015);
+    });
+
+    test('renders exact field provenance without upgrading other fields', () {
+      final evidence = SessionEvidenceMetadata(
+        sessionId: 'source-1',
+        startedAt: DateTime.utc(2026, 8, 29),
+        platform: PlatformMetadata.unknown(),
+        vehicleProfile: VehicleProfile.sourced(
+          displacementL: SourcedField(
+            value: 2.0,
+            origin: VehicleFieldOrigin.officialRegistry,
+            resolution: EvidenceResolution.verifiedExact,
+            evidence: _epaEvidence,
+          ),
+        ),
+        transportKind: 'Wi-Fi',
+        deviceName: 'OBD-II',
+      );
+
+      final header = evidence.renderHeader();
+      expect(
+        header,
+        contains(
+          '# 連線開始車輛設定來源：官方／原廠 1/8 · '
+          '手動輸入 0/8 · 通用 7/8 · 科學模型 0/8',
+        ),
+      );
+      expect(
+        header,
+        contains(
+          '# 連線開始車輛設定解析：官方精確 1/8 · '
+          '本次確認 0/8 · 未解析 7/8 · 歧義 0/8 · 衝突 0/8',
+        ),
+      );
+      expect(
+        header,
+        contains(
+          '# 連線開始車輛設定證據.排氣量：U.S. EPA / U.S. DOE · '
+          'us-epa-fueleconomy-vehicles · United States · epa_id=12345 · '
+          'sha256=6dc8aed9232a88844e18f0160e94eeaa75abc0dcf8a36286e3166797f4933331',
+        ),
+      );
+      expect(header, isNot(contains('# 連線開始車輛設定證據.車重')));
     });
 
     test('the .rig application ID is simulated without a Dart define', () {
@@ -81,7 +161,7 @@ void main() {
       final header = evidence.renderHeader();
       expect(header, startsWith('# Telltale 無車測試馬具證據 v1\n'));
       expect(header, contains('不得視為實體轉接器或實車驗證'));
-      expect(header, contains('# 車輛設定狀態：未確認'));
+      expect(header, contains('# 連線開始車輛設定狀態：未確認'));
       expect(header, isNot(contains('# Telltale 實車證據')));
     });
 
@@ -179,6 +259,46 @@ void main() {
           ignoredSecondCompletion.renderHeader(),
           isNot(contains('different')),
         );
+      },
+    );
+
+    test(
+      'profile-change notes contain a reconstructable provenance snapshot',
+      () {
+        final profile = VehicleProfile.sourced(
+          displacementL: SourcedField(
+            value: 2.0,
+            origin: VehicleFieldOrigin.officialRegistry,
+            resolution: EvidenceResolution.verifiedExact,
+            evidence: _epaEvidence,
+          ),
+        );
+        final note = SessionEvidenceMetadata.vehicleProfileChangeNote(
+          profile,
+          recordedAt: DateTime.utc(2026, 8, 29, 15, 30),
+        );
+        const marker = 'profile_json=';
+        final json = jsonDecode(
+          note.substring(note.indexOf(marker) + marker.length),
+        ) as Map<String, dynamic>;
+        final fields = json['fields'] as Map<String, dynamic>;
+
+        expect(note, contains('recorded_at_utc=2026-08-29T15:30:00.000Z'));
+        expect(json['isConfirmed'], isFalse);
+        expect(fields, hasLength(8));
+        expect(
+          (fields['displacementL'] as Map<String, dynamic>)['origin'],
+          VehicleFieldOrigin.officialRegistry.name,
+        );
+        expect(
+          (fields['displacementL'] as Map<String, dynamic>)['resolution'],
+          EvidenceResolution.verifiedExact.name,
+        );
+        final evidence =
+            (fields['displacementL'] as Map<String, dynamic>)['evidence']
+                as Map<String, dynamic>;
+        expect(evidence['locator'], 'epa_id=12345');
+        expect(evidence['sha256'], _epaEvidence.sha256);
       },
     );
   });

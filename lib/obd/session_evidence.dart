@@ -5,8 +5,11 @@
 /// connection so an export cannot describe the adapter selected afterwards.
 library;
 
+import 'dart:convert';
+
 import '../core/field_evidence/evidence_text.dart';
 import '../core/field_evidence/platform_metadata.dart';
+import 'physics/vehicle_evidence.dart';
 import 'physics/vehicle_profile.dart';
 
 /// Explicit provenance for builds that talk to the no-car BLE/TCP rigs.
@@ -54,6 +57,24 @@ final class SessionEvidenceMetadata {
 
   bool get transportMetadataCompleted => _completedTransportMetadata != null;
 
+  /// Complete, deterministic state for one in-session profile change.
+  ///
+  /// The header deliberately remains the connection-start snapshot. Recording
+  /// each later value and its provenance beside the wire traffic makes the
+  /// evidence honest without pretending one profile described the whole
+  /// session. [ObdTranscript] escapes the returned note when it renders it.
+  static String vehicleProfileChangeNote(
+    VehicleProfile profile, {
+    required DateTime recordedAt,
+  }) =>
+      '車輛設定變更快照 v1：'
+      'recorded_at_utc=${recordedAt.toUtc().toIso8601String()} '
+      'profile_json=${vehicleProfileSnapshotJson(profile)}';
+
+  /// Stable enough both for evidence output and for suppressing no-op notes.
+  static String vehicleProfileSnapshotJson(VehicleProfile profile) =>
+      jsonEncode(profile.toJson());
+
   /// Adds the facts only a completed transport setup can know.
   ///
   /// Write-once is deliberate. A reconnect or late native callback belongs in
@@ -90,6 +111,29 @@ final class SessionEvidenceMetadata {
       ...latestTransportMetadata,
     };
     final keys = metadata.keys.toList()..sort();
+    final profileFields = profile.inputFieldMap;
+    final exactFields = profileFields.entries
+        .where((entry) => entry.value.isVerifiedExact)
+        .toList();
+    final officialSourceCount = profileFields.values
+        .where(
+          (field) =>
+              field.origin == VehicleFieldOrigin.officialRegistry ||
+              field.origin == VehicleFieldOrigin.manufacturerPublication,
+        )
+        .length;
+    final userSourceCount = profileFields.values
+        .where((field) => field.origin == VehicleFieldOrigin.userEntered)
+        .length;
+    final genericSourceCount = profileFields.values
+        .where((field) => field.origin == VehicleFieldOrigin.genericDefault)
+        .length;
+    final scientificSourceCount = profileFields.values
+        .where((field) => field.origin == VehicleFieldOrigin.scientificModel)
+        .length;
+    int resolutionCount(EvidenceResolution resolution) => profileFields.values
+        .where((field) => field.resolution == resolution)
+        .length;
     final buffer = StringBuffer()
       ..writeln(testRig ? '# Telltale 無車測試馬具證據 v1' : '# Telltale 實車證據 v1');
     if (testRig) {
@@ -111,12 +155,42 @@ final class SessionEvidenceMetadata {
       )
       ..writeln('# 手機：${_safe(platform.manufacturer)} ${_safe(platform.model)}')
       ..writeln(
-        '# 車輛設定：${_number(profile.displacementL)} L · '
+        '# 連線開始車輛設定快照（UTC ${startedAt.toUtc().toIso8601String()}）：'
+        '${_number(profile.displacementL)} L · '
         '${_number(profile.massKg)} kg · '
         'VE ${_number(profile.volumetricEfficiency)}% · '
         '${profile.fuelType.label} · ${profile.drivetrain.label}',
       )
-      ..writeln('# 車輛設定狀態：${profile.isConfirmed ? '已確認' : '未確認'}')
+      ..writeln(
+        '# 連線開始車輛設定 JSON：'
+        '${_safe(vehicleProfileSnapshotJson(profile))}',
+      )
+      ..writeln('# 連線開始車輛設定狀態：${profile.isConfirmed ? '已確認' : '未確認'}')
+      ..writeln(
+        '# 連線開始車輛設定來源：官方／原廠 '
+        '$officialSourceCount/${profileFields.length} · '
+        '手動輸入 $userSourceCount/${profileFields.length} · '
+        '通用 $genericSourceCount/${profileFields.length} · '
+        '科學模型 $scientificSourceCount/${profileFields.length}',
+      )
+      ..writeln(
+        '# 連線開始車輛設定解析：官方精確 '
+        '${resolutionCount(EvidenceResolution.verifiedExact)}/${profileFields.length} · '
+        '本次確認 ${resolutionCount(EvidenceResolution.userConfirmedSession)}/${profileFields.length} · '
+        '未解析 ${resolutionCount(EvidenceResolution.unknown)}/${profileFields.length} · '
+        '歧義 ${resolutionCount(EvidenceResolution.ambiguous)}/${profileFields.length} · '
+        '衝突 ${resolutionCount(EvidenceResolution.conflict)}/${profileFields.length}',
+      );
+    for (final entry in exactFields) {
+      final ref = entry.value.evidence!;
+      buffer.writeln(
+        '# 連線開始車輛設定證據.${_profileFieldLabel(entry.key)}：'
+        '${_safe(ref.publisher)} · ${_safe(ref.sourceId)} · '
+        '${_safe(ref.market)} · ${_safe(ref.locator)} · '
+        'sha256=${ref.sha256}',
+      );
+    }
+    buffer
       ..writeln('# 連線方式：${_safe(transportKind)}')
       ..writeln('# 裝置：${_safe(deviceName)}');
     for (final key in keys) {
@@ -124,6 +198,18 @@ final class SessionEvidenceMetadata {
     }
     return buffer.toString();
   }
+
+  static String _profileFieldLabel(String key) => switch (key) {
+    'displacementL' => '排氣量',
+    'massKg' => '車重',
+    'volumetricEfficiency' => '容積效率',
+    'fuelType' => '燃料種類',
+    'drivetrain' => '驅動方式',
+    'dragCoefficient' => '風阻係數',
+    'frontalAreaM2' => '正面投影面積',
+    'rollingResistance' => '滾動阻力係數',
+    _ => key,
+  };
 
   static String _number(num value) {
     final whole = value.round();

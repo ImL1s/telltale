@@ -32,7 +32,7 @@ class VehicleProfileController extends Notifier<VehicleProfile> {
       // Assumptions persist; trust does not. A different launch or connection
       // may be a different vehicle, and no adapter identifier proves which car
       // is on the other side of the diagnostic socket.
-      return VehicleProfile.fromJson(decoded).unconfirmed();
+      return VehicleProfile.fromJson(decoded).untrustedAfterVehicleBoundary();
     } on Object {
       return const VehicleProfile();
     }
@@ -61,7 +61,7 @@ class VehicleProfileController extends Notifier<VehicleProfile> {
   /// arrive only after the session is already live, so every connection must
   /// fail closed until the driver confirms the current car.
   Future<void> invalidateForVehicleBoundary() async {
-    state = state.unconfirmed();
+    state = state.untrustedAfterVehicleBoundary();
     await _persistAssumptions(state);
   }
 

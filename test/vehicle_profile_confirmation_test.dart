@@ -4,11 +4,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:torque_obd/obd/physics/vehicle_evidence.dart';
 import 'package:torque_obd/obd/physics/vehicle_profile.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/state/settings.dart';
 
 const _storageKey = 'vehicle_profile_v1';
+const _storedEvidence = EvidenceRef(
+  sourceId: 'us-epa-fueleconomy-vehicles',
+  publisher: 'U.S. EPA / U.S. DOE',
+  sourceUrl: 'https://www.fueleconomy.gov/feg/download.shtml',
+  revision: '2026-08-07',
+  retrievedAt: '2026-08-29T14:28:23+00:00',
+  sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  market: 'United States',
+  locator: 'epa_id=12345',
+  year: 2024,
+  make: 'Example',
+  model: 'Roadster',
+  trim: '2.0',
+);
 
 Future<(ProviderContainer, SharedPreferences)> _container(
   Map<String, Object> initial,
@@ -136,5 +151,60 @@ void main() {
       expect(loaded.drivetrain, Drivetrain.rwd);
       expect(loaded.isConfirmed, isFalse);
     });
+
+    test('persisted exact evidence is untrusted until the bundled snapshot revalidates it', () async {
+      final stored = jsonEncode(
+        VehicleProfile.sourced(
+          displacementL: SourcedField(
+            value: 2.0,
+            origin: VehicleFieldOrigin.officialRegistry,
+            resolution: EvidenceResolution.verifiedExact,
+            evidence: _storedEvidence,
+          ),
+        ).toJson(),
+      );
+      final (container, _) = await _container({_storageKey: stored});
+      addTearDown(container.dispose);
+
+      final loaded = container.read(vehicleProfileProvider);
+      expect(loaded.displacementL, 2.0);
+      expect(loaded.displacementField.isVerifiedExact, isFalse);
+      expect(loaded.displacementField.evidence, isNull);
+      expect(loaded.isConfirmed, isFalse);
+    });
+
+    test(
+      'an exact catalog match cannot cross a vehicle connection boundary',
+      () async {
+        final (container, _) = await _container({});
+        addTearDown(container.dispose);
+        final controller = container.read(vehicleProfileProvider.notifier);
+        final exact = VehicleProfile.sourced(
+          displacementL: SourcedField(
+            value: 2.0,
+            origin: VehicleFieldOrigin.officialRegistry,
+            resolution: EvidenceResolution.verifiedExact,
+            evidence: _storedEvidence,
+          ),
+        );
+
+        await controller.update(exact);
+        expect(
+          container
+              .read(vehicleProfileProvider)
+              .displacementField
+              .isVerifiedExact,
+          isTrue,
+        );
+
+        await controller.invalidateForVehicleBoundary();
+
+        final nextVehicle = container.read(vehicleProfileProvider);
+        expect(nextVehicle.displacementL, 2.0);
+        expect(nextVehicle.displacementField.isVerifiedExact, isFalse);
+        expect(nextVehicle.displacementField.evidence, isNull);
+        expect(nextVehicle.isConfirmed, isFalse);
+      },
+    );
   });
 }

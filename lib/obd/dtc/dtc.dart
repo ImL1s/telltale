@@ -665,6 +665,14 @@ class DtcReadException implements Exception {
   String toString() => message;
 }
 
+/// The vehicle's controllers returned more than one complete, distinct VIN.
+///
+/// Controller order cannot decide which identity is authoritative, so callers
+/// must keep the vehicle unknown and retain no candidate.
+class VinIdentityConflictException extends DtcReadException {
+  const VinIdentityConflictException(super.message);
+}
+
 enum DtcReadFailure {
   /// Nothing came back. On an optional class (Mode 07 pending, Mode 0A
   /// permanent) this is ordinary — Mode 0A is not universal before about 2012.

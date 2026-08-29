@@ -12,12 +12,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:torque_obd/obd/transport/obd_transport.dart';
+import 'package:torque_obd/obd/physics/vehicle_evidence.dart';
 import 'package:torque_obd/obd/physics/vehicle_profile.dart';
 import 'package:torque_obd/state/obd_session.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/state/settings.dart';
 
 import 'support/fake_elm327.dart';
+
+const _epaEvidence = EvidenceRef(
+  sourceId: 'us-epa-fueleconomy-vehicles',
+  publisher: 'U.S. EPA / U.S. DOE',
+  sourceUrl: 'https://www.fueleconomy.gov/feg/download.shtml',
+  revision: 'Fri, 07 Aug 2026 13:13:33 GMT',
+  retrievedAt: '2026-08-29T15:08:19+00:00',
+  sha256: '6dc8aed9232a88844e18f0160e94eeaa75abc0dcf8a36286e3166797f4933331',
+  market: 'United States',
+  locator: 'epa_id=24752',
+  year: 2008,
+  make: 'Dodge',
+  model: 'Viper',
+  trim: 'SRT-10 Coupe 8.4 L Manual 6-spd',
+);
 
 Future<ProviderContainer> _container() async {
   SharedPreferences.setMockInitialValues({});
@@ -65,7 +81,7 @@ void main() {
     expect(text, contains('# 隱私提醒：'));
     expect(text, contains('# 工作階段：'));
     expect(text, contains('# App：'));
-    expect(text, contains('# 車輛設定：'));
+    expect(text, contains('# 連線開始車輛設定快照'));
     expect(
       text,
       contains('ATZ'),
@@ -86,42 +102,45 @@ void main() {
     );
   });
 
-  test('adapter-controlled identity text cannot forge evidence headers', () async {
-    final container = await _container();
-    addTearDown(container.dispose);
-    final session = container.read(obdSessionProvider.notifier);
-    const forgedLine = '# FORGED: PASS';
+  test(
+    'adapter-controlled identity text cannot forge evidence headers',
+    () async {
+      final container = await _container();
+      addTearDown(container.dispose);
+      final session = container.read(obdSessionProvider.notifier);
+      const forgedLine = '# FORGED: PASS';
 
-    expect(
-      await session.connectForTest(
-        FakeElm327(
-          protocol: BusProtocol.can11,
-          identity: 'ELM327 v2.1\n$forgedLine\x1B',
-          deviceDescription: 'owner\n$forgedLine\x01',
-          ecus: [
-            FakeEcu(
-              name: 'ECM',
-              requestId: '7E0',
-              responseId: '7E8',
-              responses: const {
-                '0100': [0x41, 0x00, 0xBE, 0x1F, 0xA8, 0x13],
-              },
-            ),
-          ],
+      expect(
+        await session.connectForTest(
+          FakeElm327(
+            protocol: BusProtocol.can11,
+            identity: 'ELM327 v2.1\n$forgedLine\x1B',
+            deviceDescription: 'owner\n$forgedLine\x01',
+            ecus: [
+              FakeEcu(
+                name: 'ECM',
+                requestId: '7E0',
+                responseId: '7E8',
+                responses: const {
+                  '0100': [0x41, 0x00, 0xBE, 0x1F, 0xA8, 0x13],
+                },
+              ),
+            ],
+          ),
+          TransportKind.wifi,
         ),
-        TransportKind.wifi,
-      ),
-      isTrue,
-    );
+        isTrue,
+      );
 
-    final header = session.exportableTranscriptHeader;
-    expect(header, contains(r'\n# FORGED: PASS'));
-    expect(header, contains(r'\x1B'));
-    expect(header, contains(r'\x01'));
-    expect(header.split('\n'), isNot(contains(forgedLine)));
-    expect(header, isNot(contains('\x01')));
-    expect(header, isNot(contains('\x1B')));
-  });
+      final header = session.exportableTranscriptHeader;
+      expect(header, contains(r'\n# FORGED: PASS'));
+      expect(header, contains(r'\x1B'));
+      expect(header, contains(r'\x01'));
+      expect(header.split('\n'), isNot(contains(forgedLine)));
+      expect(header, isNot(contains('\x01')));
+      expect(header, isNot(contains('\x1B')));
+    },
+  );
 
   test(
     'a second attempt does not erase the first attempt evidence early',
@@ -187,7 +206,8 @@ void main() {
       final firstHeader = session.exportableTranscriptHeader;
       expect(firstHeader, contains('# 連線資訊.host：10.255.255.1'));
       expect(firstHeader, contains('# 連線資訊.port：35000'));
-      expect(firstHeader, contains('# 車輛設定：2 L · 1500 kg · VE 85%'));
+      expect(firstHeader, contains('# 連線開始車輛設定快照（UTC '));
+      expect(firstHeader, contains('：2 L · 1500 kg · VE 85%'));
 
       await container
           .read(vehicleProfileProvider.notifier)
@@ -203,6 +223,62 @@ void main() {
       expect(session.exportableTranscriptHeader, isNot(contains('5 L')));
     },
   );
+
+  test('profile evidence keeps a connection-start header and complete change timeline', () async {
+    final container = await _container();
+    addTearDown(container.dispose);
+    final session = container.read(obdSessionProvider.notifier);
+    final profile = container.read(vehicleProfileProvider.notifier);
+
+    expect(await session.connectDemo(), isTrue);
+    final firstTranscript = session.exportableTranscript!;
+    final startHeader = session.exportableTranscriptHeader;
+    expect(startHeader, contains('：2 L · 1500 kg · VE 85%'));
+
+    await profile.update(
+      VehicleProfile.sourced(
+        displacementL: SourcedField(
+          value: 8.4,
+          origin: VehicleFieldOrigin.officialRegistry,
+          resolution: EvidenceResolution.verifiedExact,
+          evidence: _epaEvidence,
+        ),
+      ),
+    );
+    await profile.confirm();
+
+    final firstExport = firstTranscript.render(header: startHeader);
+    expect(firstExport, contains('車輛設定變更快照 v1'));
+    expect(firstExport, contains(r'"locator":"epa_id=24752"'));
+    expect(firstExport, contains(_epaEvidence.sha256));
+    expect(firstExport, contains(r'"isConfirmed":false'));
+    expect(firstExport, contains(r'"isConfirmed":true'));
+    expect(
+      '車輛設定變更快照 v1'.allMatches(firstExport),
+      hasLength(2),
+      reason: 'exact selection and confirmation are separate evidence events',
+    );
+    expect(startHeader, isNot(contains('8.4 L')));
+
+    await session.disconnect();
+    final firstAfterDisconnect = firstTranscript.render(header: startHeader);
+    await profile.update(
+      container.read(vehicleProfileProvider).copyWith(displacementL: 3.0),
+    );
+    expect(
+      firstTranscript.render(header: startHeader),
+      firstAfterDisconnect,
+      reason: 'disconnected profile edits do not mutate the retired attempt',
+    );
+
+    expect(await session.connectDemo(), isTrue);
+    final secondExport = session.exportableTranscript!.render(
+      header: session.exportableTranscriptHeader,
+    );
+    expect(secondExport, isNot(contains('epa_id=24752')));
+    expect(secondExport, isNot(contains(_epaEvidence.sha256)));
+    await session.disconnect();
+  });
 
   test('R28-N6: the heading always describes the transcript it sits on', () async {
     // Cursor round 28. `exportTranscript` read the transcript, awaited the

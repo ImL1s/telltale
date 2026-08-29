@@ -6,6 +6,8 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:torque_obd/obd/physics/vehicle_profile.dart';
+import 'package:torque_obd/obd/session_evidence.dart';
 import 'package:torque_obd/obd/transcript.dart';
 
 void main() {
@@ -204,6 +206,31 @@ void main() {
       },
     );
 
+    test('a profile provenance snapshot survives ordinary ring eviction', () {
+      final t = ObdTranscript(maxEntries: 4, preservedHeadEntries: 1);
+      final start = DateTime.utc(2026, 8, 29);
+      t.recordWrite('ATZ\r'.codeUnits, start);
+      t.recordPinnedNote(
+        SessionEvidenceMetadata.vehicleProfileChangeNote(
+          const VehicleProfile().copyWith(massKg: 1280),
+          recordedAt: start.add(const Duration(seconds: 1)),
+        ),
+        start.add(const Duration(seconds: 1)),
+      );
+      for (var i = 0; i < 20; i++) {
+        t.recordRead(
+          '410C1AF8\r>'.codeUnits,
+          start.add(Duration(seconds: 2, milliseconds: i)),
+        );
+      }
+
+      final rendered = t.render();
+      expect(t.dropped, greaterThan(0));
+      expect(rendered, contains('車輛設定變更快照 v1'));
+      expect(rendered, contains('"massKg":1280.0'));
+      expect(rendered, contains('"origin":"userEntered"'));
+    });
+
     test('the field-marker retention lane stays bounded', () {
       final t = ObdTranscript(
         maxEntries: 2,
@@ -227,9 +254,9 @@ void main() {
       expect(t.render(), contains('實車事件 0'));
       expect(t.render(), contains('實車事件 1'));
       expect(t.render(), isNot(contains('實車事件 4')));
-      expect(t.render(), contains('其中 3 筆是超過事件容量上限的實車事件'));
-      expect(t.renderHex(), contains('其中 3 筆是超過事件容量上限的實車事件'));
-      expect(t.render(), isNot(contains('全部實車事件與最新資料仍保留')));
+      expect(t.render(), contains('其中 3 筆是超過容量上限的證據／實車事件'));
+      expect(t.renderHex(), contains('其中 3 筆是超過容量上限的證據／實車事件'));
+      expect(t.render(), isNot(contains('全部證據／實車事件與最新資料仍保留')));
       expect(t.frozenCopy().droppedPinnedNotes, 3);
     });
   });
