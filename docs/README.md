@@ -18,6 +18,9 @@ certifications of an adapter, diagnosis, repair, vehicle, or safety outcome.
 
 - [Test evidence](verification/test-evidence.md) — test layers, external
   oracles, and what each layer can and cannot prove.
+- [Verification rig matrix](verification/rig-matrix.md) — every repository rig,
+  identified commercial simulator options, protocol coverage, and evidence
+  boundaries.
 - [Device verification](verification/device-verification.md) — bounded physical
   device, transport, and platform observations.
 - [Review log](verification/review-log.md) — consolidated review findings and

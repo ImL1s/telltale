@@ -177,6 +177,14 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // connected: a gauge added from the PID manager shows dashes forever, and
     // one removed keeps consuming bus bandwidth.
     ref.listen(activePidsProvider, (previous, next) => syncActivePids(next));
+    // A confirmed profile opens the MAP/MAF inputs used by speed-density and
+    // power estimates. Editing it closes that lane again immediately; only
+    // the ECU's measured fuel rate and speed remain as supplemental inputs.
+    ref.listen(vehicleProfileProvider, (previous, next) {
+      if (previous?.isConfirmed != next.isConfirmed) {
+        syncActivePids(ref.read(activePidsProvider));
+      }
+    });
 
     // A vehicle session is foreground-only, and saying so explicitly is the
     // fix for two problems at once: the app must stop putting traffic on a
@@ -571,7 +579,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
         _currentSessionIsTestRig) {
       return FieldEventRecordResult.unavailable;
     }
-    client.transcript.recordNote('實車事件：${marker.label}');
+    client.transcript.recordPinnedNote('實車事件：${marker.label}');
     final persisted = await _saveTranscriptSnapshot();
     return persisted
         ? FieldEventRecordResult.persisted
@@ -1010,6 +1018,17 @@ class ObdSession extends Notifier<ObdConnectionState> {
       return false;
     }
 
+    // A remembered adapter is not a vehicle identity. Every new connection
+    // could be a different car, so profile-derived figures remain closed until
+    // the driver confirms the assumptions for this exact session.
+    await ref
+        .read(vehicleProfileProvider.notifier)
+        .invalidateForVehicleBoundary();
+    if (_superseded(generation)) {
+      await transport.disconnect();
+      return false;
+    }
+
     _sessionKind = kind.label;
     _sessionTransport = kind;
     _sessionDevice = transport.displayName;
@@ -1137,7 +1156,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
       if (!_telemetry.isClosed) _telemetry.add(snapshot);
     });
 
-    engine.setActivePids(ref.read(activePidsProvider));
+    syncActivePids(ref.read(activePidsProvider));
     // A protocol search can take 25 seconds, and the user may well have put
     // the phone down during it. Starting to poll from the background is both
     // rude and unsafe — an OS freeze mid-command splits a request from its
@@ -1231,6 +1250,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
     if (_superseded(generation)) return;
     _client?.transcript.recordNote('連線事件：轉接器連線中斷');
     _generation++;
+    unawaited(
+      ref.read(vehicleProfileProvider.notifier).invalidateForVehicleBoundary(),
+    );
     state = state.copyWith(
       phase: ConnectionPhase.failed,
       error: '轉接器停止回應，連線已中斷。',
@@ -1239,7 +1261,10 @@ class ObdSession extends Notifier<ObdConnectionState> {
   }
 
   /// Pushes a changed PID selection into the running loop.
-  void syncActivePids(List<Pid> pids) => _engine?.setActivePids(pids);
+  void syncActivePids(List<Pid> pids) => _engine?.setActivePids(
+    pids,
+    includeProfileDerivedInputs: ref.read(vehicleProfileProvider).isConfirmed,
+  );
 
   /// Throws when the link is gone rather than answering with an empty list.
   ///
@@ -1329,6 +1354,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
     _client?.transcript.recordNote('連線事件：使用者中斷連線');
     _generation++;
     await _teardown();
+    await ref
+        .read(vehicleProfileProvider.notifier)
+        .invalidateForVehicleBoundary();
     state = const ObdConnectionState();
   }
 

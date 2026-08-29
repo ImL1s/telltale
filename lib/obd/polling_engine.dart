@@ -148,9 +148,12 @@ class MilStatus {
 }
 
 class PollingEngine {
-  PollingEngine(this.client, {FormulaEngine? formulaEngine, PriorityScheduler? scheduler})
-      : formula = formulaEngine ?? FormulaEngine(),
-        scheduler = scheduler ?? PriorityScheduler();
+  PollingEngine(
+    this.client, {
+    FormulaEngine? formulaEngine,
+    PriorityScheduler? scheduler,
+  }) : formula = formulaEngine ?? FormulaEngine(),
+       scheduler = scheduler ?? PriorityScheduler();
 
   final Elm327Client client;
   final FormulaEngine formula;
@@ -167,14 +170,14 @@ class PollingEngine {
   Stream<TelemetrySnapshot> get snapshots => _snapshots.stream;
 
   TelemetrySnapshot get current => TelemetrySnapshot(
-        readings: Map.unmodifiable(_readings),
-        faults: Map.unmodifiable(_faults),
-        pidsPerSecond: scheduler.stats.pidsPerSecond,
-        fastModeEnabled: scheduler.fastModeEnabled,
-        batteryVoltage: client.batteryVoltage,
-        accelerationMs2: accelerationMs2,
-        capturedAt: DateTime.now(),
-      );
+    readings: Map.unmodifiable(_readings),
+    faults: Map.unmodifiable(_faults),
+    pidsPerSecond: scheduler.stats.pidsPerSecond,
+    fastModeEnabled: scheduler.fastModeEnabled,
+    batteryVoltage: client.batteryVoltage,
+    accelerationMs2: accelerationMs2,
+    capturedAt: DateTime.now(),
+  );
 
   /// Smoothed longitudinal acceleration derived from road speed.
   ///
@@ -278,12 +281,15 @@ class PollingEngine {
 
   /// Replaces the polling set. Safe to call while running.
   ///
-  /// The physics inputs (RPM, speed, MAP, IAT, MAF) are always merged in, at
-  /// whatever priority their definition carries. Without them the derived
-  /// figures silently read zero whenever the user happens not to have put MAP
-  /// on the dashboard — the speed-density path has no pressure to work from,
-  /// so air mass, and therefore fuel rate, collapse to nothing.
-  void setActivePids(List<Pid> pids) {
+  /// Profile-derived inputs are merged only after the driver confirms the
+  /// complete vehicle assumptions. Until then, only speed and the ECU's own
+  /// fuel-rate PID are supplemental: they can produce a profile-independent
+  /// measured consumption figure without spending legacy-bus bandwidth on
+  /// hidden MAP/MAF speed-density inputs.
+  void setActivePids(
+    List<Pid> pids, {
+    bool includeProfileDerivedInputs = true,
+  }) {
     // The definition set gets its own generation, separate from the polling
     // epoch. Clearing the formula cache when definitions change is right and
     // was not enough: a removed variant's reply is often already in flight,
@@ -305,7 +311,10 @@ class PollingEngine {
     // bus, and still lands in a cache that was cleared for it. Retired here,
     // where the definitions change, so the next cycle rebuilds from what is
     // actually active.
-    for (final required in PidLibrary.physicsInputs) {
+    final supplemental = includeProfileDerivedInputs
+        ? PidLibrary.physicsInputs
+        : const [PidLibrary.vehicleSpeed, PidLibrary.engineFuelRate];
+    for (final required in supplemental) {
       merged.putIfAbsent(required.id, () => required);
     }
     _scheduleFormulaDependencies(merged);
@@ -363,8 +372,7 @@ class PollingEngine {
       final equation = pid.equation.toUpperCase();
       final wanted = <String>{
         ...FormulaEngine.valReferences(equation),
-        if (equation.contains('BARO'))
-          PidLibrary.barometricPressure.modeAndPid,
+        if (equation.contains('BARO')) PidLibrary.barometricPressure.modeAndPid,
       };
       for (final hex in wanted) {
         final definition = PidLibrary.byModeAndPid(hex);
@@ -443,8 +451,7 @@ class PollingEngine {
     if (captured == null) return;
     if (lifecycleEpoch?.call() == captured) return;
     throw DtcReadException(
-      message ??
-          '這次操作在中途被中斷（App 退到背景或連線變更），已停止。請重新操作。',
+      message ?? '這次操作在中途被中斷（App 退到背景或連線變更），已停止。請重新操作。',
       kind: DtcReadFailure.disconnected,
       repeatWouldHarm: repeatWouldHarm,
     );
@@ -538,8 +545,11 @@ class PollingEngine {
     _censusAttempted = true;
     final ObdResponse response;
     try {
-      response =
-          await client.sendGlobal('0100', owner: owner, deadline: deadline);
+      response = await client.sendGlobal(
+        '0100',
+        owner: owner,
+        deadline: deadline,
+      );
     } on Object {
       return _responders;
     }
@@ -848,8 +858,9 @@ class PollingEngine {
       // CAN slots and their framing lives in PP 2C / PP 2E; an adapter that
       // will not print `AT PPS` leaves that unknowable, and "reconnect" would
       // send someone round a loop with no exit.
-      final protocol =
-          BusAddressing.normaliseProtocolNumber(client.protocolNumber);
+      final protocol = BusAddressing.normaliseProtocolNumber(
+        client.protocolNumber,
+      );
       if (protocol == 'B' || protocol == 'C') {
         final parameter = protocol == 'B' ? 'PP 2C' : 'PP 2E';
         return '這個轉接器設定為使用者自訂 CAN 協定 $protocol，'
@@ -867,8 +878,7 @@ class PollingEngine {
   /// adapter says can be trusted to describe the vehicle, so the read fails
   /// outright rather than being qualified — a lying adapter is not a limited
   /// one.
-  void _rejectAnonymous(ObdResponse response,
-      {bool repeatWouldHarm = false}) {
+  void _rejectAnonymous(ObdResponse response, {bool repeatWouldHarm = false}) {
     if (!response.headersEnabled) return;
     final anonymous = response.frames.where((f) => f.sourceId == null).length;
     if (anonymous == 0) return;
@@ -901,8 +911,11 @@ class PollingEngine {
   /// This is what `docs/verification/test-evidence.md` recorded as a known gap awaiting
   /// hardware. It needed no hardware — only for the two states to stop
   /// sharing one branch.
-  void _requireAttributable(ObdResponse response, List<Dtc> found,
-      {bool repeatWouldHarm = false}) {
+  void _requireAttributable(
+    ObdResponse response,
+    List<Dtc> found, {
+    bool repeatWouldHarm = false,
+  }) {
     if (response.headersEnabled) return;
     throw DtcReadException(
       '轉接器不支援顯示回應標頭，無法分辨有幾個控制器答覆。'
@@ -1082,12 +1095,12 @@ class PollingEngine {
           throw DtcReadException(
             kind == DtcKind.stored
                 ? '有 ${silent.length} 個控制器完全沒有回應這次查詢'
-                    '（${silent.join('、')}）。'
-                    '已回應的部分沒有問題，但這不能當作全車結果。'
+                      '（${silent.join('、')}）。'
+                      '已回應的部分沒有問題，但這不能當作全車結果。'
                 : '有 ${silent.length} 個控制器沒有回應${kind.label}故障碼查詢'
-                    '（${silent.join('、')}）。'
-                    '這個類別是選配的，沉默可能只代表它沒有實作 —— '
-                    '但也因此無法當作全車都沒有${kind.label}故障碼。',
+                      '（${silent.join('、')}）。'
+                      '這個類別是選配的，沉默可能只代表它沒有實作 —— '
+                      '但也因此無法當作全車都沒有${kind.label}故障碼。',
             kind: DtcReadFailure.noAnswer,
             partial: result,
             terminalSources: Set.unmodifiable(heard),
@@ -1190,8 +1203,11 @@ class PollingEngine {
       try {
         _requireStillOwned(owner);
         _requireTimeToWork(deadline);
-        final codes =
-            await _readDtcsOnce(kind, owner: owner, deadline: deadline);
+        final codes = await _readDtcsOnce(
+          kind,
+          owner: owner,
+          deadline: deadline,
+        );
         heardOfService.addAll(_lastHeardOfService);
         doubts.addAll(_lastUnresolvedIdentities);
         collect(codes);
@@ -1278,7 +1294,8 @@ class PollingEngine {
             if (stillSilent.isEmpty) return finish(finished, found.values);
           }
         }
-        final outOfTime = deadline != null &&
+        final outOfTime =
+            deadline != null &&
             !DateTime.now().add(pendingRetryDelay).isBefore(deadline);
         if (e.kind != DtcReadFailure.pending ||
             attempt == pendingRetries ||
@@ -1375,8 +1392,11 @@ class PollingEngine {
   /// caller has to account for.
   Set<String> _lastUnresolvedIdentities = const {};
 
-  Future<List<Dtc>> _readDtcsOnce(DtcKind kind,
-      {Object? owner, DateTime? deadline}) async {
+  Future<List<Dtc>> _readDtcsOnce(
+    DtcKind kind, {
+    Object? owner,
+    DateTime? deadline,
+  }) async {
     // Cleared before anything that can throw. It is a side channel, and a
     // header switch failing before the service byte went out left the previous
     // category's value standing — so a Mode 07 the adapter never transmitted
@@ -1405,8 +1425,11 @@ class PollingEngine {
     // appears and the screen reports a clean scan.
     final ObdResponse response;
     try {
-      response =
-          await client.sendGlobal(kind.mode, owner: owner, deadline: deadline);
+      response = await client.sendGlobal(
+        kind.mode,
+        owner: owner,
+        deadline: deadline,
+      );
       // Recorded the moment the reply exists, not on the way out.
       //
       // Setting it beside the successful return meant an exchange that threw —
@@ -1463,7 +1486,8 @@ class PollingEngine {
         _resolveIdentity(source);
         final bytes = frame.bytes;
         if (bytes.isEmpty) continue;
-        final about = bytes.first == expectingService + 0x40 ||
+        final about =
+            bytes.first == expectingService + 0x40 ||
             (bytes.first == 0x7F &&
                 bytes.length >= 2 &&
                 bytes[1] == expectingService);
@@ -1548,8 +1572,6 @@ class PollingEngine {
     }
 
     _rejectAnonymous(response);
-
-
 
     final expectedMode = int.parse(kind.mode, radix: 16) + 0x40;
     // The count byte exists only on CAN. Datasheet p.35: "the ISO 15765-4
@@ -1661,9 +1683,9 @@ class PollingEngine {
         pendingSources.isNotEmpty
             ? 'ECU 已收到查詢但尚未回覆完成（response pending）。請稍候再試一次。'
             : refused > 0
-                ? 'ECU 拒絕了故障碼查詢（negative response）'
-                : '故障碼回應的模式位元組不符（期望 '
-                    '0x${expectedMode.toRadixString(16).toUpperCase()}）',
+            ? 'ECU 拒絕了故障碼查詢（negative response）'
+            : '故障碼回應的模式位元組不符（期望 '
+                  '0x${expectedMode.toRadixString(16).toUpperCase()}）',
         kind: pendingSources.isNotEmpty
             ? DtcReadFailure.pending
             : DtcReadFailure.error,
@@ -1683,16 +1705,16 @@ class PollingEngine {
       throw DtcReadException(
         refused > 0
             ? '有 $refused 個控制器拒絕回答（$answered 個已回應）。'
-                '這次掃描無法涵蓋全車，結果並不完整。'
+                  '這次掃描無法涵蓋全車，結果並不完整。'
             : pendingSources.isNotEmpty
-                ? '有 ${pendingSources.length} 個控制器還在處理這次查詢'
-                    '（response pending），'
-                    '$answered 個已回應。結果尚不完整，請稍候再掃描一次。'
-                : decodeFailure != null
-                    ? '有 $unrecognised 筆回應無法解讀（$decodeFailure）。'
-                        '其餘控制器的結果仍然有效，但這次掃描並不完整。'
-                    : '有 $unrecognised 筆回應無法辨識（$answered 個已回應）。'
-                        '這次掃描結果並不完整。',
+            ? '有 ${pendingSources.length} 個控制器還在處理這次查詢'
+                  '（response pending），'
+                  '$answered 個已回應。結果尚不完整，請稍候再掃描一次。'
+            : decodeFailure != null
+            ? '有 $unrecognised 筆回應無法解讀（$decodeFailure）。'
+                  '其餘控制器的結果仍然有效，但這次掃描並不完整。'
+            : '有 $unrecognised 筆回應無法辨識（$answered 個已回應）。'
+                  '這次掃描結果並不完整。',
         kind: pendingSources.isNotEmpty && refused == 0 && unrecognised == 0
             ? DtcReadFailure.pending
             : DtcReadFailure.error,
@@ -1807,9 +1829,9 @@ class PollingEngine {
   /// staged their results and by the clear before it changes anything. A
   /// category's own `finish` asks the narrower question.
   Set<String> get openIdentityQuestions => {
-        for (final doubts in _unresolvedIdentities.values) ...doubts,
-        ..._clearUnresolved,
-      };
+    for (final doubts in _unresolvedIdentities.values) ...doubts,
+    ..._clearUnresolved,
+  };
 
   /// The read's disposition rules, applied to a clear's reply.
   ///
@@ -2116,11 +2138,11 @@ class PollingEngine {
       throw DtcReadException(
         reached
             ? '清除指令送出後連線中斷，無法確認車輛是否已清除。'
-                '請重新掃描確認結果，不要直接再清除一次 —— '
-                '如果其實已經清除成功，再清一次會重置排放就緒狀態。'
+                  '請重新掃描確認結果，不要直接再清除一次 —— '
+                  '如果其實已經清除成功，再清一次會重置排放就緒狀態。'
             : '清除指令還沒送出就失敗了'
-                '（${e is TransportException ? e.message : e}）。'
-                '車輛沒有任何變化，可以再試一次。',
+                  '（${e is TransportException ? e.message : e}）。'
+                  '車輛沒有任何變化，可以再試一次。',
         kind: DtcReadFailure.disconnected,
         repeatWouldHarm: reached,
       );
@@ -2136,7 +2158,8 @@ class PollingEngine {
     // monitors a second time and costs another drive cycle.
     _requireStillOwned(
       owner,
-      message: '清除指令已經送出，但 App 在等待回覆時被中斷，'
+      message:
+          '清除指令已經送出，但 App 在等待回覆時被中斷，'
           '因此無法確認車輛是否已經清除。'
           '請重新掃描確認結果，不要直接再清除一次 —— '
           '重複清除會再一次重置排放就緒狀態。',
@@ -2159,10 +2182,12 @@ class PollingEngine {
     // sentence below that would otherwise assert it.
     final someoneFinished =
         response.frames.any((f) => _clearCompleted(f.bytes)) ||
-            response.observedFrames.any((f) =>
-                f.service == 0x04 &&
-                f.payload != null &&
-                _clearCompleted(f.payload!));
+        response.observedFrames.any(
+          (f) =>
+              f.service == 0x04 &&
+              f.payload != null &&
+              _clearCompleted(f.payload!),
+        );
     // …and whether anybody *may* have, which is the question the button needs.
     //
     // `someoneFinished` is an exact-`44` claim, and it feeds the attribution
@@ -2187,12 +2212,15 @@ class PollingEngine {
                 bytes.first == 0x7F &&
                 bytes[1] == 0x04 &&
                 bytes[2] == 0x78));
-    final someoneMayHaveActed = someoneFinished ||
+    final someoneMayHaveActed =
+        someoneFinished ||
         response.frames.any((f) => mayHaveActed(f.bytes)) ||
-        response.observedFrames.any((f) =>
-            f.service == 0x04 &&
-            f.payload != null &&
-            mayHaveActed(f.payload!));
+        response.observedFrames.any(
+          (f) =>
+              f.service == 0x04 &&
+              f.payload != null &&
+              mayHaveActed(f.payload!),
+        );
     if (openIdentityQuestions.isNotEmpty) {
       // The middle sentence used to be unconditional, so
       //
@@ -2287,8 +2315,11 @@ class PollingEngine {
     //
     // Not knowing who did it is not evidence that nobody did.
     _rejectAnonymous(response, repeatWouldHarm: someoneMayHaveActed);
-    _requireAttributable(response, const [],
-        repeatWouldHarm: someoneMayHaveActed);
+    _requireAttributable(
+      response,
+      const [],
+      repeatWouldHarm: someoneMayHaveActed,
+    );
 
     // The same absence the read had to learn about, and it matters more here.
     //
@@ -2411,8 +2442,9 @@ class PollingEngine {
         // time. The vehicle then needs another full drive cycle before it can
         // pass an emissions test, for a retry that could not help the module
         // that refused anyway.
-        final someoneCleared =
-            response.frames.any((f) => _clearCompleted(f.bytes));
+        final someoneCleared = response.frames.any(
+          (f) => _clearCompleted(f.bytes),
+        );
         // Asked of the whole reply, not of the frames read so far.
         //
         // Codex round 32: the same two controllers gave opposite button
@@ -2462,18 +2494,20 @@ class PollingEngine {
         // flag disabled 清除 anyway. A dead control with no explanation is the
         // same failure as an explanation with a live control, from the other
         // side.
-        const harmWarning = '已有其他控制器完成清除，所以不要再送一次全車清除 —— '
+        const harmWarning =
+            '已有其他控制器完成清除，所以不要再送一次全車清除 —— '
             '重複清除會讓已完成的控制器再一次重置排放就緒狀態。';
         // Three states, because there are three, and the middle one used to
         // borrow the wrong sentence from whichever side it fell on.
-        const unreadableWarning = '另有控制器的回覆無法判讀，可能已經清除，'
+        const unreadableWarning =
+            '另有控制器的回覆無法判讀，可能已經清除，'
             '所以不要再送一次全車清除 —— '
             '重複清除會讓已完成的控制器再一次重置排放就緒狀態。';
         final prohibition = someoneCleared
             ? harmWarning
             : couldHaveActed
-                ? unreadableWarning
-                : '';
+            ? unreadableWarning
+            : '';
         final retry = couldHaveActed
             ? '$prohibition請重新掃描確認哪些故障碼還在。'
             : '請稍候再試一次。';
@@ -2489,13 +2523,14 @@ class PollingEngine {
             // action is to do exactly the thing being warned against — and
             // that re-clears the controller which already finished, costing
             // another drive cycle.
-            final why = '$source拒絕清除，因為目前的車輛狀態不允許。'
+            final why =
+                '$source拒絕清除，因為目前的車輛狀態不允許。'
                 '多數控制器在引擎運轉時不會清除故障記憶。';
             throw DtcReadException(
               couldHaveActed
                   ? '$why$prohibition'
-                      '請先將電門轉到 ON 但不要發動引擎，'
-                      '再重新掃描確認哪些故障碼還在。'
+                        '請先將電門轉到 ON 但不要發動引擎，'
+                        '再重新掃描確認哪些故障碼還在。'
                   : '$why請將電門轉到 ON 但不要發動引擎，然後再試一次。',
               kind: DtcReadFailure.error,
               repeatWouldHarm: couldHaveActed,
@@ -2510,9 +2545,9 @@ class PollingEngine {
             throw DtcReadException(
               couldHaveActed
                   ? '$source不支援清除服務（Mode 04）。'
-                      '$prohibition請重新掃描確認哪些故障碼還在。'
+                        '$prohibition請重新掃描確認哪些故障碼還在。'
                   : '$source不支援清除服務（Mode 04），這輛車的故障碼可能要用'
-                      '原廠設備才能清除。',
+                        '原廠設備才能清除。',
               kind: DtcReadFailure.error,
               repeatWouldHarm: couldHaveActed,
             );
@@ -2616,8 +2651,11 @@ class PollingEngine {
     client.knownResponders = _knownResponders ?? const {};
     final ObdResponse response;
     try {
-      response =
-          await client.sendGlobal('0101', owner: owner, deadline: deadline);
+      response = await client.sendGlobal(
+        '0101',
+        owner: owner,
+        deadline: deadline,
+      );
     } on Object {
       return null;
     }
@@ -2778,13 +2816,18 @@ class PollingEngine {
     _requireStillOwned(owner);
     client.knownResponders = _knownResponders ?? const {};
 
-    final frameHex =
-        frameNumber.toRadixString(16).toUpperCase().padLeft(2, '0');
+    final frameHex = frameNumber
+        .toRadixString(16)
+        .toUpperCase()
+        .padLeft(2, '0');
 
     Future<ObdResponse?> ask(String request) async {
       try {
-        final r =
-            await client.sendGlobal(request, owner: owner, deadline: deadline);
+        final r = await client.sendGlobal(
+          request,
+          owner: owner,
+          deadline: deadline,
+        );
         _requireStillOwned(owner);
         return r.isSuccess ? r : null;
       } on OperationRetiredException {
@@ -2905,8 +2948,10 @@ class PollingEngine {
       for (final frame in maskReply.frames) {
         final source = frame.sourceId;
         if (source == null || !causes.containsKey(source)) continue;
-        final data =
-            _dataForNonMode01('02${block.substring(2)}$frameHex', frame.bytes);
+        final data = _dataForNonMode01(
+          '02${block.substring(2)}$frameHex',
+          frame.bytes,
+        );
         if (data == null || data.length < 4) continue;
         maskAnswered.add(source);
         final decoded = PidLibrary.decodeSupportMask(block, data);
@@ -2943,8 +2988,18 @@ class PollingEngine {
     // Only the conventional frame contents, only where there is a formula, and
     // only for a controller that has already proved a frame exists.
     const probeSet = [
-      '0104', '0105', '0106', '0107', '010B', '010C',
-      '010D', '010E', '010F', '0110', '0111', '011F',
+      '0104',
+      '0105',
+      '0106',
+      '0107',
+      '010B',
+      '010C',
+      '010D',
+      '010E',
+      '010F',
+      '0110',
+      '0111',
+      '011F',
     ];
     final probed = <String>{};
     for (final source in causes.keys) {
@@ -2958,8 +3013,7 @@ class PollingEngine {
     final wanted = <String>{for (final s in supported.values) ...s};
     final readings = <String, List<FreezeReading>>{};
 
-    bool decodable(String id) =>
-        PidLibrary.all.any((p) => p.modeAndPid == id);
+    bool decodable(String id) => PidLibrary.all.any((p) => p.modeAndPid == id);
 
     for (final id in wanted.toList()..sort()) {
       // Present in the frame and this app has no formula for it. Not asked
@@ -2990,8 +3044,9 @@ class PollingEngine {
         // twice put two engine speeds in one card, side by side, differing.
         // Same rule here: a repeat that agrees is a duplicate and is dropped; a
         // repeat that disagrees means neither can be trusted, so the PID goes.
-        final already = (readings[source] ??= [])
-            .indexWhere((r) => r.pid.modeAndPid == pid.modeAndPid);
+        final already = (readings[source] ??= []).indexWhere(
+          (r) => r.pid.modeAndPid == pid.modeAndPid,
+        );
         if (already >= 0) {
           if (readings[source]![already].value != value) {
             readings[source]!.removeAt(already);
@@ -3007,48 +3062,48 @@ class PollingEngine {
     return FreezeFrameRead(
       incomplete: damaged,
       frames: [
-      for (final entry in causes.entries)
-        () {
-          // Both counts by difference, at one place, from what the controller
-          // claimed against what actually came back.
-          //
-          // The first version incremented a counter at four call sites — the
-          // no-formula branch, the formula failure, the conflicting repeat, and
-          // nothing at all for a read that timed out. That is one rule in four
-          // places with a hole in it, which is the shape this file's comments
-          // are mostly about, and the hole was the one that mattered: the
-          // freeze read runs last under the scan's shared deadline, so on a
-          // slow adapter the early PIDs land, the late ones expire, and the
-          // table just gets shorter with nothing saying so.
-          final values = readings[entry.key] ?? const <FreezeReading>[];
-          // A probed controller never told us what its frame holds, so there
-          // is no denominator: a PID that did not answer is one this vehicle
-          // does not freeze, not one that went missing. Counting those as
-          // 沒有讀回來 would invent a shortfall out of the app's own guess.
-          if (probed.contains(entry.key)) {
+        for (final entry in causes.entries)
+          () {
+            // Both counts by difference, at one place, from what the controller
+            // claimed against what actually came back.
+            //
+            // The first version incremented a counter at four call sites — the
+            // no-formula branch, the formula failure, the conflicting repeat, and
+            // nothing at all for a read that timed out. That is one rule in four
+            // places with a hole in it, which is the shape this file's comments
+            // are mostly about, and the hole was the one that mattered: the
+            // freeze read runs last under the scan's shared deadline, so on a
+            // slow adapter the early PIDs land, the late ones expire, and the
+            // table just gets shorter with nothing saying so.
+            final values = readings[entry.key] ?? const <FreezeReading>[];
+            // A probed controller never told us what its frame holds, so there
+            // is no denominator: a PID that did not answer is one this vehicle
+            // does not freeze, not one that went missing. Counting those as
+            // 沒有讀回來 would invent a shortfall out of the app's own guess.
+            if (probed.contains(entry.key)) {
+              return FreezeFrame(
+                source: entry.key,
+                frameNumber: frameNumber,
+                cause: entry.value,
+                readings: List.unmodifiable(values),
+                undecodable: 0,
+                unread: 0,
+                contentsUnknown: values.isEmpty,
+              );
+            }
+            final claimed = supported[entry.key] ?? const <String>{};
+            final got = values.map((r) => r.pid.modeAndPid).toSet();
+            final noFormula = claimed.where((id) => !decodable(id)).length;
             return FreezeFrame(
               source: entry.key,
               frameNumber: frameNumber,
               cause: entry.value,
               readings: List.unmodifiable(values),
-              undecodable: 0,
-              unread: 0,
-              contentsUnknown: values.isEmpty,
+              undecodable: noFormula,
+              unread: claimed.length - got.length - noFormula,
+              contentsUnknown: false,
             );
-          }
-          final claimed = supported[entry.key] ?? const <String>{};
-          final got = values.map((r) => r.pid.modeAndPid).toSet();
-          final noFormula = claimed.where((id) => !decodable(id)).length;
-          return FreezeFrame(
-            source: entry.key,
-            frameNumber: frameNumber,
-            cause: entry.value,
-            readings: List.unmodifiable(values),
-            undecodable: noFormula,
-            unread: claimed.length - got.length - noFormula,
-            contentsUnknown: false,
-          );
-        }(),
+          }(),
       ],
     );
   }
@@ -3066,8 +3121,11 @@ class PollingEngine {
     // characters rather than an error.
     final refusal = _busRefusal('車身碼');
     if (refusal != null) throw DtcReadException(refusal);
-    final response =
-        await client.sendGlobal('0902', owner: owner, deadline: deadline);
+    final response = await client.sendGlobal(
+      '0902',
+      owner: owner,
+      deadline: deadline,
+    );
     if (!response.isSuccess) return null;
     // `0902` is a global request like any other, and was the one consumer left
     // outside the attribution gate.
@@ -3128,7 +3186,10 @@ class PollingEngine {
         final frame = obdFrame.bytes;
         if (frame.length < 4) continue;
         if (frame[0] != 0x49 || frame[1] != 0x02) continue;
-        final segments = perSource.putIfAbsent(obdFrame.sourceId ?? '', () => {});
+        final segments = perSource.putIfAbsent(
+          obdFrame.sourceId ?? '',
+          () => {},
+        );
         final seq = frame[2];
         if (segments.containsKey(seq)) return null; // duplicate line
         segments[seq] = frame.sublist(3);
@@ -3175,8 +3236,7 @@ class PollingEngine {
           if (order[i] != i + 1) complete = false;
         }
         if (!complete) continue;
-        final vin =
-            _vinFromData([for (final seq in order) ...segments[seq]!]);
+        final vin = _vinFromData([for (final seq in order) ...segments[seq]!]);
         if (vin != null) decoded.add(vin);
       }
       if (decoded.isEmpty) return null;
@@ -3325,8 +3385,8 @@ class PollingEngine {
     // clones do not — left `_lastVoltageAt` null forever, so the guard never
     // applied and the command went out on every single cycle. Roughly half the
     // link's throughput, spent on a figure that was never going to arrive.
-    final due = lastSuccess == null ||
-        now.difference(lastSuccess) >= voltageInterval;
+    final due =
+        lastSuccess == null || now.difference(lastSuccess) >= voltageInterval;
     if (!due) return;
     if (lastFailure != null &&
         now.difference(lastFailure) < voltageRetryInterval) {
@@ -3382,7 +3442,8 @@ class PollingEngine {
         _retryAfter.remove(pid.id);
       }
       final last = _readings[pid.id]?.timestamp;
-      final due = last == null || now.difference(last) >= pid.priority.targetInterval;
+      final due =
+          last == null || now.difference(last) >= pid.priority.targetInterval;
       if (due) scheduler.enqueue(pid, pid.priority);
     }
   }
@@ -3436,7 +3497,9 @@ class PollingEngine {
     // importer both refuse a write or control service, but a definition stored
     // by an older build would otherwise be scheduled here — repeatedly, for as
     // long as its gauge is on the dashboard.
-    final unsafe = batch.where((r) => !PollableServices.isPollable(r.pid.modeAndPid));
+    final unsafe = batch.where(
+      (r) => !PollableServices.isPollable(r.pid.modeAndPid),
+    );
     if (unsafe.isNotEmpty) {
       for (final request in unsafe) {
         // Its own fault kind, for the reason `headerNotOnThisBus` has one
@@ -3514,6 +3577,22 @@ class PollingEngine {
       return;
     }
 
+    // Some ECUs reject an unsupported Mode 01 PID with the UDS-shaped
+    // `7F 01 12` response instead of staying silent. That is explicit
+    // capability evidence, not a damaged bus and not sensor bytes. The GT86
+    // field trace uses this exact shape for PID 015E. Back it off like a
+    // support-mask denial so it cannot consume a low-speed bus in a hot loop,
+    // while retaining the normal finite recheck that lets a later answer win.
+    if (batch.length == 1 &&
+        _isUnsupportedMode01Negative(response, batch.single.pid)) {
+      final id = batch.single.pid.id;
+      _invalidate(id, PidFault.unsupported);
+      _retryAfter[id] = DateTime.now().add(recheckInterval);
+      _noDataStrikes.remove(id);
+      _publish(epoch);
+      return;
+    }
+
     final slices = _splitBatchedResponse(response, batch);
 
     // A batch is all-or-nothing. Accepting a reply that only contained the
@@ -3574,7 +3653,7 @@ class PollingEngine {
         _retryAfter.remove(request.pid.id);
         // Before `_answeredAtLeastOnce`, so the next `_refillQueue` sees a PID
         // with no fault and a vehicle that has just answered it.
-        
+
         _answeredAtLeastOnce.add(request.pid.id);
         completed++;
       } on FormulaException {
@@ -3602,6 +3681,26 @@ class PollingEngine {
 
     scheduler.recordCompletions(completed);
     _publish(epoch);
+  }
+
+  static bool _isUnsupportedMode01Negative(ObdResponse response, Pid pid) {
+    final request = pid.modeAndPid.toUpperCase();
+    if (!request.startsWith('01') || response.frames.isEmpty) return false;
+
+    // Judge complete logical messages, never the flattened byte prefix.
+    // Headerless legacy replies preserve one [ObdFrame] per response line but
+    // concatenate all of them in `response.bytes`. Treating that concatenation
+    // as one message lets `7F 01 12` from one controller hide a valid positive
+    // reply from another, and lets a damaged `7F 01 12 DE AD` look like exact
+    // capability evidence. The finite five-minute backoff is warranted only
+    // when every complete response is exactly the observed three-byte refusal.
+    return response.frames.every((frame) {
+      final bytes = frame.bytes;
+      return bytes.length == 3 &&
+          bytes[0] == 0x7F &&
+          bytes[1] == 0x01 &&
+          bytes[2] == 0x12;
+    });
   }
 
   /// Consecutive `NO DATA` answers per PID, reset by any successful read.
@@ -3776,7 +3875,9 @@ class PollingEngine {
   /// every PID (`41 0C 1A F0 41 0D 3C`), others emit it once (`41 0C 1A F0 0D
   /// 3C`). Both are accepted by treating a `41` as optional at each step.
   Map<String, List<int>> _splitBatchedResponse(
-      ObdResponse response, List<QueuedRequest> batch) {
+    ObdResponse response,
+    List<QueuedRequest> batch,
+  ) {
     final bytes = response.bytes;
     if (bytes.isEmpty) return const {};
 

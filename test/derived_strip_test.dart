@@ -21,6 +21,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:torque_obd/obd/physics/vehicle_profile.dart';
 import 'package:torque_obd/obd/pid/pid_library.dart';
 import 'package:torque_obd/obd/telemetry.dart';
 
@@ -31,18 +32,23 @@ TelemetrySnapshot _snapshot({
   double? accel,
   bool withRpm = true,
   bool withSpeed = true,
-}) =>
-    TelemetrySnapshot(
-      readings: {
-        if (withRpm)
-          PidLibrary.engineRpm.id: liveReading(PidLibrary.engineRpm, 2000),
-        if (withSpeed)
-          PidLibrary.vehicleSpeed.id: liveReading(PidLibrary.vehicleSpeed, 60),
-        PidLibrary.mafRate.id: liveReading(PidLibrary.mafRate, 12.5),
-      },
-      accelerationMs2: accel,
-      capturedAt: DateTime.now(),
-    );
+  double? fuelRate,
+}) => TelemetrySnapshot(
+  readings: {
+    if (withRpm)
+      PidLibrary.engineRpm.id: liveReading(PidLibrary.engineRpm, 2000),
+    if (withSpeed)
+      PidLibrary.vehicleSpeed.id: liveReading(PidLibrary.vehicleSpeed, 60),
+    PidLibrary.mafRate.id: liveReading(PidLibrary.mafRate, 12.5),
+    if (fuelRate != null)
+      PidLibrary.engineFuelRate.id: liveReading(
+        PidLibrary.engineFuelRate,
+        fuelRate,
+      ),
+  },
+  accelerationMs2: accel,
+  capturedAt: DateTime.now(),
+);
 
 /// One gauge on the wall.
 ///
@@ -53,18 +59,24 @@ TelemetrySnapshot _snapshot({
 final _activePids = [PidLibrary.engineRpm];
 
 const _waiting = '等待引擎轉速與車速資料';
+const _confirmProfile = '先到設定確認車輛資料';
+const _confirmedProfile = VehicleProfile(isConfirmed: true);
 
 void main() {
-  group('the derived strip refuses to compute from an input it does not have',
-      () {
-    testWidgets('no acceleration means no horsepower and no torque',
-        (tester) async {
+  group('the derived strip refuses to compute from an input it does not have', () {
+    testWidgets('no acceleration means no horsepower and no torque', (
+      tester,
+    ) async {
       // The inertial term is the whole reason acceleration is an input. Absent,
       // the estimate accounts only for drag and rolling resistance — which is
       // not a conservative figure, it is a confident wrong one, and it is
       // indistinguishable on the tile from a measured value.
-      await pumpDashboard(tester,
-          snapshot: _snapshot(accel: null), activePids: _activePids);
+      await pumpDashboard(
+        tester,
+        snapshot: _snapshot(accel: null),
+        activePids: _activePids,
+        profile: _confirmedProfile,
+      );
 
       expect(find.textContaining(_waiting), findsOneWidget);
       expect(find.text('引擎馬力'), findsNothing);
@@ -74,18 +86,24 @@ void main() {
     });
 
     testWidgets('no engine speed means no derived figures', (tester) async {
-      await pumpDashboard(tester,
-          snapshot: _snapshot(accel: 0.4, withRpm: false),
-          activePids: _activePids);
+      await pumpDashboard(
+        tester,
+        snapshot: _snapshot(accel: 0.4, withRpm: false),
+        activePids: _activePids,
+        profile: _confirmedProfile,
+      );
 
       expect(find.textContaining(_waiting), findsOneWidget);
       expect(find.text('hp'), findsNothing);
     });
 
     testWidgets('no road speed means no derived figures', (tester) async {
-      await pumpDashboard(tester,
-          snapshot: _snapshot(accel: 0.4, withSpeed: false),
-          activePids: _activePids);
+      await pumpDashboard(
+        tester,
+        snapshot: _snapshot(accel: 0.4, withSpeed: false),
+        activePids: _activePids,
+        profile: _confirmedProfile,
+      );
 
       expect(find.textContaining(_waiting), findsOneWidget);
       expect(find.text('hp'), findsNothing);
@@ -93,12 +111,17 @@ void main() {
   });
 
   group('and shows them once every input is actually present', () {
-    testWidgets('all three inputs produce a horsepower and a torque cell',
-        (tester) async {
+    testWidgets('all three inputs produce a horsepower and a torque cell', (
+      tester,
+    ) async {
       // Without this the suppression tests above would pass just as well
       // against a strip that never renders anything.
-      await pumpDashboard(tester,
-          snapshot: _snapshot(accel: 0.8), activePids: _activePids);
+      await pumpDashboard(
+        tester,
+        snapshot: _snapshot(accel: 0.8),
+        activePids: _activePids,
+        profile: _confirmedProfile,
+      );
 
       expect(find.textContaining(_waiting), findsNothing);
       expect(find.text('推算數值'), findsOneWidget);
@@ -108,17 +131,57 @@ void main() {
       expect(find.text('N·m'), findsOneWidget);
     });
 
-    testWidgets('a measured zero acceleration is a measurement, not a gap',
-        (tester) async {
+    testWidgets('a measured zero acceleration is a measurement, not a gap', (
+      tester,
+    ) async {
       // Steady cruise. The number that `accel ?? 0` fabricates is the same
       // number this case legitimately reports, which is exactly why the two
       // cannot be told apart downstream and the distinction has to be kept
       // here.
-      await pumpDashboard(tester,
-          snapshot: _snapshot(accel: 0), activePids: _activePids);
+      await pumpDashboard(
+        tester,
+        snapshot: _snapshot(accel: 0),
+        activePids: _activePids,
+        profile: _confirmedProfile,
+      );
 
       expect(find.textContaining(_waiting), findsNothing);
       expect(find.text('hp'), findsOneWidget);
     });
+  });
+
+  testWidgets('valid live inputs stay hidden until the profile is confirmed', (
+    tester,
+  ) async {
+    await pumpDashboard(
+      tester,
+      snapshot: _snapshot(accel: 0.8),
+      activePids: _activePids,
+    );
+
+    expect(find.textContaining(_confirmProfile), findsOneWidget);
+    expect(find.text('引擎馬力'), findsNothing);
+    expect(find.text('hp'), findsNothing);
+    expect(find.text('扭力'), findsNothing);
+    expect(find.text('N·m'), findsNothing);
+  });
+
+  testWidgets('unconfirmed profile preserves the ECU measured fuel path', (
+    tester,
+  ) async {
+    await pumpDashboard(
+      tester,
+      snapshot: _snapshot(accel: null, fuelRate: 6),
+      activePids: _activePids,
+    );
+
+    expect(find.text('ECU 油耗資料'), findsOneWidget);
+    expect(find.text('ECU 回報'), findsOneWidget);
+    expect(find.text('油耗'), findsOneWidget);
+    expect(find.text('10.0'), findsOneWidget);
+    expect(find.text('L/100km'), findsOneWidget);
+    expect(find.textContaining(_confirmProfile), findsNothing);
+    expect(find.text('引擎馬力'), findsNothing);
+    expect(find.text('扭力'), findsNothing);
   });
 }

@@ -18,8 +18,11 @@ what this file is for.
 
 **It is strong automated evidence plus physical-phone rig runs** — BLE/GATT,
 Demo, Classic through a mocked plugin boundary, and Wi-Fi over the phone's real
-radio including the Android route-lease bind path. The app has still never been
-connected to a purchased ELM327 adapter or a real vehicle.
+radio including the Android route-lease bind path. Those layers remain separate
+from the one bounded purchased-adapter/GT86 observation documented in
+`device-verification.md`; a real connection does not retroactively turn any
+software fixture into broad vehicle evidence. The maintained overview is the
+[rig matrix](rig-matrix.md).
 
 ## The oracle surfaces, and what each can be trusted for
 
@@ -28,7 +31,7 @@ connected to a purchased ELM327 adapter or a real vehicle.
 | `test/support/fake_elm327.dart` | That the client handles the framing, faults and multi-ECU shapes *I believe* adapters produce | Anything about shapes I got wrong — it shares the implementation's assumptions by construction |
 | `Ircama/ELM327-emulator` (`emulator_integration_test.dart`) | That the client works against an implementation nobody here wrote | 11-bit CAN only; no functional addressing; answers `ATSP3` with `OK` while still reporting `A6`, so it does not refuse — it quietly misleads |
 | Ircama through `tool/obd_test_rig/chaos_proxy.py` (`chaos_oracle_test.dart`) | That the real Wi-Fi socket handles deterministic fragmentation and fails closed on peer close, a missing prompt, or a corrupted critical reply | Physical radio loss, adapter reboot behavior, vehicle timing, or any fault shape not injected by this repository's proxy |
-| `elm327_virtual_server.py` (`freeze_frame_oracle_test.dart`) | That the freeze frame (Mode 02) survives an ELM327 nobody here wrote — its Mode 02 was written by a different agent from a different reading of J1979, and it disagreed usefully on first contact: it serves the data PIDs with **no support mask at all**, a shape a mask-first reader renders as "this car has no stored frame". Its seven cases also cover the fault-code classes, the readiness monitors, VIN reassembly, two controllers answering a census, a deadline, and a link that drops mid-session | The same 11-bit CAN-only limit as Ircama's; and it is one implementation's reading of J1979, not the standard — where the two readings happen to agree they can still be wrong together |
+| Project-owned `elm327_virtual_server.py` (`freeze_frame_oracle_test.dart`) | That the freeze frame (Mode 02) survives a separately maintained, hash-pinned research-branch oracle — its Mode 02 came from a separate agent review lane and disagreed usefully on first contact: it serves the data PIDs with **no support mask at all**, a shape a mask-first reader renders as "this car has no stored frame". Its seven cases also cover the fault-code classes, the readiness monitors, VIN reassembly, two controllers answering a census, a deadline, and a link that drops mid-session | It is not an independent third-party implementation. It has the same 11-bit CAN-only limit as Ircama's and remains one implementation's reading of J1979, not the standard — where the two readings happen to agree they can still be wrong together |
 | Physical BLE rig (`integration_test/ble_rig_test.dart`) | A Samsung `SM-S9280` can scan, hit-test the discovered result, connect through Android GATT, discover Nordic UART, subscribe, exchange ELM327 commands/notifications, poll live data, and persist rig-labelled evidence | The peripheral and ECU are simulated; no CAR25 firmware, real adapter timing, CAN bus, vehicle, Classic RFCOMM, or OS-delivered Doze/lifecycle behavior |
 | Wi-Fi rig (`integration_test/wifi_rig_test.dart`) | The shipped wizard connecting over the device's real TCP stack — and, against a non-loopback host, the Android route lease actually binding through `ConnectivityManager` on real hardware — to an ELM327 implementation nobody here wrote | The adversarial network the binder exists for (an internet-less hotspot with cellular armed); dual-STA ambiguity; adapter firmware and timing |
 | Demo / Classic rigs (`integration_test/demo_rig_test.dart`, `classic_rig_test.dart`) | The shipped wizard, live polling, lifecycle recovery and simulated-evidence labelling on a physical phone; Classic exercises the plugin boundary through mocked platform channels bridged to the Demo ECU | Demo touches no socket or radio; Classic proves nothing about `BluetoothSocket`, RFCOMM, or a real adapter |

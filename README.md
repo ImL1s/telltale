@@ -46,6 +46,10 @@ export anything you need first because uninstalling removes local app data.
 - A built-in Demo ECU that needs no adapter or vehicle
 - Live PID dashboards, fault codes, freeze frames, readiness, custom PIDs, and
   user-triggered diagnostic transcript export
+- A fail-closed flow shared by every configured vehicle profile: any raw PID
+  the vehicle answers remains visible, but profile-derived horsepower, torque,
+  and fuel estimates stay hidden until the driver reviews and confirms the
+  inputs for that connection; reconnecting invalidates the confirmation
 
 Android is the primary physically tested platform for device, UI, and BLE-rig
 paths. iOS and macOS currently have compile gates, not equivalent physical-
@@ -57,7 +61,7 @@ RFCOMM/SPP accessories to third-party apps.
 
 The maintainer has used Telltale over Bluetooth LE with a
 **CARLZS LAB CL-OBDII-M25B** (`OBDBLE`, NCC `CCAH22LP5300T8`) on a Toyota
-GT86. The same Samsung `SM-S9280` still holds a 407 KB recovered Telltale
+GT86. The same Samsung `SM-S9280` still holds a 418,028-byte recovered Telltale
 session dated 2026-08-27.
 
 **[View this adapter on Shopee](https://s.shopee.tw/3LQPiOY7uv)** — this is a
@@ -95,13 +99,18 @@ peripheral. This proves physical BLE discovery, GATT connection, UART writes,
 and notifications on that path. Separately, the field observation above proves
 that one purchased CL-OBDII-M25B setup connected Telltale to one Toyota GT86
 and left a substantial session record. The raw vehicle transcript is not
-published because it can contain VIN and device identifiers, and it was not
-reviewed for this documentation change. The observation therefore does **not**
-certify adapter firmware, PID accuracy, DTC coverage, or general GT86 support.
+published because it can contain VIN and device identifiers; it was analysed
+locally and only de-identified protocol shapes became regression fixtures. The
+retained idle polling used CAN 11-bit/500 kbit/s and showed no `NO DATA`,
+CAN/BUS error, timeout, or malformed reply. A large capacity-evicted middle
+range remains, so the observation does **not** certify adapter firmware, PID
+accuracy, DTC coverage, loaded-road behaviour, or general GT86 support.
 
 Verification reports describe bounded evidence, not certification or a safety
 guarantee. Start with [test evidence](docs/verification/test-evidence.md) and
-[device verification](docs/verification/device-verification.md).
+[device verification](docs/verification/device-verification.md), then use the
+[verification rig matrix](docs/verification/rig-matrix.md) for the reproducible
+and identified commercial test layers.
 
 ## Repository layout
 

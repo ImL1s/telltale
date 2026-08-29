@@ -72,9 +72,7 @@ class DashboardScreen extends ConsumerWidget {
                 ),
                 sliver: _GaugeGrid(pids: activePids, snapshot: snapshot),
               ),
-            SliverToBoxAdapter(
-              child: _DerivedStrip(snapshot: snapshot),
-            ),
+            SliverToBoxAdapter(child: _DerivedStrip(snapshot: snapshot)),
             // Clears the navigation bar so the derived figures can be scrolled
             // fully into view rather than sitting half-under it.
             SliverToBoxAdapter(
@@ -118,26 +116,26 @@ class _GaugeGrid extends StatelessWidget {
             // inside the ring, so extra vertical room would only be padding.
             childAspectRatio: 1,
           ),
-          delegate: SliverChildBuilderDelegate(
-            childCount: pids.length,
-            (context, index) {
-              final pid = pids[index];
-              final reading = snapshot[pid.id];
-              final fault = snapshot.faults[pid.id];
-              return _GaugeTile(
-                pid: pid,
-                reading: reading,
-                fault: fault,
-                // Computed here, where the snapshot's own capture time is in
-                // scope, so every tile in a frame judges age against the same
-                // instant rather than each reading the clock separately.
-                isStale: snapshot.isStale(pid),
-                // Stagger the entrance so the wall assembles rather than
-                // popping in all at once.
-                delay: Duration(milliseconds: 28 * index),
-              );
-            },
-          ),
+          delegate: SliverChildBuilderDelegate(childCount: pids.length, (
+            context,
+            index,
+          ) {
+            final pid = pids[index];
+            final reading = snapshot[pid.id];
+            final fault = snapshot.faults[pid.id];
+            return _GaugeTile(
+              pid: pid,
+              reading: reading,
+              fault: fault,
+              // Computed here, where the snapshot's own capture time is in
+              // scope, so every tile in a frame judges age against the same
+              // instant rather than each reading the clock separately.
+              isStale: snapshot.isStale(pid),
+              // Stagger the entrance so the wall assembles rather than
+              // popping in all at once.
+              delay: Duration(milliseconds: 28 * index),
+            );
+          }),
         );
       },
     );
@@ -232,7 +230,9 @@ class _UnsupportedTile extends StatelessWidget {
             Text(
               '此車輛不支援',
               textAlign: TextAlign.center,
-              style: context.texts.bodySmall?.copyWith(color: palette.textTertiary),
+              style: context.texts.bodySmall?.copyWith(
+                color: palette.textTertiary,
+              ),
             ),
           ],
         ),
@@ -279,7 +279,9 @@ class _StatusStrip extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      connection.deviceName.isEmpty ? '未連線' : connection.deviceName,
+                      connection.deviceName.isEmpty
+                          ? '未連線'
+                          : connection.deviceName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: context.texts.titleMedium,
@@ -304,7 +306,9 @@ class _StatusStrip extends StatelessWidget {
               StatusPill(
                 label: '${snapshot.pidsPerSecond.round()} PIDs/s',
                 icon: Icons.bolt,
-                tone: snapshot.pidsPerSecond > 0 ? StatusTone.accent : StatusTone.neutral,
+                tone: snapshot.pidsPerSecond > 0
+                    ? StatusTone.accent
+                    : StatusTone.neutral,
               ),
               // Only once something has actually been polled.
               //
@@ -353,7 +357,8 @@ class _LiveDot extends StatefulWidget {
   State<_LiveDot> createState() => _LiveDotState();
 }
 
-class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1400),
@@ -400,7 +405,10 @@ class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin 
                 Container(
                   width: 9,
                   height: 9,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: colour),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: colour,
+                  ),
                 ),
               ],
             ),
@@ -428,6 +436,27 @@ class _DerivedStrip extends ConsumerWidget {
     final maf = snapshot.valueOf(PidLibrary.mafRate);
     final map = snapshot.valueOf(PidLibrary.manifoldPressure);
     final iat = snapshot.valueOf(PidLibrary.intakeAirTemp);
+    final measuredFuelRate = snapshot.valueOf(PidLibrary.engineFuelRate);
+
+    // The defaults are not vehicle identification. They are only starting
+    // values for the settings form, so showing a number before the driver has
+    // reviewed them would make an arbitrary 1500 kg/FWD profile look like a
+    // measured fact on every vehicle.
+    if (!profile.isConfirmed) {
+      // PID 015E is the ECU's own volumetric fuel-rate reading. Preserve that
+      // measurement (and its speed-only L/100 km conversion) without
+      // authorising any value that depends on generic mass, VE, aero or
+      // drivetrain defaults.
+      if (measuredFuelRate != null &&
+          measuredFuelRate.isFinite &&
+          measuredFuelRate >= 0) {
+        return _MeasuredFuelStrip(
+          fuelRateLPerHour: measuredFuelRate,
+          speedKmh: speed,
+        );
+      }
+      return const _DerivedUnavailable(message: '先到設定確認車輛資料，才會顯示馬力、扭力與油耗推算');
+    }
 
     // Every derived figure needs engine speed and road speed. Substituting
     // zero for a missing input does not produce a conservative estimate — it
@@ -454,7 +483,7 @@ class _DerivedStrip extends ConsumerWidget {
       // The vehicle's own figure where it reports one: it accounts for the
       // mixture actually being run, where the stoichiometric estimate assumes
       // lambda 1 and is wrong by roughly lambda on anything that is not.
-      fuelRateSensorLPerHour: snapshot.valueOf(PidLibrary.engineFuelRate),
+      fuelRateSensorLPerHour: measuredFuelRate,
     );
 
     // `--` rather than a number nobody measured.
@@ -476,7 +505,9 @@ class _DerivedStrip extends ConsumerWidget {
                 const SizedBox(width: Spacing.sm),
                 Text(
                   '推算數值',
-                  style: context.texts.labelSmall?.copyWith(color: palette.derived),
+                  style: context.texts.labelSmall?.copyWith(
+                    color: palette.derived,
+                  ),
                 ),
                 const Spacer(),
                 // Provenance, not decoration: a speed-density figure and a
@@ -524,8 +555,7 @@ class _DerivedStrip extends ConsumerWidget {
                   ),
                   _DerivedCell(
                     label: '扭力',
-                    value:
-                        metrics.torqueNm.clamp(0, 5000).toStringAsFixed(0),
+                    value: metrics.torqueNm.clamp(0, 5000).toStringAsFixed(0),
                     units: 'N·m',
                   ),
                 ];
@@ -533,8 +563,10 @@ class _DerivedStrip extends ConsumerWidget {
                 // Each cell needs roughly this much to render its label
                 // without truncation at the current text size.
                 final perCell = 88 * scale;
-                final columns =
-                    (constraints.maxWidth / perCell).floor().clamp(1, 4);
+                final columns = (constraints.maxWidth / perCell).floor().clamp(
+                  1,
+                  4,
+                );
 
                 final rows = <Widget>[];
                 for (var i = 0; i < cells.length; i += columns) {
@@ -548,9 +580,7 @@ class _DerivedStrip extends ConsumerWidget {
                       child: Row(
                         children: [
                           for (var j = 0; j < slice.length; j++)
-                            slice[j].copyWith(
-                              isLast: j == slice.length - 1,
-                            ),
+                            slice[j].copyWith(isLast: j == slice.length - 1),
                           // Keeps a short final row aligned with the ones
                           // above rather than stretching its cells.
                           for (var j = slice.length; j < columns; j++)
@@ -562,6 +592,72 @@ class _DerivedStrip extends ConsumerWidget {
                 }
                 return Column(children: rows);
               },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MeasuredFuelStrip extends StatelessWidget {
+  const _MeasuredFuelStrip({
+    required this.fuelRateLPerHour,
+    required this.speedKmh,
+  });
+
+  final double fuelRateLPerHour;
+  final double? speedKmh;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final moving =
+        fuelRateLPerHour > 0 &&
+        speedKmh != null &&
+        speedKmh! > PhysicsEngine.minSpeedForConsumption;
+    final value = moving
+        ? (fuelRateLPerHour / speedKmh! * 100).toStringAsFixed(1)
+        : fuelRateLPerHour.toStringAsFixed(1);
+    final units = moving ? 'L/100km' : 'L/h';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+      child: Panel(
+        accent: palette.derived,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.local_gas_station, size: 15, color: palette.derived),
+                const SizedBox(width: Spacing.sm),
+                Text(
+                  'ECU 油耗資料',
+                  style: context.texts.labelSmall?.copyWith(
+                    color: palette.derived,
+                  ),
+                ),
+                const Spacer(),
+                const StatusPill(
+                  label: 'ECU 回報',
+                  tone: StatusTone.neutral,
+                  dense: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            Text('車輛設定未確認；馬力、扭力與設定檔估算已隱藏。', style: context.texts.bodySmall),
+            const SizedBox(height: Spacing.md),
+            Row(
+              children: [
+                _DerivedCell(
+                  label: '油耗',
+                  value: value,
+                  units: units,
+                  isLast: true,
+                ),
+              ],
             ),
           ],
         ),
@@ -586,12 +682,8 @@ class _DerivedCell extends StatelessWidget {
   /// columns the row ended up with, so it is decided at layout time.
   final bool isLast;
 
-  _DerivedCell copyWith({required bool isLast}) => _DerivedCell(
-        label: label,
-        value: value,
-        units: units,
-        isLast: isLast,
-      );
+  _DerivedCell copyWith({required bool isLast}) =>
+      _DerivedCell(label: label, value: value, units: units, isLast: isLast);
 
   @override
   Widget build(BuildContext context) {
@@ -651,7 +743,8 @@ class _FadeInUp extends StatefulWidget {
   State<_FadeInUp> createState() => _FadeInUpState();
 }
 
-class _FadeInUpState extends State<_FadeInUp> with SingleTickerProviderStateMixin {
+class _FadeInUpState extends State<_FadeInUp>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: Motion.slow,
@@ -673,7 +766,10 @@ class _FadeInUpState extends State<_FadeInUp> with SingleTickerProviderStateMixi
 
   @override
   Widget build(BuildContext context) {
-    final curved = CurvedAnimation(parent: _controller, curve: Motion.emphasised);
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: Motion.emphasised,
+    );
     return AnimatedBuilder(
       animation: curved,
       builder: (context, child) => Opacity(
@@ -694,7 +790,9 @@ class _FadeInUpState extends State<_FadeInUp> with SingleTickerProviderStateMixi
 /// this out yet" and "your engine is producing no power" look identical when
 /// both render as 0 hp.
 class _DerivedUnavailable extends StatelessWidget {
-  const _DerivedUnavailable();
+  const _DerivedUnavailable({this.message = '等待引擎轉速與車速資料後才能推算馬力、扭力與油耗'});
+
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -706,12 +804,7 @@ class _DerivedUnavailable extends StatelessWidget {
           children: [
             Icon(Icons.functions, size: 15, color: palette.textTertiary),
             const SizedBox(width: Spacing.sm),
-            Expanded(
-              child: Text(
-                '等待引擎轉速與車速資料後才能推算馬力、扭力與油耗',
-                style: context.texts.bodySmall,
-              ),
-            ),
+            Expanded(child: Text(message, style: context.texts.bodySmall)),
           ],
         ),
       ),

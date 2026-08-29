@@ -10,7 +10,7 @@ maintainer used the CARLZS LAB `CL-OBDII-M25B` over Bluetooth LE to connect
 Telltale to a Toyota GT86. This does not retroactively turn the historical rig
 rounds below into vehicle evidence, and it does not establish broad adapter or
 GT86 compatibility. What each observation does and does not establish is the
-point of this file; `docs/verification/test-evidence.md` covers the automated
+point of this file; the [automated test evidence](test-evidence.md) covers the
 suite.
 
 Round 9 added a proxy in that socket that logs every byte and can hold a reply
@@ -25,20 +25,67 @@ a fresh inspection of the same Samsung `SM-S9280` found:
 
 - Telltale `1.0.4+5` still installed with the remembered adapter `OBDBLE`;
 - Bluetooth LE recorded as the last transport; and
-- a 407 KB recovered Telltale session dated 2026-08-27 13:36.
+- a 418,028-byte recovered Telltale session dated 2026-08-27 13:36.
 
 The vehicle identity and fact of the GT86 connection come from the maintainer's
 direct field report. The retained phone state independently confirms the exact
 app, phone, adapter label, transport, date, and existence of a substantial
-session record. The raw transcript was not exported or reviewed for this
-documentation update because it can contain VIN and device identifiers.
+session record. The identifier-bearing export was recovered and reviewed only
+in a private local workspace; it is not committed or published.
+
+The approximately 22-minute export provides these bounded additional facts:
+
+- the adapter reported `ELM327 v1.5` and CAN 11-bit/500 kbit/s; retained,
+  uncalibrated `ATRV` replies ranged from 14.0 to 14.3 V;
+- retained stationary-idle replies included successful single- and multi-PID
+  polling with no `NO DATA`, CAN/BUS errors, timeouts, or malformed replies;
+- actual notification/framing shapes included a stray `0xFC` reset byte,
+  chained support masks, split prompt delivery, `7F 01 12`, and a numbered
+  three-segment batch; a de-identified synthetic regression preserves those
+  shapes; and
+- 12,953 middle entries were dropped by the old transcript capacity policy.
+  The surviving head and tail cannot establish continuity or what happened in
+  that missing interval.
 
 This closes the earlier blanket gap of “no purchased adapter and no vehicle”
 for **this one connection**. It does not establish the GT86 model year, ECU
 calibration, adapter identity replies, PID accuracy, DTC coverage, sustained
-polling rate, crank behavior, or compatibility with another unit or listing
-revision. See `docs/hardware-compatibility.md` for the public purchase-link and
-affiliate-disclosure boundary.
+polling across the missing interval, road-load behaviour, disconnect cause,
+crank behavior, or compatibility with another unit or listing revision. See
+the [hardware compatibility notes](../hardware-compatibility.md) for the public
+purchase-link and affiliate-disclosure boundary, and the
+[rig matrix](rig-matrix.md) for the full evidence ladder.
+
+## 2026-08-29 — cross-vehicle profile isolation and rig refresh
+
+Vehicle mass, drivetrain loss, displacement, volumetric efficiency and fuel
+assumptions are now trusted only after explicit confirmation during the current
+connection. A disconnect, link loss or new connection invalidates that trust;
+saved values may prefill the form but cannot silently carry horsepower, torque
+or estimated-fuel calculations from one vehicle to another. Direct ECU values,
+including Mode 01 PID `015E` when a controller actually supplies it, remain
+visible as measured data.
+
+Fresh validation on the final local tree recorded:
+
+- `flutter analyze`: clean; ordinary `flutter test`: 955 passed and 13 expected
+  external-oracle skips;
+- all skipped oracle cases separately required and executed: seven project-owned
+  freeze-frame cases, five direct Ircama cases, five fragmented-Ircama cases,
+  plus close, missing-prompt and corrupted-reply fault cases — zero skips and
+  zero failures;
+- 56 BLE-rig controller tests and 13 TCP-chaos tests passed;
+- on the Samsung `SM-S9280` / Android 16, the Demo, Classic plugin-boundary,
+  Android TCP loopback and physical Samsung-to-Mac BLE/GATT rigs each passed;
+  the BLE evidence included real scan, connect, service discovery, subscribe,
+  write and notification traffic; and
+- the `field` debug APK assembled successfully.
+
+This is evidence that unknown or newly connected vehicles fail closed instead
+of inheriting profile-derived numbers. It is **not** evidence that every vehicle
+or adapter was physically tested. No legacy-bus vehicle, 29-bit CAN vehicle, or
+identified commercial OBD simulator was available for this run; those gaps
+remain explicit in the rig matrix.
 
 ## 2026-08-23 — physical Samsung-to-Mac BLE/GATT rig
 
@@ -1082,9 +1129,9 @@ the peer's stream, which an implementation that leaks the socket still fails.
 **Host evidence.** `flutter analyze` clean; the full suite green with exactly
 13 skipped, twice — before and after the final edits. Then all 13 were made to
 actually run: Ircama's five against a live emulator, the freeze-frame oracle's
-seven against the third-party virtual server, and the chaos oracle through the
-TCP fault proxy three times — close, no_prompt, corrupt — each failing closed
-at the intended initialization command.
+seven against the project-owned hash-pinned research server, and the chaos
+oracle through the TCP fault proxy three times — close, no_prompt, corrupt —
+each failing closed at the intended initialization command.
 
 **Emulator.** `demo_rig_test` and `classic_rig_test` passed; classic also
 produced one genuine-looking failure on its first run and the integration

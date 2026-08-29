@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme/gauge_skin.dart';
 import '../obd/transport/obd_transport.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../obd/physics/vehicle_profile.dart';
@@ -28,23 +29,53 @@ class VehicleProfileController extends Notifier<VehicleProfile> {
       // That was unhandled, so a corrupt preference stopped the settings
       // screen from loading at all rather than falling back to defaults.
       if (decoded is! Map<String, dynamic>) return const VehicleProfile();
-      return VehicleProfile.fromJson(decoded);
+      // Assumptions persist; trust does not. A different launch or connection
+      // may be a different vehicle, and no adapter identifier proves which car
+      // is on the other side of the diagnostic socket.
+      return VehicleProfile.fromJson(decoded).unconfirmed();
     } on Object {
       return const VehicleProfile();
     }
   }
 
   Future<void> update(VehicleProfile profile) async {
-    state = profile;
+    // A profile is confirmed as a whole. Keeping the flag after one field is
+    // changed would make the remaining assumptions look reviewed when they
+    // are not, so every edit returns to the fail-closed state.
+    final edited = profile.unconfirmed();
+    state = edited;
+    await _persistAssumptions(edited);
+  }
+
+  Future<void> confirm() async {
+    final confirmed = state.confirmAssumptions();
+    state = confirmed;
+    // Store the editable assumptions, never a cross-session trust decision.
+    await _persistAssumptions(confirmed);
+  }
+
+  /// Starts or ends a connection boundary.
+  ///
+  /// Confirmation is deliberately session-scoped because ELM327 adapters do
+  /// not identify the vehicle they are plugged into. VIN is optional and may
+  /// arrive only after the session is already live, so every connection must
+  /// fail closed until the driver confirms the current car.
+  Future<void> invalidateForVehicleBoundary() async {
+    state = state.unconfirmed();
+    await _persistAssumptions(state);
+  }
+
+  Future<void> _persistAssumptions(VehicleProfile profile) async {
+    final stored = profile.unconfirmed();
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(_kVehicleProfileKey, jsonEncode(profile.toJson()));
+    await prefs.setString(_kVehicleProfileKey, jsonEncode(stored.toJson()));
   }
 }
 
 final vehicleProfileProvider =
     NotifierProvider<VehicleProfileController, VehicleProfile>(
-  VehicleProfileController.new,
-);
+      VehicleProfileController.new,
+    );
 
 class ThemeModeController extends Notifier<ThemeMode> {
   @override
@@ -68,8 +99,9 @@ class ThemeModeController extends Notifier<ThemeMode> {
   }
 }
 
-final themeModeProvider =
-    NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
+final themeModeProvider = NotifierProvider<ThemeModeController, ThemeMode>(
+  ThemeModeController.new,
+);
 
 const _kGaugeSkinKey = 'gauge_skin';
 
@@ -95,8 +127,9 @@ class GaugeSkinController extends Notifier<GaugeSkin> {
   }
 }
 
-final gaugeSkinProvider =
-    NotifierProvider<GaugeSkinController, GaugeSkin>(GaugeSkinController.new);
+final gaugeSkinProvider = NotifierProvider<GaugeSkinController, GaugeSkin>(
+  GaugeSkinController.new,
+);
 
 const _kLastAdapterKey = 'last_adapter_v1';
 
@@ -135,8 +168,7 @@ class LastAdapter {
   /// app refuses everywhere else.
   final int? port;
 
-  String encode() =>
-      '${kind.name}\u0000$id\u0000$name\u0000${port ?? ''}';
+  String encode() => '${kind.name}\u0000$id\u0000$name\u0000${port ?? ''}';
 
   /// Null for anything that does not parse. A stored value from an older
   /// build, or a half-written one, must not stop the connect screen drawing.
@@ -163,9 +195,9 @@ class LastAdapter {
 
 class LastAdapterController extends Notifier<LastAdapter?> {
   @override
-  LastAdapter? build() =>
-      LastAdapter.decode(ref.watch(sharedPreferencesProvider)
-          .getString(_kLastAdapterKey));
+  LastAdapter? build() => LastAdapter.decode(
+    ref.watch(sharedPreferencesProvider).getString(_kLastAdapterKey),
+  );
 
   Future<void> remember(LastAdapter adapter) async {
     state = adapter;
@@ -182,4 +214,5 @@ class LastAdapterController extends Notifier<LastAdapter?> {
 
 final lastAdapterProvider =
     NotifierProvider<LastAdapterController, LastAdapter?>(
-        LastAdapterController.new);
+      LastAdapterController.new,
+    );

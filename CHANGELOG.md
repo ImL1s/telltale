@@ -8,11 +8,33 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## Unreleased
 
+### Added
+
+- Added an explicit whole-profile confirmation state. Any raw PID the vehicle
+  answers remains available, while horsepower, torque, and consumption
+  estimates stay hidden until the driver reviews the vehicle assumptions for
+  the current connection; editing any field or starting another connection
+  invalidates confirmation so one car's profile cannot silently reach another.
+- Added a privacy-safe GT86 field-shape regression covering split BLE
+  notifications, a stray reset byte, chained PID support masks, `7F 01 12`, and
+  a padded numbered three-segment ELM327 batch through parser and polling
+  publication without publishing the source VIN or device identifiers.
+
+### Fixed
+
+- Explicit real-car event markers now have their own bounded retention lane,
+  so a long polling session cannot evict the event needed to interpret the
+  surviving wire traffic.
+
 ### Documentation
 
 - Added a bounded Toyota GT86 field observation for the exact purchased BLE
   adapter, with an adjacent Shopee affiliate disclosure and no publication of
   the identifier-bearing raw vehicle transcript.
+- Added a verification-rig matrix separating project fixtures, the independent
+  Ircama oracle, a project-owned hash-pinned research oracle, physical
+  Android/BLE paths, identified commercial OBD simulators, and the single
+  real-vehicle observation.
 
 ## 1.0.4+5 — 2026-08-24
 

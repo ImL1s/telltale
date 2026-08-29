@@ -17,13 +17,14 @@ marketplace listing contains the same hardware.
 | Phone | Samsung `SM-S9280`, Android 16 |
 | App | Telltale `1.0.4+5` |
 | Vehicle | Toyota GT86; model year and ECU calibration not recorded here |
-| Retained evidence | 407 KB recovered Telltale session dated 2026-08-27 |
+| Retained evidence | 418,028-byte recovered Telltale session dated 2026-08-27 |
 
 The maintainer reports using this exact adapter to connect Telltale to the
 GT86. A fresh inspection of the same phone on 2026-08-29 found the remembered
 `OBDBLE` adapter, Bluetooth LE as the transport, and the retained session
 record. The raw transcript is intentionally not published because OBD exports
-can contain VIN, phone, and adapter identifiers.
+can contain VIN, phone, and adapter identifiers. It was reviewed locally; only
+de-identified framing shapes and synthetic sensor values are public test data.
 
 維護者已用這支轉接器讓 Telltale 連上 GT86。2026-08-29 再檢查同一支手機時，App
 仍記得 `OBDBLE`、Bluetooth LE 連線方式，以及上述復原工作階段。原始紀錄可能含
@@ -33,6 +34,12 @@ VIN、手機與轉接器識別資訊，所以不公開。
 
 - One real CL-OBDII-M25B, one Samsung phone, and one GT86 completed a Telltale
   BLE connection and left a substantial session record.
+- The adapter reported CAN 11-bit/500 kbit/s. In the retained idle-only ranges,
+  repeated single- and multi-PID replies completed without `NO DATA`, CAN/BUS
+  errors, timeouts, or malformed frames.
+- The field shapes now have a privacy-safe regression fixture covering a stray
+  reset byte, chained PID-support masks, `7F 01 12`, split notifications, and a
+  numbered three-segment batch.
 - The product link below points to the adapter model used by the maintainer as
   checked on 2026-08-29.
 
@@ -40,11 +47,17 @@ VIN、手機與轉接器識別資訊，所以不公開。
 
 - It does not certify every unit, marketplace revision, phone, GT86 model year,
   ECU, or supported OBD PID.
-- The raw transcript was not reviewed for this documentation update, so no
-  claim is made here about PID accuracy, DTC coverage, sustained polling rate,
-  adapter identity replies, or behavior during ignition/cranking.
+- The 22-minute export preserved the handshake and latest traffic but dropped
+  12,953 middle entries. It therefore cannot establish continuity, sustained
+  polling for the whole run, disconnect cause, or road/ignition/crank behaviour.
+- The retained ranges were stationary idle data. They do not establish PID
+  accuracy, DTC coverage, engine-load behaviour, or any other GT86/model year,
+  ECU calibration, phone, adapter unit, or marketplace revision.
 - NCC approval concerns the radio equipment; it is not proof of vehicle or OBD
   protocol compatibility.
+
+The full software, device, commercial-simulator, and real-vehicle evidence
+layers are kept in the [verification rig matrix](verification/rig-matrix.md).
 
 ### Purchase link / 購買連結
 

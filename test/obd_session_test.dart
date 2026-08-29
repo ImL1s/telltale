@@ -7,6 +7,7 @@ import 'package:torque_obd/obd/elm327_client.dart' show InitStatus;
 import 'package:torque_obd/obd/pid/pid_library.dart';
 import 'package:torque_obd/state/obd_session.dart';
 import 'package:torque_obd/state/pid_registry.dart';
+import 'package:torque_obd/state/settings.dart';
 
 Future<ProviderContainer> _container() async {
   SharedPreferences.setMockInitialValues({});
@@ -52,24 +53,26 @@ void main() {
       expect(container.read(obdSessionProvider).isConnected, isFalse);
     });
 
-    test('every critical handshake step succeeds against the simulator',
-        () async {
-      final container = await _container();
-      addTearDown(container.dispose);
+    test(
+      'every critical handshake step succeeds against the simulator',
+      () async {
+        final container = await _container();
+        addTearDown(container.dispose);
 
-      final session = container.read(obdSessionProvider.notifier);
-      await session.connectDemo();
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+        final session = container.read(obdSessionProvider.notifier);
+        await session.connectDemo();
+        await Future<void>.delayed(const Duration(milliseconds: 250));
 
-      final steps = container.read(obdSessionProvider).initSteps;
-      final failures = steps
-          .where((s) => s.step.isCritical && s.status == InitStatus.failed)
-          .map((s) => s.step.command)
-          .toList();
-      expect(failures, isEmpty);
+        final steps = container.read(obdSessionProvider).initSteps;
+        final failures = steps
+            .where((s) => s.step.isCritical && s.status == InitStatus.failed)
+            .map((s) => s.step.command)
+            .toList();
+        expect(failures, isEmpty);
 
-      await session.disconnect();
-    });
+        await session.disconnect();
+      },
+    );
 
     test('polls telemetry and evaluates formulas', () async {
       final container = await _container();
@@ -93,13 +96,14 @@ void main() {
       await session.disconnect();
     });
 
-    test('always polls the physics inputs even when they are off the dashboard',
-        () async {
+    test('always polls the physics inputs even when they are off the dashboard', () async {
       final container = await _container();
       addTearDown(container.dispose);
 
       final session = container.read(obdSessionProvider.notifier);
       await session.connectDemo();
+      expect(container.read(vehicleProfileProvider).isConfirmed, isFalse);
+      await container.read(vehicleProfileProvider.notifier).confirm();
 
       // The default dashboard has no MAP gauge, but the speed-density
       // derivation needs it — without this the derived strip silently reads 0.
@@ -109,7 +113,9 @@ void main() {
       // will not generally contain the rest.
       final snapshot = await session.telemetryStream
           .firstWhere(
-            (s) => PidLibrary.physicsInputs.every((p) => s.readings.containsKey(p.id)),
+            (s) => PidLibrary.physicsInputs.every(
+              (p) => s.readings.containsKey(p.id),
+            ),
           )
           .timeout(const Duration(seconds: 15));
 
@@ -123,6 +129,68 @@ void main() {
 
       await session.disconnect();
     });
+
+    test('profile confirmation never crosses a connection boundary', () async {
+      final container = await _container();
+      addTearDown(container.dispose);
+
+      final session = container.read(obdSessionProvider.notifier);
+      final profile = container.read(vehicleProfileProvider.notifier);
+
+      expect(await session.connectDemo(), isTrue);
+      await profile.confirm();
+      expect(container.read(vehicleProfileProvider).isConfirmed, isTrue);
+
+      await session.disconnect();
+      expect(container.read(vehicleProfileProvider).isConfirmed, isFalse);
+
+      expect(await session.connectDemo(), isTrue);
+      expect(
+        container.read(vehicleProfileProvider).isConfirmed,
+        isFalse,
+        reason: 'the next connection may be a different vehicle',
+      );
+      await session.disconnect();
+    });
+
+    test(
+      'unconfirmed profiles poll only profile-independent derived inputs',
+      () async {
+        final container = await _container();
+        addTearDown(container.dispose);
+
+        final session = container.read(obdSessionProvider.notifier);
+        await session.connectDemo();
+
+        final measuredOnly = await session.telemetryStream
+            .firstWhere(
+              (snapshot) =>
+                  snapshot.readings.containsKey(PidLibrary.engineFuelRate.id),
+            )
+            .timeout(const Duration(seconds: 15));
+        expect(measuredOnly.valueOf(PidLibrary.engineFuelRate), isNotNull);
+        expect(
+          measuredOnly.readings,
+          isNot(contains(PidLibrary.manifoldPressure.id)),
+        );
+        expect(measuredOnly.readings, isNot(contains(PidLibrary.mafRate.id)));
+
+        await container.read(vehicleProfileProvider.notifier).confirm();
+        final confirmed = await session.telemetryStream
+            .firstWhere(
+              (snapshot) =>
+                  snapshot.readings.containsKey(
+                    PidLibrary.manifoldPressure.id,
+                  ) &&
+                  snapshot.readings.containsKey(PidLibrary.mafRate.id),
+            )
+            .timeout(const Duration(seconds: 15));
+        expect(confirmed.valueOf(PidLibrary.manifoldPressure), isNotNull);
+        expect(confirmed.valueOf(PidLibrary.mafRate), isNotNull);
+
+        await session.disconnect();
+      },
+    );
 
     test('reads and clears diagnostic trouble codes', () async {
       final container = await _container();

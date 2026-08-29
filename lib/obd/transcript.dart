@@ -38,6 +38,7 @@ class TranscriptEntry {
     required this.direction,
     required this.bytes,
     this.note,
+    this.pinned = false,
   });
 
   /// Wall-clock observation retained for human correlation only.
@@ -53,6 +54,13 @@ class TranscriptEntry {
 
   /// Set only for [TranscriptDirection.note].
   final String? note;
+
+  /// Whether this note must survive eviction from the ordinary ring.
+  ///
+  /// Used only for explicit physical events entered by a passenger. Wire
+  /// traffic stays in the bounded head/tail ring; making every note permanent
+  /// would turn the diagnostic record back into an unbounded list.
+  final bool pinned;
 
   /// The bytes as text, with the control characters made visible.
   ///
@@ -107,8 +115,10 @@ class ObdTranscript {
   ObdTranscript({
     this.maxEntries = 4000,
     int? preservedHeadEntries,
+    this.maxPinnedNotes = 64,
     Duration Function()? elapsedNow,
   }) : assert(maxEntries > 0),
+       assert(maxPinnedNotes > 0),
        preservedHeadEntries =
            preservedHeadEntries ?? math.min(200, math.max(1, maxEntries ~/ 4)),
        _elapsedClock = elapsedNow {
@@ -131,10 +141,19 @@ class ObdTranscript {
   /// dashboard polling and kept only repetitive PID traffic.
   final int preservedHeadEntries;
 
+  /// Additional bounded capacity for explicit physical-event markers.
+  ///
+  /// A normal dashboard session can evict most of its middle while polling.
+  /// Losing "engine started" or "road test began" with it makes the retained
+  /// wire bytes impossible to correlate, so those rare notes get their own
+  /// small, bounded overflow lane.
+  final int maxPinnedNotes;
+
   final Duration Function()? _elapsedClock;
   final Stopwatch _stopwatch = Stopwatch();
 
   final List<TranscriptEntry> _head = [];
+  final List<TranscriptEntry> _pinnedNotes = [];
   final List<TranscriptEntry> _tail = [];
   Duration? _elapsedOrigin;
   DateTime? _wallOrigin;
@@ -143,13 +162,21 @@ class ObdTranscript {
   Duration? _lastDroppedElapsed;
 
   int _dropped = 0;
+  int _droppedPinnedNotes = 0;
 
   /// Every entry still held, oldest first.
   List<TranscriptEntry> get entries =>
-      List.unmodifiable(<TranscriptEntry>[..._head, ..._tail]);
+      List.unmodifiable(<TranscriptEntry>[..._head, ..._pinnedNotes, ..._tail]);
 
   /// How many were discarded to stay within [maxEntries].
   int get dropped => _dropped;
+
+  /// How many explicit field markers exceeded [maxPinnedNotes].
+  ///
+  /// Included in [dropped], but exposed separately so an evidence export can
+  /// distinguish repetitive traffic loss from a physical event it could not
+  /// retain.
+  int get droppedPinnedNotes => _droppedPinnedNotes;
 
   /// How many entries have ever been recorded, including the dropped ones.
   ///
@@ -157,9 +184,10 @@ class ObdTranscript {
   /// worth writing. `entries.length` cannot answer it: once the ring buffer is
   /// full that number stops moving, and a long session would stop being saved
   /// at exactly the point it has the most to say.
-  int get recorded => _head.length + _tail.length + _dropped;
+  int get recorded =>
+      _head.length + _pinnedNotes.length + _tail.length + _dropped;
 
-  bool get isEmpty => _head.isEmpty && _tail.isEmpty;
+  bool get isEmpty => _head.isEmpty && _pinnedNotes.isEmpty && _tail.isEmpty;
 
   void _add(TranscriptEntry entry) {
     if (_head.length < preservedHeadEntries) {
@@ -171,6 +199,11 @@ class ObdTranscript {
     final tailCapacity = maxEntries - preservedHeadEntries;
     if (_tail.length > tailCapacity) {
       final removed = _tail.removeAt(0);
+      if (removed.pinned && _pinnedNotes.length < maxPinnedNotes) {
+        _pinnedNotes.add(removed);
+        return;
+      }
+      if (removed.pinned) _droppedPinnedNotes++;
       _firstDroppedElapsed ??= removed.elapsed;
       _lastDroppedElapsed = removed.elapsed;
       _dropped++;
@@ -237,10 +270,31 @@ class ObdTranscript {
     );
   }
 
+  /// Records an explicit physical event that survives ordinary ring eviction.
+  ///
+  /// Still bounded by [maxPinnedNotes]. If a passenger somehow records more
+  /// than that, overflow follows the same honest dropped-entry path as wire
+  /// traffic rather than growing memory without limit.
+  void recordPinnedNote(String note, [DateTime? at]) {
+    final stamp = _stamp(at);
+    _add(
+      TranscriptEntry(
+        at: stamp.wall,
+        elapsed: stamp.elapsed,
+        direction: TranscriptDirection.note,
+        bytes: const [],
+        note: note,
+        pinned: true,
+      ),
+    );
+  }
+
   void clear() {
     _head.clear();
+    _pinnedNotes.clear();
     _tail.clear();
     _dropped = 0;
+    _droppedPinnedNotes = 0;
     _firstDroppedElapsed = null;
     _lastDroppedElapsed = null;
     _elapsedOrigin = null;
@@ -260,11 +314,14 @@ class ObdTranscript {
     final copy = ObdTranscript(
       maxEntries: maxEntries,
       preservedHeadEntries: preservedHeadEntries,
+      maxPinnedNotes: maxPinnedNotes,
     );
     copy
       .._head.addAll(_head)
+      .._pinnedNotes.addAll(_pinnedNotes)
       .._tail.addAll(_tail)
       .._dropped = _dropped
+      .._droppedPinnedNotes = _droppedPinnedNotes
       .._firstDroppedElapsed = _firstDroppedElapsed
       .._lastDroppedElapsed = _lastDroppedElapsed
       .._lastElapsed = _lastElapsed;
@@ -277,8 +334,11 @@ class ObdTranscript {
     final range = first == null || last == null
         ? ''
         : '（+$first ms ～ +$last ms）';
-    return '# 中間 $_dropped 筆紀錄已因容量上限捨棄$range；'
-        '開頭握手與最新資料仍保留。';
+    final markerLoss = _droppedPinnedNotes == 0
+        ? '開頭握手、全部實車事件與最新資料仍保留。'
+        : '其中 $_droppedPinnedNotes 筆是超過事件容量上限的實車事件；'
+              '開頭握手與最新資料仍保留。';
+    return '# 中間 $_dropped 筆紀錄已因容量上限捨棄$range；$markerLoss';
   }
 
   static String _stampFor(TranscriptEntry entry) =>
@@ -328,6 +388,9 @@ class ObdTranscript {
       _writeTextEntry(out, entry);
     }
     if (_dropped > 0) out.writeln(_droppedMessage);
+    for (final entry in _pinnedNotes) {
+      _writeTextEntry(out, entry);
+    }
     for (final entry in _tail) {
       _writeTextEntry(out, entry);
     }
@@ -351,6 +414,9 @@ class ObdTranscript {
       _writeHexEntry(out, entry);
     }
     if (_dropped > 0) out.writeln(_droppedMessage);
+    for (final entry in _pinnedNotes) {
+      _writeHexEntry(out, entry);
+    }
     for (final entry in _tail) {
       _writeHexEntry(out, entry);
     }

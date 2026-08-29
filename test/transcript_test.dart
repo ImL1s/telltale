@@ -175,5 +175,62 @@ void main() {
       expect(text, isNot(contains('\x1B')));
       expect(text, isNot(contains('\u202E')));
     });
+
+    test(
+      'a preserved field marker survives beyond the production capacity',
+      () {
+        final t = ObdTranscript(maxEntries: 4000);
+        final start = DateTime(2026);
+        for (var i = 0; i < 500; i++) {
+          t.recordWrite(
+            'HEAD$i\r'.codeUnits,
+            start.add(Duration(milliseconds: i)),
+          );
+        }
+        t.recordPinnedNote(
+          '實車事件：道路測試開始',
+          start.add(const Duration(seconds: 1)),
+        );
+        for (var i = 0; i < 5000; i++) {
+          t.recordRead(
+            '410C1AF8\r>'.codeUnits,
+            start.add(Duration(seconds: 2, milliseconds: i)),
+          );
+        }
+
+        expect(t.dropped, greaterThan(0));
+        expect(t.render(), contains('實車事件：道路測試開始'));
+        expect(t.frozenCopy().render(), contains('實車事件：道路測試開始'));
+      },
+    );
+
+    test('the field-marker retention lane stays bounded', () {
+      final t = ObdTranscript(
+        maxEntries: 2,
+        preservedHeadEntries: 1,
+        maxPinnedNotes: 2,
+      );
+      final start = DateTime(2026);
+      t.recordWrite('ATZ\r'.codeUnits, start);
+      for (var i = 0; i < 5; i++) {
+        t.recordPinnedNote('實車事件 $i', start.add(Duration(milliseconds: i + 1)));
+      }
+      t.recordRead('OK\r>'.codeUnits, start.add(const Duration(seconds: 1)));
+
+      expect(t.entries, hasLength(4));
+      expect(
+        t.entries.length,
+        lessThanOrEqualTo(t.maxEntries + t.maxPinnedNotes),
+      );
+      expect(t.dropped, 3);
+      expect(t.droppedPinnedNotes, 3);
+      expect(t.render(), contains('實車事件 0'));
+      expect(t.render(), contains('實車事件 1'));
+      expect(t.render(), isNot(contains('實車事件 4')));
+      expect(t.render(), contains('其中 3 筆是超過事件容量上限的實車事件'));
+      expect(t.renderHex(), contains('其中 3 筆是超過事件容量上限的實車事件'));
+      expect(t.render(), isNot(contains('全部實車事件與最新資料仍保留')));
+      expect(t.frozenCopy().droppedPinnedNotes, 3);
+    });
   });
 }

@@ -25,6 +25,7 @@ void main() {
           volumetricEfficiency: 88,
           fuelType: FuelType.gasoline,
           drivetrain: Drivetrain.fwd,
+          isConfirmed: true,
         ),
         transportKind: 'Wi-Fi',
         deviceName: 'OBD-II',
@@ -47,6 +48,7 @@ void main() {
           '# 平台：android 16 (SDK 36)\n'
           '# 手機：Samsung SM-S9380\n'
           '# 車輛設定：1.8 L · 1420 kg · VE 88% · 汽油 · 前輪驅動\n'
+          '# 車輛設定狀態：已確認\n'
           '# 連線方式：Wi-Fi\n'
           '# 裝置：OBD-II\n'
           '# 連線資訊.wifi.host：192.168.0.10\n'
@@ -79,6 +81,7 @@ void main() {
       final header = evidence.renderHeader();
       expect(header, startsWith('# Telltale 無車測試馬具證據 v1\n'));
       expect(header, contains('不得視為實體轉接器或實車驗證'));
+      expect(header, contains('# 車輛設定狀態：未確認'));
       expect(header, isNot(contains('# Telltale 實車證據')));
     });
 

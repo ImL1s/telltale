@@ -116,6 +116,7 @@ final class SessionEvidenceMetadata {
         'VE ${_number(profile.volumetricEfficiency)}% · '
         '${profile.fuelType.label} · ${profile.drivetrain.label}',
       )
+      ..writeln('# 車輛設定狀態：${profile.isConfirmed ? '已確認' : '未確認'}')
       ..writeln('# 連線方式：${_safe(transportKind)}')
       ..writeln('# 裝置：${_safe(deviceName)}');
     for (final key in keys) {

@@ -58,7 +58,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     super.dispose();
   }
 
-
   Future<void> _sendManual() async {
     final text = _commandController.text;
     if (text.trim().isEmpty) return;
@@ -68,7 +67,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
     String result;
     try {
-      result = await ref.read(obdSessionProvider.notifier).sendManualCommand(text);
+      result = await ref
+          .read(obdSessionProvider.notifier)
+          .sendManualCommand(text);
       if (result.trim().isEmpty) result = '（沒有回應內容）';
     } on Object catch (e) {
       // Shown rather than thrown. This screen exists for the case where things
@@ -133,7 +134,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               style: context.texts.titleSmall,
                             ),
                             if (connection.protocol.isNotEmpty)
-                              Text(connection.protocol, style: context.texts.bodySmall),
+                              Text(
+                                connection.protocol,
+                                style: context.texts.bodySmall,
+                              ),
                           ],
                         ),
                       ),
@@ -145,7 +149,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: connection.isConnected
                         ? OutlinedButton.icon(
                             onPressed: () async {
-                              await ref.read(obdSessionProvider.notifier).disconnect();
+                              await ref
+                                  .read(obdSessionProvider.notifier)
+                                  .disconnect();
                               if (context.mounted) {
                                 context.go(ConnectScreen.path);
                               }
@@ -173,21 +179,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     '推算值才越有意義。',
                     style: context.texts.bodySmall,
                   ),
+                  const SizedBox(height: Spacing.md),
+                  _ProfileConfirmationStatus(
+                    profile: profile,
+                    connected: connected,
+                  ),
                   const SizedBox(height: Spacing.lg),
                   _SliderRow(
                     label: '排氣量',
                     value: profile.displacementL,
-                    min: 0.6,
-                    max: 8.0,
+                    min: VehicleProfile.minDisplacementL,
+                    max: VehicleProfile.maxDisplacementL,
                     divisions: 74,
                     format: (v) => '${v.toStringAsFixed(1)} L',
-                    onChanged: (v) => update(profile.copyWith(displacementL: v)),
+                    onChanged: (v) =>
+                        update(profile.copyWith(displacementL: v)),
                   ),
                   _SliderRow(
                     label: '車重（含駕駛）',
                     value: profile.massKg,
-                    min: 600,
-                    max: 3500,
+                    min: VehicleProfile.minMassKg,
+                    max: VehicleProfile.maxMassKg,
                     divisions: 58,
                     format: (v) => '${v.round()} kg',
                     onChanged: (v) => update(profile.copyWith(massKg: v)),
@@ -195,38 +207,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _SliderRow(
                     label: '容積效率 VE',
                     value: profile.volumetricEfficiency,
-                    min: 50,
-                    max: 130,
+                    min: VehicleProfile.minVolumetricEfficiency,
+                    max: VehicleProfile.maxVolumetricEfficiency,
                     divisions: 80,
                     format: (v) => '${v.round()} %',
-                    onChanged: (v) => update(profile.copyWith(volumetricEfficiency: v)),
+                    onChanged: (v) =>
+                        update(profile.copyWith(volumetricEfficiency: v)),
                   ),
                   _SliderRow(
                     label: '風阻係數 Cd',
                     value: profile.dragCoefficient,
-                    min: 0.15,
-                    max: 0.60,
+                    min: VehicleProfile.minDragCoefficient,
+                    max: VehicleProfile.maxDragCoefficient,
                     divisions: 45,
                     format: (v) => v.toStringAsFixed(2),
-                    onChanged: (v) => update(profile.copyWith(dragCoefficient: v)),
+                    onChanged: (v) =>
+                        update(profile.copyWith(dragCoefficient: v)),
                   ),
                   _SliderRow(
                     label: '正面投影面積',
                     value: profile.frontalAreaM2,
-                    min: 1.4,
-                    max: 4.0,
+                    min: VehicleProfile.minFrontalAreaM2,
+                    max: VehicleProfile.maxFrontalAreaM2,
                     divisions: 26,
                     format: (v) => '${v.toStringAsFixed(1)} m²',
-                    onChanged: (v) => update(profile.copyWith(frontalAreaM2: v)),
+                    onChanged: (v) =>
+                        update(profile.copyWith(frontalAreaM2: v)),
                   ),
                   _SliderRow(
                     label: '滾動阻力係數 Crr',
                     value: profile.rollingResistance,
-                    min: 0.006,
-                    max: 0.030,
+                    min: VehicleProfile.minRollingResistance,
+                    max: VehicleProfile.maxRollingResistance,
                     divisions: 24,
                     format: (v) => v.toStringAsFixed(3),
-                    onChanged: (v) => update(profile.copyWith(rollingResistance: v)),
+                    onChanged: (v) =>
+                        update(profile.copyWith(rollingResistance: v)),
                   ),
                 ],
               ),
@@ -247,7 +263,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       for (final fuel in FuelType.values)
                         ChoiceChip(
                           selected: profile.fuelType == fuel,
-                          onSelected: (_) => update(profile.copyWith(fuelType: fuel)),
+                          onSelected: (_) =>
+                              update(profile.copyWith(fuelType: fuel)),
                           label: Text(fuel.label),
                           showCheckmark: false,
                           selectedColor: palette.accent.withValues(alpha: 0.16),
@@ -291,6 +308,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Text(
                     '傳動效率 ${(profile.drivetrainEfficiency * 100).round()} %',
                     style: context.texts.bodySmall,
+                  ),
+                  const SizedBox(height: Spacing.lg),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed:
+                          !connected ||
+                              profile.isConfirmed ||
+                              !profile.hasValidAssumptions
+                          ? null
+                          : () => ref
+                                .read(vehicleProfileProvider.notifier)
+                                .confirm(),
+                      icon: Icon(
+                        profile.isConfirmed
+                            ? Icons.verified
+                            : Icons.fact_check_outlined,
+                        size: 18,
+                      ),
+                      label: Text(
+                        profile.isConfirmed
+                            ? '本次連線資料已確認'
+                            : connected
+                            ? '確認本次連線車輛資料'
+                            : '連線後確認此車資料',
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -353,8 +397,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       child: SelectableText(
                         _commandResult!,
-                        style: context.texts.bodySmall
-                            ?.copyWith(fontFeatures: const []),
+                        style: context.texts.bodySmall?.copyWith(
+                          fontFeatures: const [],
+                        ),
                       ),
                     ),
                   ],
@@ -395,6 +440,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
+class _ProfileConfirmationStatus extends StatelessWidget {
+  const _ProfileConfirmationStatus({
+    required this.profile,
+    required this.connected,
+  });
+
+  final VehicleProfile profile;
+  final bool connected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final confirmed = profile.isConfirmed;
+    final color = confirmed ? palette.success : palette.warning;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(Radii.sm),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            confirmed ? Icons.verified_outlined : Icons.info_outline,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              confirmed
+                  ? '已確認本次連線的設定。修改任一項或重新連線後都要再確認。'
+                  : connected
+                  ? '本次連線尚未確認。仍可讀取 OBD 實測資料，'
+                        '但不顯示依車重、VE 與風阻推算的數值。'
+                  : '先連上目前這台車再確認。每次重新連線都會自動失效，'
+                        '避免把上一台車的設定套到下一台。',
+              style: context.texts.bodySmall?.copyWith(color: color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SliderRow extends StatelessWidget {
   const _SliderRow({
     required this.label,
@@ -425,10 +519,7 @@ class _SliderRow extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(label, style: context.texts.bodyMedium)),
-              Text(
-                format(value),
-                style: AppTypography.readout(palette, 15),
-              ),
+              Text(format(value), style: AppTypography.readout(palette, 15)),
             ],
           ),
           Slider(
@@ -443,7 +534,6 @@ class _SliderRow extends StatelessWidget {
     );
   }
 }
-
 
 /// What the adapter says about itself, and where that fails to add up.
 ///
@@ -466,8 +556,11 @@ class _AdapterIdentityPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(obdSessionProvider);
     if (!session.isConnected) return const SizedBox.shrink();
-    final identity =
-        ref.read(obdSessionProvider.notifier).engine?.client.adapterIdentity;
+    final identity = ref
+        .read(obdSessionProvider.notifier)
+        .engine
+        ?.client
+        .adapterIdentity;
     if (identity == null) return const SizedBox.shrink();
 
     final concerns = identity.concerns;
@@ -495,8 +588,7 @@ class _AdapterIdentityPanel extends ConsumerWidget {
               )
             else ...[
               for (final concern in concerns) ...[
-                Text('⚠ ${concern.summary}',
-                    style: context.texts.bodyMedium),
+                Text('⚠ ${concern.summary}', style: context.texts.bodyMedium),
                 Text(concern.detail, style: context.texts.bodySmall),
                 const SizedBox(height: Spacing.xs),
               ],
