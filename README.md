@@ -33,6 +33,12 @@ compatibility claim.
 
 **[Get the Play-signed build from Google Play](https://play.google.com/store/apps/details?id=com.cbstudio.telltale).**
 
+**Paid on Google Play, with the same app features.** The Play edition does not
+unlock extra telemetry or diagnostic features. It is the convenient choice for
+Play-managed installation and updates, and purchasing it supports ongoing
+development and maintenance. The community-signed APK below and builds from
+source remain free to use.
+
 **[Download the community-signed APK from GitHub Releases](https://github.com/ImL1s/telltale/releases).**
 Open the latest release and select its `.apk` asset. Release binaries are not
 stored in the source tree.

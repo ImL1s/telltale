@@ -31,6 +31,10 @@ OBD2 故障診斷。它的設計原則是誠實呈現不確定性，不把格式
 
 **[前往 Google Play 取得 Play 簽章版](https://play.google.com/store/apps/details?id=com.cbstudio.telltale)。**
 
+**Google Play 版付費，但 App 功能相同。** Play 版不會解鎖額外的遙測或診斷功能；
+它提供由 Google Play 直接安裝與更新的便利，購買也會支持持續開發與維護。
+下方的社群簽章 APK 與自行從原始碼建置仍可免費使用。
+
 **[前往 GitHub Releases 下載社群簽章 APK](https://github.com/ImL1s/telltale/releases)。**
 打開最新版本，選擇其中的 `.apk` 檔；原始碼目錄不會保存 release 產物。
 
