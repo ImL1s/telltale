@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/ImL1s/telltale/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ImL1s/telltale/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/ImL1s/telltale?include_prereleases&sort=semver&label=latest%20release)](https://github.com/ImL1s/telltale/releases)
+[![Google Play](https://img.shields.io/badge/Google_Play-View_listing-414141?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.cbstudio.telltale)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 Telltale is an open-source Flutter app for real-time vehicle telemetry and OBD2
@@ -30,7 +31,9 @@ compatibility claim.
 
 ## Download and install
 
-**[Download an APK from GitHub Releases](https://github.com/ImL1s/telltale/releases).**
+**[Get the Play-signed build from Google Play](https://play.google.com/store/apps/details?id=com.cbstudio.telltale).**
+
+**[Download the community-signed APK from GitHub Releases](https://github.com/ImL1s/telltale/releases).**
 Open the latest release and select its `.apk` asset. Release binaries are not
 stored in the source tree.
 

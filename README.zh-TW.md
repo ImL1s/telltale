@@ -4,6 +4,7 @@
 
 [![CI](https://github.com/ImL1s/telltale/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ImL1s/telltale/actions/workflows/ci.yml)
 [![最新版本](https://img.shields.io/github/v/release/ImL1s/telltale?include_prereleases&sort=semver&label=latest%20release)](https://github.com/ImL1s/telltale/releases)
+[![Google Play](https://img.shields.io/badge/Google_Play-View_listing-414141?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.cbstudio.telltale)
 [![授權：GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 Telltale 是開放原始碼 Flutter App，透過 ELM327 相容轉接器提供即時車輛遙測與
@@ -28,7 +29,9 @@ OBD2 故障診斷。它的設計原則是誠實呈現不確定性，不把格式
 
 ## 下載與安裝
 
-**[前往 GitHub Releases 下載 APK](https://github.com/ImL1s/telltale/releases)。**
+**[前往 Google Play 取得 Play 簽章版](https://play.google.com/store/apps/details?id=com.cbstudio.telltale)。**
+
+**[前往 GitHub Releases 下載社群簽章 APK](https://github.com/ImL1s/telltale/releases)。**
 打開最新版本，選擇其中的 `.apk` 檔；原始碼目錄不會保存 release 產物。
 
 GitHub APK 使用社群簽章，無法更新 Google Play 版，也無法由 Play 版直接更新。
