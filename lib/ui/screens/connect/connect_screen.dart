@@ -217,15 +217,18 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       _scanError = null;
     });
     try {
-      // Windows Classic is Bluetooth SPP COM ports, not Android RFCOMM bonds.
-      if (windowsSppSerialHostSupported) {
+      // Desktop Classic is Bluetooth SPP serial (Windows COM / Linux rfcomm),
+      // not Android RFCOMM bonds.
+      if (sppSerialHostSupported) {
         final devices = await SerialTransport.bluetoothSppDevices();
         if (!mounted) return;
         if (devices.isEmpty) {
           setState(
-            () => _scanError =
-                '找不到藍牙序列埠（COMx）。請先在 Windows 藍牙設定配對 ELM327，'
-                '確認裝置管理員出現「Standard Serial over Bluetooth link」。',
+            () => _scanError = Platform.isLinux
+                ? '找不到藍牙序列埠（/dev/rfcomm*）。請先以 BlueZ 配對 ELM327，'
+                    '再用 rfcomm bind（或等效）建立 RFCOMM TTY 後重試。'
+                : '找不到藍牙序列埠（COMx）。請先在 Windows 藍牙設定配對 ELM327，'
+                    '確認裝置管理員出現「Standard Serial over Bluetooth link」。',
           );
         }
         setState(() => _devices = _likelyAdaptersFirst(devices));
@@ -1584,22 +1587,21 @@ typedef TransportQuestion = ({
 /// Two different reasons collapse to the same gate:
 /// - **iOS:** permanent OS/API host limit — third-party apps cannot open
 ///   generic RFCOMM/SPP without the External Accessory / MFi path.
-/// - **macOS / Linux:** product verification gate — `flutter_classic_bluetooth`
-///   ships IOBluetooth / BlueZ RFCOMM, and macOS native already falls back to
-///   RFCOMM channel 1 when SDP misses, but the Dart cascade's critical
-///   `connect(channel:)` tier is Android-only and neither desktop host has a
+/// - **macOS:** product verification gate — IOBluetooth RFCOMM exists in the
+///   plugin, but macOS does **not** reliably expose Bluetooth SPP as a POSIX
+///   TTY the way Windows COM / Linux `/dev/rfcomm*` do, and there is no
 ///   field-proven ELM327 Classic path yet. Shipping the card early would
 ///   recreate "enabled in UI, broken in practice".
-/// - **Windows:** product path is **Bluetooth SPP COM ports** (38400 8N1),
-///   not the Android RFCOMM channel cascade. Pairing creates
-///   `Standard Serial over Bluetooth link (COMx)`; we enumerate those and
-///   open them via `SerialTransport`. Winsock `AF_BTH` with `port=0` still
-///   needs SDP and does not salvage channel-1 clones.
+/// - **Windows / Linux:** product path is **Bluetooth SPP serial** (38400
+///   8N1) via `SerialTransport` + `com.cbstudio.telltale/spp_serial`, not the
+///   Android RFCOMM channel cascade. Windows enumerates Bluetooth COM ports;
+///   Linux enumerates `/dev/rfcomm*` and Bluetooth-backed tty nodes. Empty
+///   enumeration keeps the wizard honest (no fake adapter list).
 ///
-/// Fail closed on iOS / macOS / Linux. Android uses RFCOMM cascade; Windows
-/// uses SPP COM serial.
+/// Fail closed on iOS / macOS. Android uses RFCOMM cascade; Windows/Linux use
+/// SPP serial.
 bool get classicTransportAvailable =>
-    Platform.isAndroid || windowsSppSerialHostSupported;
+    Platform.isAndroid || sppSerialHostSupported;
 
 /// Why the Classic transport card is greyed out on hosts without a path.
 ///
@@ -1611,12 +1613,11 @@ String get classicUnavailableReason {
     return 'iOS 不開放第三方 App 使用藍牙 SPP';
   }
   if (Platform.isMacOS) {
-    return 'macOS Classic（IOBluetooth RFCOMM）尚未場測，暫不開放以免假成功';
+    return 'macOS 未穩定提供藍牙 SPP 序列埠（異於 Windows COM / Linux rfcomm），'
+        'IOBluetooth RFCOMM 尚未場測，暫不開放以免假成功';
   }
-  if (Platform.isLinux) {
-    return 'Linux Classic（BlueZ RFCOMM）尚未場測，暫不開放以免假成功';
-  }
-  return 'Bluetooth Classic（SPP）目前僅在 Android 與 Windows（COM）可用';
+  return 'Bluetooth Classic（SPP）目前僅在 Android、Windows（COM）與 '
+      'Linux（/dev/rfcomm*）可用';
 }
 
 /// Whether Bluetooth LE scanning/connect is usable on this host.

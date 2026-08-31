@@ -160,11 +160,12 @@ final class TelemetryTrendsController {
       if (byId.containsKey(id) && !valid.contains(id)) valid.add(id);
       if (valid.length == maximumTelemetryTrendLanes) break;
     }
-    if (valid.isNotEmpty || _active.isEmpty) return List.unmodifiable(valid);
-    // An explicitly persisted empty list must survive restart. Only a missing
-    // preference (`null`) receives the first-run direct-PID default.
-    if (requested != null && requested.isEmpty) {
-      return const <String>[];
+    // Any non-null persisted selection is authoritative after filtering —
+    // including "all stored IDs became invalid" (empty after filter) and an
+    // explicit empty list. Only a missing preference (`null`) receives the
+    // first-run direct-PID default.
+    if (requested != null || valid.isNotEmpty || _active.isEmpty) {
+      return List.unmodifiable(valid);
     }
     final direct = _active.where(
       (pid) =>

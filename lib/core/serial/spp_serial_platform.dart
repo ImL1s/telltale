@@ -1,13 +1,17 @@
-/// Windows Bluetooth SPP ↔ COM-port bridge.
+/// Bluetooth SPP ↔ serial-port bridge (Windows COM / Linux RFCOMM TTY).
 ///
 /// On Windows, pairing a Classic ELM327 commonly creates a "Standard Serial
-/// over Bluetooth link (COMx)" device. Desktop OBD tools open that COM port
-/// at 38400 8N1 rather than speaking Winsock `AF_BTH` with an explicit RFCOMM
-/// channel — and the fork's `connect(channel:)` remains Android-only.
+/// over Bluetooth link (COMx)" device. On Linux, BlueZ exposes the same link
+/// as `/dev/rfcomm*` (after bind) or a Bluetooth-backed tty node. Desktop OBD
+/// tools open that port at 38400 8N1 rather than speaking Winsock `AF_BTH` /
+/// BlueZ SDP with an explicit RFCOMM channel — and the fork's
+/// `connect(channel:)` remains Android-only.
 ///
-/// This channel is the honest Windows Classic path: enumerate Bluetooth-
-/// associated COM ports, then stream bytes. macOS/Linux stay gated off at the
-/// product UI until a field-proven RFCOMM/serial path exists there too.
+/// This channel is the honest desktop Classic path: enumerate Bluetooth-
+/// associated serial nodes, then stream bytes. macOS stays gated off at the
+/// product UI — it has IOBluetooth RFCOMM, but does **not** reliably expose
+/// Bluetooth SPP as a POSIX TTY the way Windows COM / Linux rfcomm do, and
+/// there is no field-proven ELM327 Classic path yet.
 library;
 
 import 'dart:async';
@@ -16,7 +20,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 
-/// A COM port Windows associates with a Bluetooth SPP/RFCOMM link.
+/// A serial node the host associates with a Bluetooth SPP/RFCOMM link.
 class SppSerialPortInfo {
   const SppSerialPortInfo({
     required this.portName,
@@ -24,13 +28,15 @@ class SppSerialPortInfo {
     this.hardwareId,
   });
 
-  /// e.g. `COM3` — also the [DiscoveredDevice.id] on Windows Classic.
+  /// e.g. `COM3` or `/dev/rfcomm0` — also the [DiscoveredDevice.id].
   final String portName;
 
-  /// e.g. `Standard Serial over Bluetooth link (COM3)`.
+  /// e.g. `Standard Serial over Bluetooth link (COM3)` /
+  /// `Bluetooth RFCOMM (/dev/rfcomm0)`.
   final String friendlyName;
 
-  /// Optional PnP hardware id (often contains `BTHENUM`).
+  /// Optional PnP / sysfs hardware id (often contains `BTHENUM` or
+  /// `linux-rfcomm`).
   final String? hardwareId;
 
   factory SppSerialPortInfo.fromMap(Map<Object?, Object?> map) {
@@ -44,7 +50,7 @@ class SppSerialPortInfo {
   }
 }
 
-/// Opens one Bluetooth SPP COM port and exposes inbound bytes.
+/// Opens one Bluetooth SPP serial port and exposes inbound bytes.
 abstract interface class SppSerialSession {
   Future<List<SppSerialPortInfo>> listBluetoothSppPorts();
 
@@ -137,18 +143,20 @@ class MethodChannelSppSerialSession implements SppSerialSession {
     try {
       await _methods.invokeMethod<void>('close');
     } on MissingPluginException {
-      // Host without the channel (tests / non-Windows).
+      // Host without the channel (tests / non-desktop).
     } on Object {
       // Best-effort close.
     }
   }
 }
 
-/// Whether this host ships the Windows SPP COM Classic path.
+/// Whether this host ships the desktop SPP serial Classic path (Windows COM
+/// and/or Linux RFCOMM TTY).
 ///
-/// Override in tests — do not mock [Platform.isWindows] globally.
+/// Override in tests — do not mock [Platform.isWindows] / [Platform.isLinux]
+/// globally.
 @visibleForTesting
-bool? windowsSppSerialHostOverride;
+bool? sppSerialHostOverride;
 
-bool get windowsSppSerialHostSupported =>
-    windowsSppSerialHostOverride ?? Platform.isWindows;
+bool get sppSerialHostSupported =>
+    sppSerialHostOverride ?? (Platform.isWindows || Platform.isLinux);

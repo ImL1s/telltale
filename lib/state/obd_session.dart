@@ -850,10 +850,11 @@ class ObdSession extends Notifier<ObdConnectionState> {
   );
 
   Future<bool> connectClassic(DiscoveredDevice device) {
-    // Windows Classic is SPP COM serial — not the Android RFCOMM cascade.
-    // Using ClassicTransport here would call connect(channel:) / paired MAC
-    // APIs that are wrong for COMx identifiers and can mislead as "supported".
-    if (windowsSppSerialHostSupported) {
+    // Desktop Classic is SPP serial (Windows COM / Linux rfcomm) — not the
+    // Android RFCOMM cascade. Using ClassicTransport here would call
+    // connect(channel:) / paired MAC APIs that are wrong for COMx /
+    // /dev/rfcomm* identifiers and can mislead as "supported".
+    if (sppSerialHostSupported) {
       return _connect(
         SerialTransport(
           portName: device.id,

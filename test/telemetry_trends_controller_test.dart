@@ -67,6 +67,20 @@ void main() {
     );
   });
 
+  test('all-invalid stored selection stays empty instead of first-run fallback', () {
+    final active = [PidLibrary.engineRpm, PidLibrary.vehicleSpeed];
+    final controller = TelemetryTrendsController(
+      activePids: active,
+      storedIds: const ['gone-custom-a', 'gone-custom-b'],
+    );
+
+    expect(
+      controller.state.selectedIds,
+      isEmpty,
+      reason: 'filtering every stored id out must not silently pick unrelated PIDs',
+    );
+  });
+
   test(
     'deduplicates source timestamps and never carries a value over a gap',
     () {

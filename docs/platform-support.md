@@ -26,7 +26,7 @@ proven to the full smoothness bar.
 | `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus` + iPad `sharePositionOrigin` on all export entry points) | **pass** (native capacity + staged immutable file + `app_share` channel; picker target still human) | **wired** (capacity + staging; `shareHandoffFailed` when sheet unavailable — not silent success) | **wired** (capacity + staging; `shareHandoffFailed` when sheet unavailable — not silent success) |
 | Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **pass** (`tool/ios_wifi_oracle/run.sh`: Simulator → host `en0` Ircama on `:35000`, live PIDs, `TransportKind.wifi`) | **pass** (`WifiTransport` → Ircama on `127.0.0.1:35000` via `emulator_integration_test` / `tool/desktop_wifi_oracle/run.sh`) | **pass** (same Dart `WifiTransport` oracle path; Windows-host oracle thin) | **pass** (telltale CI Ircama oracle + same suite) |
 | BLE scan/connect | **pass** (field) | **wired** CoreBluetooth | **wired** entitlements | **wired** WinRT plugin | **wired** Dart BlueZ/D-Bus (needs BlueZ at runtime) |
-| Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | **wired** (Bluetooth SPP COM serial) | product-gated |
+| Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (no reliable POSIX SPP TTY; IOBluetooth RFCOMM unverified) | **wired** (Bluetooth SPP COM serial) | **wired** (BlueZ `/dev/rfcomm*` serial) |
 | Transcript export / share | **pass** (via `app_share*`) | **wired** (popover origin threaded) | **pass** (native macOS path through staging; failed handoff is explicit) | **wired** (staged file + explicit handoff failure copy) | **wired** (staged file + explicit handoff failure copy) |
 | PID CSV pick/share | **pass** | **wired** (popover origin threaded) | **wired** sandbox | **wired** | **wired** |
 | SharedPreferences boot | **pass** | **pass** | **pass** | **pass** | **pass** |
@@ -35,23 +35,28 @@ proven to the full smoothness bar.
 
 ## Bluetooth Classic (SPP)
 
-UI predicate: `classicTransportAvailable` → **Android or Windows**. Guidance,
-transport cards, and remembered-adapter reconnect all fail closed together.
-Automated coverage: `which_transport_test`, `remembered_adapter_navigation_test`,
-`serial_transport_test`, and reconnect host-gate tests. **Classic-on-iOS is not
-a bug** — the card stays grey with an explicit OS reason. BLE empty-scan /
-“which transport” copy never points at Classic when the host gate is closed.
+UI predicate: `classicTransportAvailable` → **Android, Windows, or Linux**.
+Guidance, transport cards, and remembered-adapter reconnect all fail closed
+together. Automated coverage: `which_transport_test`,
+`remembered_adapter_navigation_test`, `serial_transport_test`, and reconnect
+host-gate tests. **Classic-on-iOS is not a bug** — the card stays grey with an
+explicit OS reason. **Classic-on-macOS stays grey** — macOS does not reliably
+expose Bluetooth SPP as a POSIX TTY the way Windows COM / Linux rfcomm do;
+IOBluetooth RFCOMM exists but is unverified against a field ELM327. BLE
+empty-scan / “which transport” copy never points at Classic when the host gate
+is closed.
 
 | Host | Status | Why |
 |---|---|---|
 | Android | Supported | Verified ELM327 RFCOMM/SPP (three-tier cascade incl. `connect(channel:)`) |
 | iOS | **Permanent OS/API host gate** | No generic third-party SPP |
-| Windows | **Wired — Bluetooth SPP COM** | Pairing creates `Standard Serial over Bluetooth link (COMx)`. App enumerates Bluetooth-associated COM ports via SetupAPI (`BTHENUM` / friendly “Bluetooth”) and opens them at 38400 8N1 through `SerialTransport` + `com.cbstudio.telltale/spp_serial`. Winsock `AF_BTH` with `port=0` still needs SDP and does **not** replace `connect(channel:)`. Field connect→PID still needs a powered adapter on a Windows box |
-| macOS | Product verification gate | IOBluetooth RFCOMM exists and native UUID connect already falls back to channel 1 on SDP miss, but no field ELM327 proof yet — card stays grey (no fake success) |
-| Linux | Product verification gate | BlueZ RFCOMM client exists in the plugin; explicit channel + field proof missing — card stays grey |
+| Windows | **Wired — Bluetooth SPP COM** | Pairing creates `Standard Serial over Bluetooth link (COMx)`. App enumerates Bluetooth-associated COM ports via SetupAPI (`BTHENUM` / friendly “Bluetooth”) and opens them at 38400 8N1 through `SerialTransport` + `com.cbstudio.telltale/spp_serial`. Partial `WriteFile` loops until every byte is accepted. Winsock `AF_BTH` with `port=0` still needs SDP and does **not** replace `connect(channel:)`. Field connect→PID still needs a powered adapter on a Windows box |
+| Linux | **Wired — RFCOMM TTY** | Same Dart channel + `SerialTransport` as Windows. Native runner enumerates `/dev/rfcomm*` and Bluetooth-backed tty nodes (sysfs path contains `bluetooth`/`rfcomm`/`hci`), opens at 38400 8N1 (`termios`), and streams inbound bytes on the EventChannel. Empty enumeration is honest — the Classic card is available but the wizard reports no ports until BlueZ has bound an RFCOMM node. Field connect→PID still needs a powered adapter + bound TTY on a Linux box |
+| macOS | Product verification gate | IOBluetooth RFCOMM exists and native UUID connect already falls back to channel 1 on SDP miss, but macOS does **not** ship the same reliable Bluetooth→POSIX-TTY surface as Windows COM / Linux rfcomm, and there is no field ELM327 proof — card stays grey (no fake success) |
 
 Linux CI still needs `libbluetooth-dev` because `flutter_classic_bluetooth`'s
-Linux CMake requires BlueZ headers at configure time.
+Linux CMake requires BlueZ headers at configure time (plugin link), even though
+the product Classic path on Linux is the RFCOMM serial channel above.
 
 ## Bluetooth LE
 
@@ -142,11 +147,13 @@ unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
 - Android attached: `R5CX10VFFBA` (S24 Ultra), `RFCNC0WNT9H`, `emulator-5554`.
 - S24 Ultra bonded list includes **`OBDBLE` / `OBDII` (SPP)** — dual-mode
   adapter historically proven over BLE on 2026-08-27 (see recovered transcript
-  above). Re-check `20260831T212448Z`: ACL BR/EDR and LE both **still N**;
+  above). Re-check `20260831T222101Z`: phone BT **ON**,
+  `ConnectionState: STATE_DISCONNECTED`, ACL BR/EDR and LE both **still N**;
   evidence:
-  `docs/verification/obdble-acl-recheck-20260831T212448Z.txt`. Treat as
+  `docs/verification/obdble-acl-recheck-20260831T222101Z.txt`. Treat as
   **bonded but unpowered / out of range** — cannot claim a fresh
-  connect→PID→record pass this session.
+  connect→PID→record pass this session. Prior same-day check
+  `20260831T212448Z` reached the same verdict.
 - macOS paired set is phones/keyboards/earbuds/gamepads only.
 - iOS Simulator Demo + LAN Wi‑Fi oracle already evidenced on this branch
   (host `en0` = `192.168.1.135` at time of proof).
@@ -156,11 +163,12 @@ unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
 - Store packaging (signed MSIX / Flathub Flatpak / notarized DMG) — unsigned
   zip/tarball/DMG recipes exist under `tool/packaging/` and CI uploads debug
   archives
-- Windows Classic **field** proof (powered ELM327 → COM enumerate → PID →
-  record → export on a real Windows host). Software path is wired; evidence
-  is not.
-- macOS / Linux Classic enablement after field-proven RFCOMM (or serial)
-  without relying on Android-only `connect(channel:)`
+- Windows / Linux Classic **field** proof (powered ELM327 → enumerate serial
+  node → PID → record → export on a real desktop host). Software path is wired
+  on both; evidence is not.
+- macOS Classic enablement after a field-proven path (IOBluetooth RFCOMM or a
+  reliable Bluetooth→TTY surface) without relying on Android-only
+  `connect(channel:)`
 - Linux / desktop BLE field verification against a **powered** adapter
 - Human confirmation of every desktop share-sheet target (macOS staging +
   channel handoff is proven; picker selection is not automated)

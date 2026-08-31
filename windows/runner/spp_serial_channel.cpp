@@ -332,12 +332,22 @@ class SppSerialChannel::Impl {
       result->Error("not_open", "Port is not open");
       return;
     }
-    DWORD written = 0;
-    if (!WriteFile(handle, bytes->data(),
-                   static_cast<DWORD>(bytes->size()), &written, nullptr)) {
-      result->Error("write_failed", "WriteFile failed",
-                    flutter::EncodableValue(static_cast<int64_t>(GetLastError())));
-      return;
+    DWORD written_total = 0;
+    while (written_total < bytes->size()) {
+      DWORD written = 0;
+      if (!WriteFile(handle, bytes->data() + written_total,
+                     static_cast<DWORD>(bytes->size() - written_total),
+                     &written, nullptr)) {
+        result->Error(
+            "write_failed", "WriteFile failed",
+            flutter::EncodableValue(static_cast<int64_t>(GetLastError())));
+        return;
+      }
+      if (written == 0) {
+        result->Error("write_failed", "WriteFile wrote zero bytes");
+        return;
+      }
+      written_total += written;
     }
     result->Success();
   }

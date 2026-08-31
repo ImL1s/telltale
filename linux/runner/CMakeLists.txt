@@ -9,8 +9,13 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME}
   "main.cc"
   "my_application.cc"
+  "spp_serial_channel.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
 )
+
+# pthread for the SPP serial read loop (RFCOMM /dev/rfcomm*).
+find_package(Threads REQUIRED)
+target_link_libraries(${BINARY_NAME} PRIVATE Threads::Threads)
 
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.

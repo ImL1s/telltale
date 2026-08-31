@@ -290,8 +290,8 @@ class ClassicTransport extends BaseObdTransport {
   /// The cascade, in order. `channel` null means "look the service up by UUID".
   ///
   /// Tier 3 (`channel: 1`) is only meaningful on Android. Product code never
-  /// constructs [ClassicTransport] on Windows (that host uses
-  /// [SerialTransport]); macOS/Linux keep the Classic card gated off.
+  /// constructs [ClassicTransport] on Windows/Linux (those hosts use
+  /// [SerialTransport]); macOS keeps the Classic card gated off.
   static const List<({bool secure, int? channel})> _attempts = [
     (secure: true, channel: null),
     (secure: false, channel: null),

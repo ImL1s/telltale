@@ -1,0 +1,17 @@
+timestamp_utc=20260831T222101Z
+device=R5CX10VFFBA
+adapter_enabled=1
+--- OBDBLE bonded line ---
+344:  ConnectionState: STATE_DISCONNECTED
+431:    XX:XX:XX:XX:22:33(Public ) => XX:XX:XX:XX:22:33(Public ) [ DUAL ] [0x010000] [ACL BR/EDR:N LE:N] [ Encryption status(BR/EDR): null LE: null] OBDBLE
+458:    XX:XX:XX:XX:22:33 | OBDII | 2 | 3 | 65536 | 576 | null | SPP | 41 | 1787807596028 | 1787807596028 | null | 0 | 0 | 0
+1740:    mConnectionState: STATE_DISCONNECTED, mLastConnectionState: STATE_DISCONNECTING
+1773:    mConnectionState: STATE_DISCONNECTED, mLastConnectionState: STATE_DISCONNECTING
+1999:    mConnectionState: 0
+2044:    mConnectionState: 0
+5543:shim::record 024 xx:xx:xx:xx:22:33 DUAL   cod:100-0-0 remote_info:13-01906-01494 sm4:0x10 SecureConn:F name:"OBDBLE" sec_prop:bredr_linkkey_known:T,le_linkkey_known:F,bond_type:BOND_TYPE_PERSISTENT,bredr_linkkey_type:COMBINATION,ble_enc_key_size:0,bredr_authenticated:F,le_authenticated:F,16_digit_key_authenticated:F,bredr_encrypted:F,le_encrypted:F, in_resolving_list: F
+10310:Name = OBDBLE
+10740:08-27 13:36:18.685--BluetoothDataManager -- CONNECTION INFO : {"LO_MFN":"29","LO_LMP":"13","LO_SUB":"30155","LO_FWV":"BTFW.HAMILTON_C.2.0.1-00314-PATCHZ-1.71307.34 | hmtbtfw20.tlv","RE_OUI":"AA:BB:CC","RE_NAM":"OBDBLE","RE_MFN":"1494","RE_LMP":"13","RE_SUB":"1906","RE_COD":"65536","RE_LTY":"2","RE_ROL":"0","RE_WEA":"0","CO_CFR":"0","CO_ADR":"8","CO_HER":"0"}
+--- verdict ---
+obdble_line=    XX:XX:XX:XX:22:33(Public ) => XX:XX:XX:XX:22:33(Public ) [ DUAL ] [0x010000] [ACL BR/EDR:N LE:N] [ Encryption status(BR/EDR): null LE: null] OBDBLE
+VERDICT=BONDED_BUT_UNPOWERED_OR_OUT_OF_RANGE

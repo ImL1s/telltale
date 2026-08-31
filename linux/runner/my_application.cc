@@ -10,11 +10,13 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+#include "spp_serial_channel.h"
 
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
   FlMethodChannel* capacity_channel;
+  SppSerialChannel* spp_serial_channel;
 };
 
 static void app_storage_capacity_method_call_cb(FlMethodChannel* channel,
@@ -142,14 +144,24 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
+  FlBinaryMessenger* messenger =
+      fl_engine_get_binary_messenger(fl_view_get_engine(view));
+
   g_clear_object(&self->capacity_channel);
   self->capacity_channel = fl_method_channel_new(
-      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
-      "com.cbstudio.telltale/app_storage_capacity",
+      messenger, "com.cbstudio.telltale/app_storage_capacity",
       FL_METHOD_CODEC(fl_standard_method_codec_new()));
   fl_method_channel_set_method_call_handler(
       self->capacity_channel, app_storage_capacity_method_call_cb, self,
       nullptr);
+
+  // Same Dart channel contract as Windows COM SPP — Linux uses /dev/rfcomm*
+  // (and Bluetooth-backed tty nodes) at 38400 8N1 via SerialTransport.
+  if (self->spp_serial_channel != nullptr) {
+    spp_serial_channel_destroy(self->spp_serial_channel);
+    self->spp_serial_channel = nullptr;
+  }
+  self->spp_serial_channel = spp_serial_channel_new(messenger);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -198,6 +210,10 @@ static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
   g_clear_object(&self->capacity_channel);
+  if (self->spp_serial_channel != nullptr) {
+    spp_serial_channel_destroy(self->spp_serial_channel);
+    self->spp_serial_channel = nullptr;
+  }
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 
@@ -210,7 +226,9 @@ static void my_application_class_init(MyApplicationClass* klass) {
   G_OBJECT_CLASS(klass)->dispose = my_application_dispose;
 }
 
-static void my_application_init(MyApplication* self) {}
+static void my_application_init(MyApplication* self) {
+  self->spp_serial_channel = nullptr;
+}
 
 MyApplication* my_application_new() {
   // Set the program name to the application ID, which helps various systems

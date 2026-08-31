@@ -17,6 +17,15 @@ Round 9 added a proxy in that socket that logs every byte and can hold a reply
 back, which is how the timing findings were tested and how one of them was
 found to have been testing nothing at all.
 
+## 2026-09-01 — OBDBLE ACL recheck (still unpowered)
+
+Samsung `R5CX10VFFBA`: Bluetooth adapter **ON**, bonded **OBDBLE** /
+**OBDII (SPP)** still present, but `ConnectionState: STATE_DISCONNECTED` and
+the bonded line reports `ACL BR/EDR:N LE:N`. Evidence:
+`obdble-acl-recheck-20260831T222101Z.txt` (prior same-day
+`obdble-acl-recheck-20260831T212448Z.txt` reached the same verdict). **No**
+fresh field BLE or Classic journey this session — do not treat as a pass.
+
 ## 2026-08-30 — telemetry-v1 evidence snapshot
 
 This section reports only terminal artifacts present in the current

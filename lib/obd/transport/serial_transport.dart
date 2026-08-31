@@ -1,8 +1,9 @@
-/// Byte-stream transport over a serial port (Windows Bluetooth SPP COM).
+/// Byte-stream transport over a serial port (Windows COM / Linux RFCOMM).
 ///
-/// ELM327 Classic adapters on Windows appear as Bluetooth COM ports after
-/// pairing. This transport opens that port at the conventional 38400 8N1 and
-/// feeds the same `Elm327Client` path used by Wi-Fi / RFCOMM / BLE.
+/// ELM327 Classic adapters appear as Bluetooth serial nodes after pairing
+/// (Windows `COMx`, Linux `/dev/rfcomm*`). This transport opens that port at
+/// the conventional 38400 8N1 and feeds the same `Elm327Client` path used by
+/// Wi-Fi / RFCOMM / BLE.
 library;
 
 import 'dart:async';
@@ -58,10 +59,11 @@ class SerialTransport extends BaseObdTransport {
         'deviceIdentifier': portName,
         'deviceName': displayName,
         'baudRate': baudRate,
-        'link': 'windows_spp_com',
+        'link': 'spp_serial',
       });
 
-  /// Lists Bluetooth-associated COM ports for the Classic wizard on Windows.
+  /// Lists Bluetooth-associated serial nodes for the Classic wizard
+  /// (Windows COM / Linux RFCOMM).
   static Future<List<DiscoveredDevice>> bluetoothSppDevices({
     SppSerialSession? session,
   }) async {
@@ -88,7 +90,8 @@ class SerialTransport extends BaseObdTransport {
     } on Object catch (e) {
       throw TransportException(
         '無法開啟 $displayName（$portName）。'
-        '請確認 Windows 已為該藍牙轉接器建立序列埠，且電門已開啟。',
+        '請確認系統已為該藍牙轉接器建立序列埠'
+        '（Windows COMx / Linux /dev/rfcomm*），且電門已開啟。',
         e,
       );
     }

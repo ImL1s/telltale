@@ -1,4 +1,4 @@
-/// Capability gating for Classic + Windows SPP serial transport.
+/// Capability gating for Classic + desktop SPP serial transport.
 library;
 
 import 'dart:async';
@@ -58,31 +58,31 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   tearDown(() {
-    windowsSppSerialHostOverride = null;
+    sppSerialHostOverride = null;
   });
 
   group('classicTransportAvailable', () {
-    test('stays closed when neither Android nor Windows SPP host', () {
-      windowsSppSerialHostOverride = false;
-      // This macOS/Linux CI host is not Android; override forces Windows off.
+    test('stays closed when neither Android nor SPP serial host', () {
+      sppSerialHostOverride = false;
+      // This macOS CI host is not Android; override forces desktop SPP off.
       expect(classicTransportAvailable, isFalse);
       expect(classicUnavailableReason, isNot(contains('僅在 Android 驗證過')));
     });
 
-    test('opens when Windows SPP host is asserted', () {
-      windowsSppSerialHostOverride = true;
+    test('opens when desktop SPP serial host is asserted', () {
+      sppSerialHostOverride = true;
       expect(classicTransportAvailable, isTrue);
     });
 
-    test('unavailable copy names macOS/Linux honestly when gated', () {
-      windowsSppSerialHostOverride = false;
+    test('unavailable copy names macOS honestly when gated', () {
+      sppSerialHostOverride = false;
       expect(
         classicUnavailableReason.contains('iOS') ||
             classicUnavailableReason.contains('macOS') ||
-            classicUnavailableReason.contains('Linux') ||
             classicUnavailableReason.contains('Android'),
         isTrue,
       );
+      expect(classicUnavailableReason, isNot(contains('Linux Classic')));
     });
   });
 
@@ -103,6 +103,22 @@ void main() {
       expect(devices.single.kind, TransportKind.bluetoothClassic);
       expect(devices.single.isPaired, isTrue);
       expect(devices.single.name, contains('Bluetooth'));
+    });
+
+    test('maps Linux RFCOMM nodes to Classic discovered devices', () async {
+      final session = _FakeSppSession(
+        ports: const [
+          SppSerialPortInfo(
+            portName: '/dev/rfcomm0',
+            friendlyName: 'Bluetooth RFCOMM (/dev/rfcomm0)',
+            hardwareId: 'linux-rfcomm',
+          ),
+        ],
+      );
+      final devices = await SerialTransport.bluetoothSppDevices(session: session);
+      expect(devices.single.id, '/dev/rfcomm0');
+      expect(devices.single.kind, TransportKind.bluetoothClassic);
+      expect(devices.single.name, contains('rfcomm'));
     });
 
     test('connect opens the COM port and streams inbound bytes', () async {
