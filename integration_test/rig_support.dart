@@ -33,7 +33,14 @@ import 'package:torque_obd/ui/screens/dashboard/dashboard_screen.dart';
 Future<void> startCleanRigApp(WidgetTester tester) async {
   await requireIsolatedRigIdentity();
   await (await SharedPreferences.getInstance()).clear();
-  await TranscriptStore().clear();
+  final clearOutcome = await TranscriptStore(
+    destructivePolicy: const _RigDestructivePolicy(),
+  ).clear();
+  expect(
+    clearOutcome.succeeded,
+    isTrue,
+    reason: 'rig start refused to clear last-session.log: ${clearOutcome.error}',
+  );
   final telemetry = Directory(
     '${(await getApplicationDocumentsDirectory()).path}/telltale-telemetry',
   );
@@ -618,3 +625,21 @@ Future<StoredTranscript?> waitForStoredTranscript(
   final value = await TranscriptStore().load();
   return value != null && predicate(value) ? value : null;
 });
+
+/// Rig-only policy: identity is already gated to the isolated Android package.
+final class _RigDestructivePolicy implements AppSharePolicy {
+  const _RigDestructivePolicy();
+
+  @override
+  SharePreparationPermit? freeze() => const SharePreparationPermit(
+    recorderEpoch: 1,
+    foregroundEpoch: 1,
+    connectionEpoch: 1,
+    safetyEpoch: 1,
+    connectionClass: ShareConnectionClass.disconnected,
+  );
+
+  @override
+  SharePermitValidation validate(SharePreparationPermit permit) =>
+      const SharePermitValidation.valid();
+}

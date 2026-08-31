@@ -3,6 +3,8 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
+#include <flutter/encodable_value.h>
 
 #include <memory>
 
@@ -28,6 +30,11 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // Kept alive for the lifetime of the window so share preflight can probe
+  // free space on the volume that owns the process temp/cache path.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      capacity_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

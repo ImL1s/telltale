@@ -1,5 +1,9 @@
 #include "my_application.h"
 
+#include <errno.h>
+#include <string.h>
+#include <sys/statvfs.h>
+
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -10,7 +14,48 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  FlMethodChannel* capacity_channel;
 };
+
+static void app_storage_capacity_method_call_cb(FlMethodChannel* channel,
+                                                FlMethodCall* method_call,
+                                                gpointer user_data) {
+  (void)channel;
+  (void)user_data;
+  const gchar* method = fl_method_call_get_name(method_call);
+  if (g_strcmp0(method, "getAvailableBytes") != 0) {
+    g_autoptr(FlMethodResponse) response =
+        FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+    fl_method_call_respond(method_call, response, nullptr);
+    return;
+  }
+
+  const gchar* cache = g_get_user_cache_dir();
+  struct statvfs st;
+  if (cache == nullptr || statvfs(cache, &st) != 0) {
+    g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(
+        fl_method_error_response_new("capacity_failed",
+                                     cache == nullptr ? "Cache path unavailable"
+                                                      : g_strerror(errno),
+                                     nullptr));
+    fl_method_call_respond(method_call, response, nullptr);
+    return;
+  }
+
+  const guint64 bytes = ((guint64)st.f_bavail) * ((guint64)st.f_frsize);
+  if (bytes == 0) {
+    g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(
+        fl_method_error_response_new(
+            "capacity_invalid", "Available bytes were not positive", nullptr));
+    fl_method_call_respond(method_call, response, nullptr);
+    return;
+  }
+
+  g_autoptr(FlValue) value = fl_value_new_int((gint64)bytes);
+  g_autoptr(FlMethodResponse) response =
+      FL_METHOD_RESPONSE(fl_method_success_response_new(value));
+  fl_method_call_respond(method_call, response, nullptr);
+}
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
@@ -75,6 +120,15 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
+  g_clear_object(&self->capacity_channel);
+  self->capacity_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "com.cbstudio.telltale/app_storage_capacity",
+      FL_METHOD_CODEC(fl_standard_method_codec_new()));
+  fl_method_channel_set_method_call_handler(
+      self->capacity_channel, app_storage_capacity_method_call_cb, self,
+      nullptr);
+
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
@@ -121,6 +175,7 @@ static void my_application_shutdown(GApplication* application) {
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
+  g_clear_object(&self->capacity_channel);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 

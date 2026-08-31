@@ -1,6 +1,7 @@
 /// Bounded live-trend projection for the Dashboard.
 library;
 
+import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -310,8 +311,15 @@ class TelemetryTrendsNotifier extends Notifier<TelemetryTrendsState> {
       storedIds: preferences.getStringList(telemetryTrendPidIdsKey),
     );
     ref.listen<List<Pid>>(activePidsProvider, (_, next) {
-      _controller.updateActivePids(next);
+      final changed = _controller.updateActivePids(next);
       state = _controller.state;
+      if (changed) {
+        unawaited(
+          ref
+              .read(sharedPreferencesProvider)
+              .setStringList(telemetryTrendPidIdsKey, state.selectedIds),
+        );
+      }
     });
     ref.listen<AsyncValue<TelemetrySnapshot>>(telemetryProvider, (_, next) {
       _ingest(next);

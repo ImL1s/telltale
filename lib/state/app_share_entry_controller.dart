@@ -3,6 +3,7 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:ui' show Rect;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,25 +29,30 @@ final class AppShareEntryController {
   Future<AppShareOutcome> shareTelemetryCsv({
     required Directory documents,
     required String sessionId,
+    Rect? sharePositionOrigin,
   }) => _shareTelemetry(
     documents: documents,
     sessionId: sessionId,
     kind: ShareSourceKind.telemetryCsv,
+    sharePositionOrigin: sharePositionOrigin,
   );
 
   Future<AppShareOutcome> shareTelemetryJson({
     required Directory documents,
     required String sessionId,
+    Rect? sharePositionOrigin,
   }) => _shareTelemetry(
     documents: documents,
     sessionId: sessionId,
     kind: ShareSourceKind.telemetryJson,
+    sharePositionOrigin: sharePositionOrigin,
   );
 
   Future<AppShareOutcome> _shareTelemetry({
     required Directory documents,
     required String sessionId,
     required ShareSourceKind kind,
+    Rect? sharePositionOrigin,
   }) {
     if (!TelemetrySessionReader.isOpaqueId(sessionId)) {
       return Future.value(
@@ -58,6 +64,7 @@ final class AppShareEntryController {
       AppShareRequest(
         sourceKind: kind,
         subject: '本機 OBD 紀錄 $sessionId',
+        sharePositionOrigin: sharePositionOrigin,
         streamFactory: () => _offIsolateExportStream(
           path,
           json: kind == ShareSourceKind.telemetryJson,

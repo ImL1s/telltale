@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' show Rect;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -99,6 +100,7 @@ class AppShareRequest {
     required this.subject,
     required Stream<List<int>> Function() streamFactory,
     int? knownByteLength,
+    this.sharePositionOrigin,
   }) : prepareSource = (() => PreparedAppShareSource(
          streamFactory: streamFactory,
          knownByteLength: knownByteLength,
@@ -108,11 +110,15 @@ class AppShareRequest {
     required this.sourceKind,
     required this.subject,
     required this.prepareSource,
+    this.sharePositionOrigin,
   });
 
   final ShareSourceKind sourceKind;
   final String subject;
   final FutureOr<PreparedAppShareSource?> Function() prepareSource;
+
+  /// iPad popover origin for share_plus; ignored by the macOS native bridge.
+  final Rect? sharePositionOrigin;
 }
 
 enum ShareError {
@@ -482,6 +488,7 @@ class AppShareCoordinator {
             mimeType: request.sourceKind.mimeType,
             fileName: 'telltale-${record!.id}.${request.sourceKind.extension}',
             subject: request.subject,
+            sharePositionOrigin: request.sharePositionOrigin,
           ),
         );
         // This instrumentation cut is deliberately after the synchronous

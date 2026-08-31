@@ -13,11 +13,15 @@ class AppSharePlatformRequest {
     required this.mimeType,
     required this.fileName,
     required this.subject,
+    this.sharePositionOrigin,
   });
   final String path;
   final String mimeType;
   final String fileName;
   final String subject;
+
+  /// Required on iPad for the share popover anchor; optional elsewhere.
+  final Rect? sharePositionOrigin;
 }
 
 abstract interface class AppSharePlatform {
@@ -65,6 +69,7 @@ class AppSharePlatformBridge implements AppSharePlatform {
           files: [XFile(request.path, mimeType: request.mimeType)],
           subject: request.subject,
           fileNameOverrides: [request.fileName],
+          sharePositionOrigin: request.sharePositionOrigin,
         ),
       );
       return mapStatus(result.status);

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:ui' show Rect;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -342,8 +343,9 @@ final class TelemetrySessionActions {
 
   Future<TelemetrySessionActionResult> export(
     String sessionId,
-    TelemetryExportFormat format,
-  ) async {
+    TelemetryExportFormat format, {
+    Rect? sharePositionOrigin,
+  }) async {
     final guard = _guard();
     if (guard != null) return TelemetrySessionActionResult.failure(guard);
     if (!TelemetrySessionReader.isOpaqueId(sessionId)) {
@@ -366,10 +368,12 @@ final class TelemetrySessionActions {
         ? await controller.shareTelemetryCsv(
             documents: documents,
             sessionId: sessionId,
+            sharePositionOrigin: sharePositionOrigin,
           )
         : await controller.shareTelemetryJson(
             documents: documents,
             sessionId: sessionId,
+            sharePositionOrigin: sharePositionOrigin,
           );
     if (outcome.error == null) {
       return const TelemetrySessionActionResult.success();

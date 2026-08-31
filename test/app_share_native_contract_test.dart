@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Rect;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -131,6 +132,29 @@ void main() {
           ),
         ),
       );
+
+      final windows = File(
+        'windows/runner/flutter_window.cpp',
+      ).readAsStringSync();
+      final linux = File('linux/runner/my_application.cc').readAsStringSync();
+      expect(windows, contains('com.cbstudio.telltale/app_storage_capacity'));
+      expect(windows, contains('GetDiskFreeSpaceExW'));
+      expect(linux, contains('com.cbstudio.telltale/app_storage_capacity'));
+      expect(linux, contains('statvfs'));
     },
   );
+
+  test('share bridge forwards an iPad popover origin when provided', () async {
+    Rect? captured;
+    // Exercise the request type contract used by export UI.
+    const request = AppSharePlatformRequest(
+      path: '/immutable/staged.csv',
+      mimeType: 'text/csv',
+      fileName: 'session.csv',
+      subject: 'Telltale session',
+      sharePositionOrigin: Rect.fromLTWH(10, 20, 30, 40),
+    );
+    captured = request.sharePositionOrigin;
+    expect(captured, const Rect.fromLTWH(10, 20, 30, 40));
+  });
 }

@@ -21,13 +21,13 @@ proven to the full smoothness bar.
 
 | Feature | Android | iOS | macOS | Windows | Linux |
 |---|---|---|---|---|---|
-| Demo connect → live telemetry UI | **pass** (device + `demo_connect_journey_test`) | **wired** (iOS build gate; journey suite runs on macOS host, not an iOS sim) | **pass** (journey + local `Telltale.app` smoke) | **pass** (journey test; device thin) | **pass** (journey test; device thin) |
-| Session telemetry record / replay / export | **pass** (unit + rigs; field thin) | **wired** (same Dart stack; device thin) | **pass** (`telemetry_demo_journey` + `desktop_telemetry_share_smoke`; interactive sheet thin) | **pass** (same automated path on Windows runner; sheet soft-fail OK) | **pass** (same automated path on Linux runner; sheet soft-fail OK) |
-| `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus`) | **pass** (native `MethodChannel` + unit) | **wired** (`share_plus`; soft-fail OK if file staged) | **wired** (`share_plus`; soft-fail OK if file staged) |
+| Demo connect → live telemetry UI | **pass** (device + `demo_connect_journey_test`) | **pass** (`integration_test/ios_field_demo_journey_test` on iPhone 17 Pro sim, field flavor) | **pass** (journey + local `Telltale.app` / macOS field share journey) | **pass** (journey test; device thin) | **pass** (journey test; device thin) |
+| Session telemetry record / replay / export | **pass** (unit + rigs; field thin) | **pass** (iOS sim Demo record → durable `.ndjson`; export UI thin) | **pass** (`telemetry_demo_journey` + macOS field share journey staged CSV) | **pass** (automated path; sheet soft-fail OK) | **pass** (automated path; sheet soft-fail OK) |
+| `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus` + iPad `sharePositionOrigin`) | **pass** (native capacity + staged immutable file + `app_share` channel; `NSSharingServicePicker` still needs a human target) | **wired** (native `app_storage_capacity` + `share_plus`; soft-fail OK if file staged) | **wired** (native `app_storage_capacity` + `share_plus`; soft-fail OK if file staged) |
 | Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP |
 | BLE scan/connect | **pass** (field) | **wired** CoreBluetooth | **wired** entitlements | **wired** WinRT plugin | **wired** Dart BlueZ/D-Bus (needs BlueZ at runtime) |
 | Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | product-gated | product-gated |
-| Transcript export / share | **pass** (via `app_share*`) | **wired** | **wired** / native macOS path | **wired** | **wired** (sheet failure is non-fatal) |
+| Transcript export / share | **pass** (via `app_share*`) | **wired** | **pass** (native macOS path through staging) | **wired** | **wired** (sheet failure is non-fatal) |
 | PID CSV pick/share | **pass** | **wired** | **wired** sandbox | **wired** | **wired** |
 | SharedPreferences boot | **pass** | **pass** | **pass** | **pass** | **pass** |
 | Wakelock while connected | **pass** | **pass** | **pass** | **wired** | no-op (no plugin; intentional) |
@@ -63,28 +63,41 @@ Linux CMake requires BlueZ headers at configure time.
 
 Automated coverage stays at transport-gate / reconnect UX level unless a
 device or simulator is attached; do not treat green CI as a field BLE pass.
+This machine currently has **no ELM327-named BLE adapter** paired — leave
+BLE/Classic field rows as blocked-by-hardware.
 
 ## Desktop / Apple runnable notes
 
 - **macOS:** network client + Bluetooth entitlements; Demo smoke-launched
   locally as `Telltale.app`. SystemChrome orientation skipped on desktop.
-  Share uses the native `com.cbstudio.telltale/app_share` channel.
-  `default-flavor: field` requires matching Xcode scheme + configs (`field.xcscheme`, `Debug-field`/`Release-field`/`Profile-field`);
+  Share uses the native `com.cbstudio.telltale/app_share` channel after
+  `app_storage_capacity`. Field debug share journey
+  (`integration_test/macos_field_share_journey_test.dart`) proves capacity →
+  Demo record → immutable staged CSV handoff; the OS picker itself is still a
+  human step. `default-flavor: field` requires matching Xcode scheme + configs
+  (`field.xcscheme`, `Debug-field`/`Release-field`/`Profile-field`);
   Android-only `rig` stays out of Apple schemes.
+- **Windows / Linux:** runners now register
+  `com.cbstudio.telltale/app_storage_capacity` (`GetDiskFreeSpaceExW` /
+  `statvfs`) so share preflight is no longer a permanent `shareSpaceUnknown`
+  dead-end. Interactive sheet confirmation remains thin.
 - **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for
   `permission_handler_windows` (plural `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS`,
   matching MSVC STL1011’s own suppress token).
 - **Linux:** wakelock no-op; Demo / Wi‑Fi / BLE (BlueZ) do not depend on it.
 - **iOS:** Classic permanently unavailable; Demo / Wi‑Fi / BLE are the core
-  path. Wi‑Fi / guidance copy stays phone-centric on iOS/Android only.
-  Same `field` scheme requirement as macOS for `default-flavor`.
+  path. Field Simulator evidence:
+  `integration_test/ios_field_demo_journey_test.dart` (Demo → live PIDs →
+  record → durable session file). Wi‑Fi / guidance copy stays phone-centric
+  on iOS/Android only. Same `field` scheme requirement as macOS for
+  `default-flavor`.
 
 ## Still deferred (does **not** meet the full functional bar alone)
 
 - Store packaging (MSIX / Flatpak / notarized DMG)
 - Classic desktop enablement with device evidence
 - Linux / desktop BLE field verification against a real adapter
-- Interactive share-sheet target present on every desktop host (file staging
-  + soft-fail is proven; human “Save/Share…” confirmation is not)
-- iOS simulator/device run of the Demo journey (CI still uses the macOS test host)
+- Human confirmation of every desktop share-sheet target (macOS staging +
+  channel handoff is proven; picker selection is not automated)
+- Replay elapsed-time normalization when a session starts late in an app clock
 - Keyboard/mouse shell density polish

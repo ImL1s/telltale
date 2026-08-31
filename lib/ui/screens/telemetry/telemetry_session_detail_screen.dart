@@ -80,11 +80,19 @@ class _TelemetrySessionDetailScreenState
   }
 
   Future<void> _export() async {
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
     final format = await showTelemetryExportSheet(context);
     if (format == null || !mounted) return;
     final result = await ref
         .read(telemetrySessionActionsProvider)
-        .export(widget.sessionId, format);
+        .export(
+          widget.sessionId,
+          format,
+          sharePositionOrigin: origin,
+        );
     if (!result.isSuccess &&
         result.failure != TelemetrySessionActionFailure.restartRequired) {
       _snack('匯出未完成：${result.message}');

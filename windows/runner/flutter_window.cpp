@@ -2,6 +2,10 @@
 
 #include <optional>
 
+#include <windows.h>
+
+#include <flutter/standard_method_codec.h>
+
 #include "flutter/generated_plugin_registrant.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -25,6 +29,37 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  capacity_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "com.cbstudio.telltale/app_storage_capacity",
+          &flutter::StandardMethodCodec::GetInstance());
+  capacity_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() != "getAvailableBytes") {
+          result->NotImplemented();
+          return;
+        }
+        wchar_t path[MAX_PATH];
+        const DWORD length = GetTempPathW(MAX_PATH, path);
+        if (length == 0 || length > MAX_PATH) {
+          result->Error("capacity_failed", "Temp path unavailable");
+          return;
+        }
+        ULARGE_INTEGER available{};
+        if (!GetDiskFreeSpaceExW(path, &available, nullptr, nullptr) ||
+            available.QuadPart == 0) {
+          result->Error("capacity_invalid",
+                        "Available bytes were not positive");
+          return;
+        }
+        result->Success(flutter::EncodableValue(
+            static_cast<int64_t>(available.QuadPart)));
+      });
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +75,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  capacity_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
