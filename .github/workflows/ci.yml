@@ -168,6 +168,24 @@ jobs:
             test/app_wakelock_test.dart \
             test/remembered_adapter_navigation_test.dart
 
+      # Unsigned desktop archive from the debug tree already built above.
+      # Release DMG + notarization need Apple secrets — see tool/packaging/.
+      - name: Package unsigned macOS .app zip
+        run: |
+          set -euo pipefail
+          app=(build/macos/Build/Products/Debug/*.app)
+          test -d "${app[0]}"
+          mkdir -p build/packaging
+          ditto -c -k --sequesterRsrc --keepParent "${app[0]}" \
+            build/packaging/Telltale-macos-debug-unsigned.zip
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: telltale-macos-debug-unsigned
+          path: build/packaging/Telltale-macos-debug-unsigned.zip
+          if-no-files-found: error
+          retention-days: 14
+
   linux:
     name: Linux build + functional smoke
     runs-on: ubuntu-latest
@@ -217,6 +235,26 @@ jobs:
             test/app_wakelock_test.dart \
             test/remembered_adapter_navigation_test.dart
 
+      - name: Package unsigned Linux debug tarball
+        run: |
+          set -euo pipefail
+          bundle=""
+          for candidate in build/linux/x64/debug/bundle build/linux/arm64/debug/bundle; do
+            if [[ -d "$candidate" ]]; then bundle="$candidate"; break; fi
+          done
+          test -n "$bundle"
+          mkdir -p build/packaging
+          tar -C "$(dirname "$bundle")" -czf \
+            build/packaging/Telltale-linux-debug-unsigned.tar.gz \
+            "$(basename "$bundle")"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: telltale-linux-debug-unsigned
+          path: build/packaging/Telltale-linux-debug-unsigned.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
   windows:
     name: Windows build + functional smoke
     runs-on: windows-latest
@@ -251,6 +289,26 @@ jobs:
             test/telemetry_heartbeat_test.dart \
             test/app_wakelock_test.dart \
             test/remembered_adapter_navigation_test.dart
+
+      - name: Package unsigned Windows debug zip
+        shell: pwsh
+        run: |
+          $runner = @(
+            'build/windows/x64/runner/Debug',
+            'build/windows/arm64/runner/Debug'
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $runner) { throw 'missing Windows Debug runner' }
+          New-Item -ItemType Directory -Force -Path build/packaging | Out-Null
+          Compress-Archive -Path $runner `
+            -DestinationPath build/packaging/Telltale-windows-debug-unsigned.zip `
+            -Force
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: telltale-windows-debug-unsigned
+          path: build/packaging/Telltale-windows-debug-unsigned.zip
+          if-no-files-found: error
+          retention-days: 14
 
   privacy:
     name: the two privacy policies agree

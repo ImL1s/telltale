@@ -48,10 +48,12 @@ def run(argv: list[str] | None = None) -> None:
         emulator_args = configure_ircama_runtime(elm.interpreter, args)
     except ValueError as error:
         raise SystemExit(str(error)) from error
-    # Ircama 3.0.5 otherwise binds "" (0.0.0.0). The BLE bridge is the only
-    # intended client, so exposing the single-session emulator to the LAN would
-    # let an unrelated peer alter its state and invalidate the rig evidence.
-    elm.elm.NETWORK_INTERFACES = "127.0.0.1"
+    # Ircama 3.0.5 otherwise binds "" (0.0.0.0). BLE / desktop loopback oracles
+    # keep 127.0.0.1 so an unrelated LAN peer cannot steal the single session.
+    # iOS Simulator Wi‑Fi evidence needs the host LAN address, so
+    # ELM_BIND_INTERFACE may override (typically 0.0.0.0) for that harness only.
+    bind = os.environ.get("ELM_BIND_INTERFACE", "127.0.0.1").strip() or "127.0.0.1"
+    elm.elm.NETWORK_INTERFACES = bind
     signal.signal(signal.SIGTERM, _terminate)
     sys.argv = [sys.argv[0], *emulator_args]
     elm.interpreter.main()
