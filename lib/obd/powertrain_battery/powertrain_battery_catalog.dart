@@ -35,6 +35,12 @@ final class PowertrainBatteryCatalogAsset {
     }
   }
 
+  /// The digest [fromStrings] checks the catalog bytes against.
+  ///
+  /// Public so a test fixture can build a self-consistent manifest for an
+  /// in-memory catalog instead of pinning hashes that rot on every edit.
+  static String sha256Hex(List<int> bytes) => _sha256Hex(bytes);
+
   static PowertrainBatteryCatalogSnapshot fromStrings({
     required String manifestJson,
     required String catalogJson,

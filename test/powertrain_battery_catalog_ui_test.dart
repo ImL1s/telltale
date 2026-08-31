@@ -12,40 +12,47 @@ import 'package:torque_obd/state/powertrain_battery_profiles.dart';
 import 'package:torque_obd/ui/screens/pids/powertrain_battery_catalog_screen.dart';
 
 const _catalogJson =
-    '{"schema_version":2,"profiles":[{"id":"mg-zs-ev","display_name":"MG ZS EV","description":"'
-    'BEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"status":"community","evidence"'
-    ':"sourceBacked","market":"Synthetic laboratory","make":"MG","model":"ZS EV","year_from":20'
-    '21,"year_to":2023,"variant":"fixture-v1","powertrain":"BEV","identity_evidence":{"market":"exact","year":"exact","model":"exact","variant":"exact"},"source":{"name":"Pinned sourc'
-    'e","url":"https://github.com/example/source","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-    'aaaaaaa","license":"Apache-2.0","path":"profiles/example.json","locator":"vehicle/example"'
-    ',"artifact_sha256":""},"commands":[{"request_header":"781","expected_responder":"789","mod'
-    'e":"22","identifier":"B046","payload_length":2,"signals":[{"id":"raw-soc","name":"Raw SOC"'
-    ',"offset":0,"width":2,"equation":"(A*256+B)/10","unit":"%","min_value":0,"max_value":100,"'
-    'semantic_kind":"traction_battery_soc","recommended":true}]}]},{"id":"ioniq-phev","display_'
-    'name":"Hyundai Ioniq Plug-in Hybrid","description":"PHEV 大電池資料候選","limitations":["尚未由 Tell'
-    'tale 在實車驗證，不能視為已支援。"],"status":"researchOnly","evidence":"sourceBacked","market":"Source-u'
-    'nspecified","make":"Hyundai","model":"Ioniq Plug-in Hybrid","year_from":2021,"year_to":202'
-    '3,"variant":"source-unspecified","powertrain":"PHEV","source":{"name":"Pinned source","url'
-    '":"https://github.com/example/source","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-    '","license":"Apache-2.0","path":"profiles/example.json","locator":"vehicle/example","artif'
-    'act_sha256":""},"commands":[]},{"id":"prius-hev","display_name":"Toyota Prius","descriptio'
-    'n":"HEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"status":"researchOnly","ev'
-    'idence":"sourceBacked","market":"Source-unspecified","make":"Toyota","model":"Prius","year'
-    '_from":2021,"year_to":2023,"variant":"source-unspecified","powertrain":"HEV","source":{"na'
-    'me":"Pinned source","url":"https://github.com/example/source","revision":"aaaaaaaaaaaaaaaa'
-    'aaaaaaaaaaaaaaaaaaaaaaaa","license":"Apache-2.0","path":"profiles/example.json","locator":'
-    '"vehicle/example","artifact_sha256":""},"commands":[]},{"id":"leaf-bev","display_name":"Ni'
-    'ssan Leaf","description":"BEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"stat'
-    'us":"researchOnly","evidence":"sourceBacked","market":"Source-unspecified","make":"Nissan"'
-    ',"model":"Leaf","year_from":2021,"year_to":2023,"variant":"source-unspecified","powertrain'
-    '":"BEV","source":{"name":"Pinned source","url":"https://github.com/example/source","revisi'
-    'on":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"Apache-2.0","path":"profiles/exa'
-    'mple.json","locator":"vehicle/example","artifact_sha256":""},"commands":[]}]}';
+    '{"schema_version":3,"profiles":[{"id":"mg-zs-ev","display_name":"MG ZS EV","descriptio'
+    'n":"BEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"status":"community","e'
+    'vidence":"sourceBacked","market":"Synthetic laboratory","make":"MG","model":"ZS EV","y'
+    'ear_from":2021,"year_to":2023,"variant":"fixture-v1","powertrain":"BEV","identity_evid'
+    'ence":{"market":"exact","year":"exact","model":"exact","variant":"exact"},"source":{"n'
+    'ame":"Pinned source","url":"https://github.com/example/source","revision":"aaaaaaaaaaa'
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"Apache-2.0","path":"profiles/example.json","'
+    'locator":"vehicle/example","artifact_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    'bbbbbbbbbbbbbbbbbbbbbbbb"},"secondary_sources":[{"name":"Independent poller","url":"ht'
+    'tps://github.com/example/other","revision":"cccccccccccccccccccccccccccccccccccccccc",'
+    '"license":"MIT","path":"src/poller.cpp","locator":"poll table 22B046","artifact_sha256'
+    '":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}],"commands":[{"r'
+    'equest_header":"781","expected_responder":"789","mode":"22","identifier":"B046","paylo'
+    'ad_length":2,"signals":[{"id":"raw-soc","name":"Raw SOC","offset":0,"width":2,"equatio'
+    'n":"(A*256+B)/10","unit":"%","min_value":0,"max_value":100,"semantic_kind":"traction_b'
+    'attery_soc","recommended":true}]}]},{"id":"ioniq-phev","display_name":"Hyundai Ioniq P'
+    'lug-in Hybrid","description":"PHEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援'
+    '。"],"status":"researchOnly","evidence":"sourceBacked","market":"Source-unspecified","m'
+    'ake":"Hyundai","model":"Ioniq Plug-in Hybrid","year_from":2021,"year_to":2023,"variant'
+    '":"source-unspecified","powertrain":"PHEV","source":{"name":"Pinned source","url":"htt'
+    'ps://github.com/example/source","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
+    '"license":"Apache-2.0","path":"profiles/example.json","locator":"vehicle/example","art'
+    'ifact_sha256":""},"commands":[]},{"id":"prius-hev","display_name":"Toyota Prius","desc'
+    'ription":"HEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"status":"researc'
+    'hOnly","evidence":"sourceBacked","market":"Source-unspecified","make":"Toyota","model"'
+    ':"Prius","year_from":2021,"year_to":2023,"variant":"source-unspecified","powertrain":"'
+    'HEV","source":{"name":"Pinned source","url":"https://github.com/example/source","revis'
+    'ion":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"Apache-2.0","path":"profile'
+    's/example.json","locator":"vehicle/example","artifact_sha256":""},"commands":[]},{"id"'
+    ':"leaf-bev","display_name":"Nissan Leaf","description":"BEV 大電池資料候選","limitations":["尚'
+    '未由 Telltale 在實車驗證，不能視為已支援。"],"status":"researchOnly","evidence":"sourceBacked","market'
+    '":"Source-unspecified","make":"Nissan","model":"Leaf","year_from":2021,"year_to":2023,'
+    '"variant":"source-unspecified","powertrain":"BEV","source":{"name":"Pinned source","ur'
+    'l":"https://github.com/example/source","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    'aaaaa","license":"Apache-2.0","path":"profiles/example.json","locator":"vehicle/exampl'
+    'e","artifact_sha256":""},"commands":[]}]}';
 
 const _manifestJson =
-    '{"schema_version":2,"catalog_file":"powertrain_battery_catalog.json","sha256":"0cbc36f4aae'
-    'd4316d91a452fb044bfb24dbe2a45d267648c31090dc7ba8aacf3","size_bytes":2877,"profile_count":4'
-    ',"signal_count":1,"counts_by_powertrain":{"BEV":2,"PHEV":1,"HEV":1}}';
+    '{"schema_version":3,"catalog_file":"powertrain_battery_catalog.json","sha256":"08dd58e'
+    '4fe2bc18c0da5f6369b282747393e8e30a1cd90d947d0b81776a1bc60","size_bytes":3243,"profile_'
+    'count":4,"signal_count":1,"counts_by_powertrain":{"BEV":2,"PHEV":1,"HEV":1}}';
 
 PowertrainBatteryCatalogSnapshot get _snapshot =>
     PowertrainBatteryCatalogAsset.fromStrings(
@@ -53,7 +60,59 @@ PowertrainBatteryCatalogSnapshot get _snapshot =>
       catalogJson: _catalogJson,
     );
 
+const _uncorroboratedCatalogJson =
+    '{"schema_version":3,"profiles":[{"id":"mg-zs-ev","display_name":"MG ZS EV","descriptio'
+    'n":"BEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"status":"community","e'
+    'vidence":"sourceBacked","market":"Synthetic laboratory","make":"MG","model":"ZS EV","y'
+    'ear_from":2021,"year_to":2023,"variant":"fixture-v1","powertrain":"BEV","identity_evid'
+    'ence":{"market":"exact","year":"exact","model":"exact","variant":"exact"},"source":{"n'
+    'ame":"Pinned source","url":"https://github.com/example/source","revision":"aaaaaaaaaaa'
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"Apache-2.0","path":"profiles/example.json","'
+    'locator":"vehicle/example","artifact_sha256":""},"commands":[{"request_header":"781","'
+    'expected_responder":"789","mode":"22","identifier":"B046","payload_length":2,"signals"'
+    ':[{"id":"raw-soc","name":"Raw SOC","offset":0,"width":2,"equation":"(A*256+B)/10","uni'
+    't":"%","min_value":0,"max_value":100,"semantic_kind":"traction_battery_soc","recommend'
+    'ed":true}]}]},{"id":"ioniq-phev","display_name":"Hyundai Ioniq Plug-in Hybrid","descri'
+    'ption":"PHEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"status":"research'
+    'Only","evidence":"sourceBacked","market":"Source-unspecified","make":"Hyundai","model"'
+    ':"Ioniq Plug-in Hybrid","year_from":2021,"year_to":2023,"variant":"source-unspecified"'
+    ',"powertrain":"PHEV","source":{"name":"Pinned source","url":"https://github.com/exampl'
+    'e/source","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"Apache-2.0"'
+    ',"path":"profiles/example.json","locator":"vehicle/example","artifact_sha256":""},"com'
+    'mands":[]},{"id":"prius-hev","display_name":"Toyota Prius","description":"HEV 大電池資料候選"'
+    ',"limitations":["尚未由 Telltale 在實車驗證，不能視為已支援。"],"status":"researchOnly","evidence":"sou'
+    'rceBacked","market":"Source-unspecified","make":"Toyota","model":"Prius","year_from":2'
+    '021,"year_to":2023,"variant":"source-unspecified","powertrain":"HEV","source":{"name":'
+    '"Pinned source","url":"https://github.com/example/source","revision":"aaaaaaaaaaaaaaaa'
+    'aaaaaaaaaaaaaaaaaaaaaaaa","license":"Apache-2.0","path":"profiles/example.json","locat'
+    'or":"vehicle/example","artifact_sha256":""},"commands":[]},{"id":"leaf-bev","display_n'
+    'ame":"Nissan Leaf","description":"BEV 大電池資料候選","limitations":["尚未由 Telltale 在實車驗證，不能視為'
+    '已支援。"],"status":"researchOnly","evidence":"sourceBacked","market":"Source-unspecified"'
+    ',"make":"Nissan","model":"Leaf","year_from":2021,"year_to":2023,"variant":"source-unsp'
+    'ecified","powertrain":"BEV","source":{"name":"Pinned source","url":"https://github.com'
+    '/example/source","revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","license":"Apac'
+    'he-2.0","path":"profiles/example.json","locator":"vehicle/example","artifact_sha256":"'
+    '"},"commands":[]}]}';
+
+const _uncorroboratedManifestJson =
+    '{"schema_version":3,"catalog_file":"powertrain_battery_catalog.json","sha256":"5e0a9d6'
+    '6d4568f410b56f45762c900c412d39fe7f4440fd5007a441188daafe1","size_bytes":2877,"profile_'
+    'count":4,"signal_count":1,"counts_by_powertrain":{"BEV":2,"PHEV":1,"HEV":1}}';
+
+PowertrainBatteryCatalogSnapshot get _uncorroboratedSnapshot =>
+    PowertrainBatteryCatalogAsset.fromStrings(
+      manifestJson: _uncorroboratedManifestJson,
+      catalogJson: _uncorroboratedCatalogJson,
+    );
+
 final class _ConnectedObdSession extends ObdSession {
+  /// Overridable so a test can flip the connection identity while the
+  /// install dialog sits open.
+  int fakeGeneration = 0;
+
+  @override
+  int get connectionGeneration => fakeGeneration;
+
   @override
   ObdConnectionState build() => const ObdConnectionState(
     phase: ConnectionPhase.connected,
@@ -68,6 +127,7 @@ Future<ProviderContainer> _pump(
   PowertrainBatteryCatalogSnapshot? snapshot,
   bool experimentalAccess = false,
   bool connected = false,
+  bool loadError = false,
 }) async {
   SharedPreferences.setMockInitialValues({
     if (experimentalAccess) 'powertrain_battery_experiments_enabled_v1': true,
@@ -77,7 +137,11 @@ Future<ProviderContainer> _pump(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
       powertrainBatteryCatalogLoaderProvider.overrideWithValue(
-        () async => snapshot ?? _snapshot,
+        loadError
+            ? () async => throw const PowertrainBatteryCatalogAssetException(
+                'fixture integrity failure',
+              )
+            : () async => snapshot ?? _snapshot,
       ),
       if (connected) obdSessionProvider.overrideWith(_ConnectedObdSession.new),
     ],
@@ -154,7 +218,7 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
-  testWidgets('source maturity never exposes an install action', (
+  testWidgets('a corroborated community profile installs and uninstalls', (
     tester,
   ) async {
     final container = await _pump(tester);
@@ -166,19 +230,95 @@ void main() {
       find.descendant(of: card, matching: find.text('社群資料')),
       findsOneWidget,
     );
+
+    await tester.tap(find.byKey(const Key('powertrain_install_mg-zs-ev')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('powertrain_install_disclosure')), findsOneWidget);
+
+    // Nothing installs before the identity acknowledgement.
+    var confirm = tester.widget<FilledButton>(
+      find.byKey(const Key('powertrain_confirm_install')),
+    );
+    expect(confirm.onPressed, isNull);
+
+    await tester.tap(find.byKey(const Key('powertrain_install_identity_ack')));
+    await tester.pump();
+    confirm = tester.widget<FilledButton>(
+      find.byKey(const Key('powertrain_confirm_install')),
+    );
+    expect(confirm.onPressed, isNotNull);
+    await tester.tap(find.byKey(const Key('powertrain_confirm_install')));
+    await tester.pumpAndSettle();
+
+    final registry = container.read(pidRegistryProvider.notifier);
+    expect(registry.installedPowertrainProfileIds, {'mg-zs-ev'});
+    expect(registry.profilePids, hasLength(1));
+    expect(registry.installedVehicleYear('mg-zs-ev'), 2021);
+
+    // Installation alone must not authorize polling for any connection.
+    expect(container.read(powertrainProfileAuthorizationsProvider), isEmpty);
+
+    await tester.tap(find.byKey(const Key('powertrain_uninstall_mg-zs-ev')));
+    await tester.pumpAndSettle();
+    expect(registry.installedPowertrainProfileIds, isEmpty);
+    expect(registry.profilePids, isEmpty);
+  });
+
+  testWidgets(
+    'an install accepted after the connection changed grants nothing',
+    (tester) async {
+      final container = await _pump(tester, connected: true);
+      addTearDown(container.dispose);
+
+      final card = find.byKey(const Key('powertrain_profile_mg-zs-ev'));
+      await tester.ensureVisible(card);
+      await tester.tap(find.byKey(const Key('powertrain_install_mg-zs-ev')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('powertrain_install_identity_ack')),
+      );
+      await tester.pump();
+
+      // The connection the dialog was opened against goes away while it sits
+      // open. The install itself may proceed — definitions are inert — but
+      // the in-gesture authorization must not attach to whatever connected
+      // next; the dashboard banner will ask for that connection instead.
+      final session =
+          container.read(obdSessionProvider.notifier) as _ConnectedObdSession;
+      session.fakeGeneration = 99;
+      await tester.tap(find.byKey(const Key('powertrain_confirm_install')));
+      await tester.pumpAndSettle();
+
+      final registry = container.read(pidRegistryProvider.notifier);
+      expect(registry.installedPowertrainProfileIds, {'mg-zs-ev'});
+      expect(
+        container.read(powertrainProfileAuthorizationsProvider),
+        isEmpty,
+      );
+    },
+  );
+
+  testWidgets('an uncorroborated community profile fails the whole catalog', (
+    tester,
+  ) async {
+    // Same tier label, but with the corroboration stripped: no secondary
+    // source and no pinned artifact. Enforcement happens at catalog load —
+    // an invalid community entry makes the whole bundle unavailable rather
+    // than shipping with a closed button.
     expect(
-      find.descendant(of: card, matching: find.text('此版本不可安裝')),
-      findsOneWidget,
+      () => _uncorroboratedSnapshot,
+      throwsA(
+        isA<PowertrainBatteryCatalogAssetException>().having(
+          (error) => error.toString(),
+          'message',
+          contains('missing_source_artifact_hash'),
+        ),
+      ),
     );
-    final button = tester.widget<FilledButton>(
-      find.byKey(const Key('powertrain_probe_mg-zs-ev')),
-    );
-    expect(button.onPressed, isNull);
-    expect(find.byKey(const Key('powertrain_confirm_install')), findsNothing);
-    expect(
-      find.byKey(const Key('powertrain_uninstall_mg-zs-ev')),
-      findsNothing,
-    );
+
+    final container = await _pump(tester, loadError: true);
+    addTearDown(container.dispose);
+    expect(find.text('離線目錄無法載入'), findsOneWidget);
   });
 
   testWidgets(
@@ -197,16 +337,21 @@ void main() {
 
       await tester.enterText(
         find.byKey(const Key('powertrain_profile_search')),
-        'Australian 2021',
+        'RX450hL',
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('powertrain_probe_mg-zs-ev-au-2021')),
+      final probeButton = find.byKey(
+        const Key('powertrain_probe_lexus-rx450hl-2020-source-vehicle'),
       );
+      await tester.ensureVisible(probeButton);
+      await tester.pumpAndSettle();
+      await tester.tap(probeButton);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
-          const Key('powertrain_probe_command_mg-zs-ev-au-2021_22B046'),
+          const Key(
+            'powertrain_probe_command_lexus-rx450hl-2020-source-vehicle_2161',
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -215,8 +360,8 @@ void main() {
         find.byKey(const Key('powertrain_experimental_identity_evidence')),
         findsOneWidget,
       );
-      expect(find.textContaining('版本 未知'), findsOneWidget);
-      expect(find.textContaining('未證實欄位：版本'), findsOneWidget);
+      expect(find.textContaining('市場 未知'), findsOneWidget);
+      expect(find.textContaining('未證實欄位：市場'), findsOneWidget);
       final disclosure = find.byKey(
         const Key('powertrain_experimental_data_disclosure'),
       );

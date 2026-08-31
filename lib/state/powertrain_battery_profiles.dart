@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../obd/pid/pid.dart';
 import '../obd/powertrain_battery/powertrain_battery_catalog.dart';
-import '../obd/powertrain_battery/powertrain_battery_profile.dart';
 import '../obd/powertrain_battery/profile_catalog_validator.dart';
 import '../obd/powertrain_battery/profile_wire_contract.dart';
+import 'pid_registry.dart';
 import 'powertrain_battery_experiments.dart';
 
 typedef PowertrainBatteryCatalogLoader =
@@ -47,19 +47,50 @@ class PowertrainProfileAuthorizations
   @override
   Map<String, PowertrainProfileAuthorization> build() => const {};
 
-  /// Validates a request but never grants periodic profile polling.
+  /// Validates a request and, when every installable gate passes, grants
+  /// polling for exactly this connection.
   ///
-  /// The bundled catalog has no installable profile. Status and caller-supplied
-  /// evidence therefore cannot create a production authorization, even if a
-  /// future or injected entry labels itself `ready` or `community`.
-  PowertrainBatteryProfileValidation authorize(
-    PowertrainBatteryProfile profile, {
+  /// The profile is named by id and resolved from the verified [snapshot] —
+  /// the same snapshot-bound authority the one-shot probe consents use — so
+  /// a caller-built profile object cannot smuggle its own wire contract into
+  /// a grant. The grant is in-memory only, bound to [connectionGeneration]
+  /// and the canonical profile's source revision, and cleared at every
+  /// vehicle boundary. A failed re-authorization also revokes any grant the
+  /// profile held: a profile the validator no longer accepts must not keep
+  /// polling on the strength of an earlier answer.
+  ///
+  /// Returns null when the profile is not in the verified catalog.
+  PowertrainBatteryProfileValidation? authorize({
+    required PowertrainBatteryCatalogSnapshot snapshot,
+    required String profileId,
     required int vehicleYear,
     required int connectionGeneration,
   }) {
+    if (!isPowertrainCatalogSha256(snapshot.catalogSha256)) {
+      revoke(profileId);
+      return null;
+    }
+    final profile = snapshot.catalog.profiles
+        .where((candidate) => candidate.id == profileId)
+        .firstOrNull;
+    if (profile == null) {
+      revoke(profileId);
+      return null;
+    }
     final validation = const PowertrainBatteryProfileCatalogValidator()
         .validateProfile(profile, vehicleYear: vehicleYear);
-    state = const {};
+    if (validation.canInstall) {
+      state = Map.unmodifiable({
+        ...state,
+        profile.id: PowertrainProfileAuthorization(
+          vehicleYear: vehicleYear,
+          sourceRevision: profile.source.revision,
+          connectionGeneration: connectionGeneration,
+        ),
+      });
+    } else {
+      revoke(profileId);
+    }
     return validation;
   }
 
@@ -74,7 +105,7 @@ class PowertrainProfileAuthorizations
     state = const {};
   }
 
-  bool isAuthorized(String profileId) => false;
+  bool isAuthorized(String profileId) => state.containsKey(profileId);
 }
 
 final powertrainProfileAuthorizationsProvider =
@@ -302,16 +333,81 @@ final powertrainExperimentalProbeConsentsProvider =
       Map<String, PowertrainExperimentalProbeConsent>
     >(PowertrainExperimentalProbeConsents.new);
 
-/// Removes every catalog-derived PID from the production polling set.
+/// Keeps a catalog-derived PID only under a live, matching authorization.
 ///
-/// The authorization map remains an input for API compatibility, but cannot
-/// reopen this boundary. Research browsing and consent-bound one-shot probes
-/// use a separate path and do not create [Pid] definitions.
+/// A profile PID passes when its owner holds an authorization for exactly
+/// this connection generation whose source revision matches the PID's own —
+/// so a grant from a previous connection, another vehicle, or a catalog that
+/// has since changed underneath the install authorizes nothing. Ordinary and
+/// user-authored PIDs pass untouched.
 List<Pid> filterAuthorizedPowertrainPids(
   Iterable<Pid> pids,
   Map<String, PowertrainProfileAuthorization> authorizations, {
   required int connectionGeneration,
 }) => List.unmodifiable([
   for (final pid in pids)
-    if (pid.ownerProfileId == null) pid,
+    if (pid.ownerProfileId == null)
+      pid
+    else if (isLivePowertrainAuthorization(
+      authorizations[pid.ownerProfileId],
+      connectionGeneration: connectionGeneration,
+      sourceRevision: pid.sourceRevision,
+    ))
+      pid,
 ]);
+
+/// The one definition of "this grant is live for that definition, now".
+///
+/// Shared by the polling filter and the dashboard confirmation banner so the
+/// two can never disagree: a grant the poller refuses (stale generation or a
+/// catalog revision that changed under the install) must make the banner ask
+/// again, not hide the row over dark gauges.
+bool isLivePowertrainAuthorization(
+  PowertrainProfileAuthorization? authorization, {
+  required int connectionGeneration,
+  required String? sourceRevision,
+}) =>
+    authorization != null &&
+    authorization.connectionGeneration == connectionGeneration &&
+    sourceRevision != null &&
+    authorization.sourceRevision == sourceRevision;
+
+/// The verified catalog snapshot, shared by every screen that needs it.
+///
+/// Loading through one provider keeps the integrity check in one place; a
+/// catalog that fails verification surfaces here as an error state rather
+/// than as partially loaded data somewhere. Riverpod's automatic retry is
+/// disabled: an integrity failure is deterministic — the bundled bytes will
+/// not change between attempts — and the catalog screen offers an explicit
+/// re-verify action instead.
+final powertrainBatteryCatalogSnapshotProvider =
+    FutureProvider<PowertrainBatteryCatalogSnapshot>(
+      retry: (retryCount, error) => null,
+      (ref) => ref.watch(powertrainBatteryCatalogLoaderProvider)(),
+    );
+
+/// Rebuilds installed profile PIDs from the verified bundled catalog.
+///
+/// Watched once at app start; until it completes, installed profiles simply
+/// have no runtime PIDs, which fails closed. A catalog that fails its
+/// integrity check restores nothing.
+final installedPowertrainProfilesRestoreProvider = FutureProvider<void>(
+  // A catalog-integrity failure is deterministic — the bundled bytes will
+  // not change between attempts — so retrying it is noise. A storage
+  // failure inside the restore itself is not: locking a whole session out
+  // of installation because one preferences write failed once would turn a
+  // transient hiccup into a restart-only recovery.
+  retry: (retryCount, error) {
+    if (error is PowertrainBatteryCatalogAssetException) return null;
+    if (retryCount >= 5) return null;
+    return Duration(milliseconds: 200 * (1 << retryCount));
+  },
+  (ref) async {
+    final snapshot = await ref.watch(
+      powertrainBatteryCatalogSnapshotProvider.future,
+    );
+    await ref
+        .read(pidRegistryProvider.notifier)
+        .restoreInstalledProfiles(snapshot.catalog);
+  },
+);

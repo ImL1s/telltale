@@ -239,8 +239,10 @@ final class PowertrainBatteryProfile {
     required this.source,
     required List<PowertrainBatteryCommand> commands,
     this.identityEvidence,
+    List<PowertrainBatterySource> secondarySources = const [],
   }) : limitations = List.unmodifiable(limitations),
-       commands = List.unmodifiable(commands);
+       commands = List.unmodifiable(commands),
+       secondarySources = List.unmodifiable(secondarySources);
 
   final String id;
   final String displayName;
@@ -258,6 +260,14 @@ final class PowertrainBatteryProfile {
   final PowertrainBatterySource source;
   final List<PowertrainBatteryCommand> commands;
   final PowertrainBatteryIdentityEvidence? identityEvidence;
+
+  /// Independent corroborating sources for the executable wire contract.
+  ///
+  /// A community profile's commands are accepted only when at least one
+  /// source that is independent of [source] agrees on the formula and byte
+  /// positions. Sources by the same author or derived from [source] do not
+  /// qualify and must not be listed here.
+  final List<PowertrainBatterySource> secondarySources;
 
   bool appliesToYear(int year) => year >= yearFrom && year <= yearTo;
 
@@ -289,11 +299,17 @@ final class PowertrainBatteryProfile {
       json['commands'],
       'profile.commands',
     ).map(PowertrainBatteryCommand.fromJson).toList(growable: false),
+    secondarySources: json['secondary_sources'] == null
+        ? const []
+        : _objectList(
+            json['secondary_sources'],
+            'profile.secondary_sources',
+          ).map(PowertrainBatterySource.fromJson).toList(growable: false),
   );
 }
 
 final class PowertrainBatteryCatalog {
-  static const int supportedSchemaVersion = 2;
+  static const int supportedSchemaVersion = 3;
 
   PowertrainBatteryCatalog({
     required this.schemaVersion,

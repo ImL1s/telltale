@@ -1,14 +1,14 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "catalog_file": "powertrain_battery_catalog.json",
-  "sha256": "b9ee3ec617774217a43ea0c51e36cea644fdfa10a48dec4ed19fa41c5bdb1474",
-  "size_bytes": 296763,
-  "profile_count": 205,
-  "signal_count": 20,
+  "sha256": "c03ab85d3a810834b053904cae975f26d95342ddf3f6f9d07e60c783b199ac40",
+  "size_bytes": 345013,
+  "profile_count": 210,
+  "signal_count": 88,
   "counts_by_powertrain": {
-    "BEV": 74,
+    "BEV": 78,
     "FCEV": 5,
-    "HEV": 47,
+    "HEV": 48,
     "MHEV": 7,
     "PHEV": 69,
     "REEV": 3

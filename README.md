@@ -55,12 +55,17 @@ export anything you need first because uninstalling removes local app data.
 - A built-in Demo ECU that needs no adapter or vehicle
 - Live PID dashboards, fault codes, freeze frames, readiness, custom PIDs, and
   user-triggered diagnostic transcript export
-- A searchable, integrity-checked schema-v2 powertrain-battery catalog with
-  205 source-backed PHEV, HEV, BEV, MHEV, REEV, and FCEV profiles: 203
-  metadata-only `researchOnly` entries and two opt-in `experimental` entries.
-  The two experimental profiles contain 15 fixed read-only commands and 20
-  bounded signals; no profile is installable. The powertrain split is BEV 74,
-  FCEV 5, HEV 47, MHEV 7, PHEV 69, and REEV 3
+- A searchable, integrity-checked schema-v3 powertrain-battery catalog with
+  210 source-backed PHEV, HEV, BEV, MHEV, REEV, and FCEV profiles: 203
+  metadata-only `researchOnly` entries, five installable cross-corroborated
+  `community` entries (MG ZS EV Mk1, Hyundai Ioniq 5, Kia EV6, Hyundai Kona
+  Electric, Kia Niro EV — read-only BMS gauges, confirmed by at least two
+  independent implementations, gated behind an install-time identity
+  acknowledgement and a fresh per-connection vehicle confirmation), and two
+  opt-in `experimental` entries (Lexus RX450hL, Toyota Prius TNGA) restricted
+  to the one-shot laboratory. The executable subset totals 88 bounded
+  read-only signals; the powertrain split is BEV 78, FCEV 5, HEV 48, MHEV 7,
+  PHEV 69, and REEV 3
 - An integrity-checked, fully offline U.S. EPA Find-a-Car snapshot with 50,242
   exact configurations across 146 make labels and model years 1984–2027. Only
   source fields whose meaning matches the physics profile are applied; the app

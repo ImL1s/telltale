@@ -289,6 +289,7 @@ class PollingEngine {
   void setActivePids(
     List<Pid> pids, {
     bool includeProfileDerivedInputs = true,
+    Set<String> authorizedProfilePidIds = const {},
   }) {
     // The definition set gets its own generation, separate from the polling
     // epoch. Clearing the formula cache when definitions change is right and
@@ -302,19 +303,36 @@ class PollingEngine {
     // reply caches 100 under a key whose only surviving definition says 10.
     // Plausible, and usable for five seconds.
     _definitions++;
-    // Catalog/profile PIDs are evidence records, not dashboard definitions.
-    // Even a legacy preference or a forged caller must not turn one into a
-    // periodic proprietary query. Experimental profile reads have their own
-    // one-shot probe path with per-command consent; the poller has no consent
-    // context and therefore rejects every profile-owned PID unconditionally.
+    // A catalog/profile PID polls only under the session's explicit,
+    // per-connection authorization, named PID by PID. A legacy preference or
+    // a forged caller that merely marks a definition profile-owned is still
+    // rejected: the poller trusts the id set its owner handed it for this
+    // exact definition change, never the definitions themselves.
+    // Experimental profile reads stay on their own one-shot probe path with
+    // per-command consent.
+    //
+    // The *object* is remembered, not just the id. A profile PID's id is
+    // built from ownerProfileId + sourceSignalId alone, so a forged queued
+    // definition could collide with an authorized id while carrying its own
+    // modeAndPid, header and formula — and an id-membership check would have
+    // waved its bytes onto the wire under the user's grant. The sink guard
+    // therefore requires the exact authorized instance.
     final rejectedProfiles = <String, Pid>{
       for (final pid in pids)
-        if (pid.ownerProfileId != null) pid.id: pid,
+        if (pid.ownerProfileId != null &&
+            !authorizedProfilePidIds.contains(pid.id))
+          pid.id: pid,
     };
     final merged = <String, Pid>{
       for (final pid in pids)
-        if (pid.ownerProfileId == null) pid.id: pid,
+        if (pid.ownerProfileId == null ||
+            authorizedProfilePidIds.contains(pid.id))
+          pid.id: pid,
     };
+    _authorizedProfileDefinitions = Map.unmodifiable({
+      for (final pid in merged.values)
+        if (pid.ownerProfileId != null) pid.id: pid,
+    });
 
     // Requests already queued were built from the definitions being replaced.
     // Stamping the generation stopped an *in-flight* reply from writing back,
@@ -3466,20 +3484,35 @@ class PollingEngine {
   /// Increments whenever the active definitions change.
   int _definitions = 0;
 
+  /// The exact authorized profile PID instances for the current definitions.
+  ///
+  /// Replaced wholesale on every [setActivePids]; the sink guard in
+  /// [_pollBatch] requires object identity, not id membership, so forged or
+  /// stale queued work cannot transmit a profile command the session never
+  /// authorized — including a forgery whose id collides with an authorized
+  /// definition while carrying different wire bytes.
+  Map<String, Pid> _authorizedProfileDefinitions = const {};
+
   Future<void> _pollBatch(List<QueuedRequest> batch, [int? epoch]) async {
     // Absolute sink guard for catalog/profile commands. Filtering the active
     // set is not sufficient because a caller can inject a scheduler carrying
-    // old or forged queued work. The polling engine never has the one-shot
-    // experiment's command-scoped consent, so one profile-owned member makes
-    // the entire batch non-transmittable. Returning before command assembly is
-    // intentional: a malformed mixed batch must not smuggle profile bytes into
-    // an otherwise ordinary request.
-    final profileOwned = batch.where(
-      (request) => request.pid.ownerProfileId != null,
+    // old or forged queued work. One unauthorized profile-owned member makes
+    // the entire batch non-transmittable. Returning before command assembly
+    // is intentional: a malformed mixed batch must not smuggle profile bytes
+    // into an otherwise ordinary request.
+    final unauthorizedProfile = batch.where(
+      (request) =>
+          request.pid.ownerProfileId != null &&
+          !identical(
+            request.pid,
+            _authorizedProfileDefinitions[request.pid.id],
+          ),
     );
-    if (profileOwned.isNotEmpty) {
-      for (final request in profileOwned) {
-        _invalidate(request.pid.id, PidFault.refusedUnsafeService);
+    if (unauthorizedProfile.isNotEmpty) {
+      for (final request in batch) {
+        if (request.pid.ownerProfileId != null) {
+          _invalidate(request.pid.id, PidFault.refusedUnsafeService);
+        }
       }
       _publish(epoch);
       return;

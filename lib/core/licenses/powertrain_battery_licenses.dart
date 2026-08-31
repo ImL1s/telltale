@@ -8,6 +8,8 @@ const powertrainBatteryLicenseAssets = <String>[
   'THIRD_PARTY_NOTICES_POWERTRAIN_BATTERY.md',
   'assets/licenses/Apache-2.0.txt',
   'assets/licenses/wican-bridge-MIT.txt',
+  'assets/licenses/ovms-MIT.txt',
+  'assets/licenses/GPL-3.0.txt',
 ];
 
 bool _registered = false;

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "profiles": [
     {
       "id": "aiways-u5-2020-2026",
@@ -702,22 +702,25 @@
     },
     {
       "id": "mg-zs-ev-au-2021",
-      "display_name": "MG ZS EV (Australian 2021 source vehicle)",
-      "description": "Curated read-only powertrain telemetry for MG ZS EV (Australian 2021 source vehicle).",
+      "display_name": "MG ZS EV (Mk1)",
+      "description": "Community-corroborated read-only BMS map for the Mk1 (pre-facelift) MG ZS EV. Every installed command and formula is confirmed by an independent implementation (OVMS vehicle_mgev) against the pinned primary CSV.",
       "limitations": [
-        "The pinned README reports testing on one Australian 2021 MG ZS EV; the source does not identify its trim or battery/ECU firmware.",
-        "The request header, Mode 22 identifiers, formulas and source ranges come directly from the pinned CSV. The expected 789 responder is an ISO 15765 physical-address inference, and exact payload lengths are formula-derived because the source publishes no raw frame capture.",
-        "Telltale permits only a user-triggered one-shot read after per-connection consent. It never scans identifiers, changes diagnostic session, unlocks security, writes, controls, retries automatically, installs these values, or mixes them into the dashboard.",
-        "Synthetic-rig or phone transport tests validate only the app path; Telltale has not physically validated this mapping on an MG vehicle."
+        "The primary source vehicle is one Australian 2021 MG ZS EV; the 2019-2021 Mk1 span and market invariance come from the independent OVMS vehicle_mgev implementation, which serves UK/EU and TH/AU Mk1 vehicles with this exact DID map.",
+        "Mk1 only: the facelifted 2022+ ZS EV moves its BMS to 7E5/7ED and is not covered by this profile. A 2022-registered pre-facelift Mk1 is outside the confirmed year range and cannot be selected.",
+        "Range DID B0CE was removed from the installable set: OVMS polls it but leaves its decode disabled, so no independent source confirms the scale.",
+        "Battery-Emulator decodes the MG5 (not ZS EV) temperature DIDs with a different offset; the installed half-degree formulas follow the two ZS-EV-specific sources. Treat temperature values with care until physically validated.",
+        "Telltale has not physically validated this mapping on an MG vehicle; expected responder 789 remains an ISO 15765 physical-address inference.",
+        "Temperature ranges are copied from the pinned source CSV, whose lower bounds are 0 degC; a physically legitimate sub-zero battery or coolant reading therefore fails closed as out-of-range instead of displaying.",
+        "Signal-level exclusions from the 2026-09 cross-source review: resistance DID B045 (its unit and magnitude are backed by the primary source alone, and 0-8190 ohm is not physical for a pack) and the B058/B059 cell-index bytes (no second source attests them). The cell min/max voltage readings themselves remain corroborated and shipped."
       ],
-      "status": "experimental",
+      "status": "community",
       "evidence": "sourceBacked",
       "market": "Australia",
       "make": "MG",
       "model": "ZS EV",
-      "year_from": 2021,
+      "year_from": 2019,
       "year_to": 2021,
-      "variant": "source-unspecified",
+      "variant": "Mk1 (2019-2021), BMS at 781/789",
       "powertrain": "BEV",
       "source": {
         "name": "peternixon/MG-EV-OBD-PID",
@@ -789,27 +792,6 @@
               "max_value": 200,
               "semantic_kind": "packCurrent",
               "recommended": true
-            }
-          ]
-        },
-        {
-          "request_header": "781",
-          "expected_responder": "789",
-          "mode": "22",
-          "identifier": "B045",
-          "payload_length": 2,
-          "signals": [
-            {
-              "id": "pack_resistance",
-              "name": "Battery resistance",
-              "offset": 0,
-              "width": 2,
-              "equation": "(A*256+B)/2",
-              "unit": "Ohm",
-              "min_value": 0,
-              "max_value": 8190.5,
-              "semantic_kind": "packResistance",
-              "recommended": false
             }
           ]
         },
@@ -915,18 +897,6 @@
               "max_value": 4.4,
               "semantic_kind": "cellVoltage",
               "recommended": true
-            },
-            {
-              "id": "max_cell_number",
-              "name": "Maximum-voltage cell number",
-              "offset": 2,
-              "width": 1,
-              "equation": "A",
-              "unit": "",
-              "min_value": 0,
-              "max_value": 255,
-              "semantic_kind": "cellIndex",
-              "recommended": false
             }
           ]
         },
@@ -948,39 +918,6 @@
               "max_value": 4.4,
               "semantic_kind": "cellVoltage",
               "recommended": true
-            },
-            {
-              "id": "min_cell_number",
-              "name": "Minimum-voltage cell number",
-              "offset": 2,
-              "width": 1,
-              "equation": "A",
-              "unit": "",
-              "min_value": 0,
-              "max_value": 255,
-              "semantic_kind": "cellIndex",
-              "recommended": false
-            }
-          ]
-        },
-        {
-          "request_header": "781",
-          "expected_responder": "789",
-          "mode": "22",
-          "identifier": "B0CE",
-          "payload_length": 2,
-          "signals": [
-            {
-              "id": "estimated_range",
-              "name": "Estimated remaining range",
-              "offset": 0,
-              "width": 2,
-              "equation": "(A*256+B)/10",
-              "unit": "km",
-              "min_value": 0,
-              "max_value": 300,
-              "semantic_kind": "estimatedRange",
-              "recommended": false
             }
           ]
         }
@@ -989,8 +926,28 @@
         "market": "exact",
         "year": "exact",
         "model": "exact",
-        "variant": "unknown"
-      }
+        "variant": "sourcePartial"
+      },
+      "secondary_sources": [
+        {
+          "name": "openvehicles/Open-Vehicle-Monitoring-System-3 (vehicle_mgev)",
+          "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "license": "MIT",
+          "path": "vehicle/OVMS.V3/components/vehicle_mgev/src/mg_poll_bms.cpp",
+          "locator": "BMS decode formulas for DIDs B041/B042/B043/B045/B046/B056/B05C/B058/B059/B061; Mk1 poll tables pin 781/789 in vehicle_mgev_a.cpp and vehicle_mgev_b.cpp",
+          "artifact_sha256": "c6cd2b34f0e18b028bb9f891db35dcdb368dddf06e7339c0afe28bf8a68b49e0"
+        },
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/mg/mg5-marvel-zs.json",
+          "locator": "DID scales for 22B042 (x0.25), 22B046 (SoC), 22B061 (SoH /100) on the newer-platform addressing",
+          "artifact_sha256": "c5d22a1e5a1c4e7f97983ae1ecf050c1fd5707d5f59bbeca152680ea3d145e47"
+        }
+      ]
     },
     {
       "id": "mini-cooper-se-2020-2024",
@@ -1054,7 +1011,8 @@
       "description": "Searchable BEV research entry for Nissan Leaf ZE0.",
       "limitations": [
         "OBDb coverage is retained as attribution/search metadata; arbitrary bit-packed or protocol-specific commands are not imported.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Cross-source review (2026-09) confirmed a corroborated LBC read contract (79B/7BB Mode 21) exists, but every licensed source drives it with custom ELM327 flow control (ATFCSM1) and raw app-side ISO-TP reassembly, which Telltale does not implement; the commands are therefore not shipped rather than shipped broken."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -1082,7 +1040,8 @@
       "limitations": [
         "OBDb coverage is retained as attribution/search metadata; arbitrary bit-packed or protocol-specific commands are not imported.",
         "The source does not establish a final production year; 2026 is this catalog snapshot ceiling, not a documented production end.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Cross-source review (2026-09) confirmed a corroborated LBC read contract (79B/7BB Mode 21) exists, but every licensed source drives it with custom ELM327 flow control (ATFCSM1) and raw app-side ISO-TP reassembly, which Telltale does not implement; the commands are therefore not shipped rather than shipped broken."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -3343,7 +3302,8 @@
       "description": "Searchable PHEV research entry for Mitsubishi Outlander PHEV first generation.",
       "limitations": [
         "The cited source does not establish a Telltale-safe command/responder mapping for this exact entry.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Cross-source review (2026-09) found OVMS and WiCAN agree on the BMU SoC decode (761/762 Mode 21), but both drive it with custom ELM327 flow control (ATFCSM1) that Telltale does not implement, and pack voltage/current/temperature lack licensed corroboration; nothing is shipped rather than shipped broken."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -3371,7 +3331,8 @@
       "limitations": [
         "The cited source does not establish a Telltale-safe command/responder mapping for this exact entry.",
         "The source does not establish a final production year; 2026 is this catalog snapshot ceiling, not a documented production end.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Cross-source review (2026-09) found OVMS and WiCAN agree on the BMU SoC decode (761/762 Mode 21), but both drive it with custom ELM327 flow control (ATFCSM1) that Telltale does not implement, and pack voltage/current/temperature lack licensed corroboration; nothing is shipped rather than shipped broken."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -5978,7 +5939,8 @@
         "The pinned profile directly declares 7E2 to 7EA, Mode 21 PIDs 61/62/63/95, formulas and ranges. Public artifacts support the byte slices, while the full exact payload length is a conservative Telltale contract rather than independently published raw-frame proof.",
         "RX450h, RX450hL model years 2021-2022, and the unresolved PID 98 pack-voltage decoding are explicitly excluded from this experimental probe.",
         "Telltale permits only a user-triggered one-shot read after per-connection consent. It never scans identifiers, changes diagnostic session, unlocks security, writes, controls, retries automatically, installs these values, or mixes them into the dashboard.",
-        "Telltale has not physically validated this mapping on a Lexus vehicle."
+        "Telltale has not physically validated this mapping on a Lexus vehicle.",
+        "Cross-source review (2026-09) found no independent confirmation of the claimed signal byte windows: the Ircama ELM327-emulator Toyota hybrid scenario documents 2161/2162 as MG temperatures at payload byte 0 and 2195 as internal resistance, and no consulted source attests the torque/voltage windows this profile decodes. The profile therefore stays experimental."
       ],
       "status": "experimental",
       "evidence": "sourceBacked",
@@ -6126,6 +6088,1246 @@
         "model": "exact",
         "variant": "exact"
       }
+    },
+    {
+      "id": "hyundai-ioniq5-egmp-2021-2024-community",
+      "display_name": "Hyundai Ioniq 5 (E-GMP)",
+      "description": "Community-corroborated read-only E-GMP BMS map, confirmed across OVMS, WiCAN and OBDb and against pinned real response captures.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (OVMS, WiCAN, OBDb) and decodes pinned real-vehicle response captures to physically plausible values. Telltale has not physically validated it on this vehicle.",
+        "Exact-length contract: the profile accepts only a 59-byte 220101 and 43-byte 220105 payload from responder 7EC. A firmware answering with a different shape fails closed - a dark gauge, never a guessed number.",
+        "Responses are multi-frame ISO 15765-2; an adapter or clone that mishandles flow control will time out rather than corrupt values.",
+        "Pack current is signed: positive while discharging, negative while charging or regenerating.",
+        "Bit-packed status flags (charging, relay, ignition) and cumulative operating time are not imported; the formula engine installs numeric gauges only.",
+        "Pack voltage bounds are derived from cell-count physics (2.8 V x 144s to 4.2 V x 192s) so both the 58 kWh and 77.4 kWh packs stay in range; an out-of-range reading is refused, not shown.",
+        "Battery inlet temperature is excluded on E-GMP: OVMS and OBDb disagree on its decode (signed vs offset-40), and a disagreement means exclusion."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Hyundai",
+      "model": "Ioniq 5",
+      "year_from": 2021,
+      "year_to": 2024,
+      "variant": "E-GMP 58/72.6/77.4 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+        "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "license": "MIT",
+        "path": "vehicle/OVMS.V3/components/vehicle_hyundai_ioniq5/src/hif_can_poll.cpp",
+        "locator": "E-GMP BMS poll table and decode for 220101/220105 on 7E4/7EC",
+        "artifact_sha256": "e5ffbdadd1725cbc672249fd6c2ca4d475e8d68661abdcb0a4551d95289d89b2"
+      },
+      "secondary_sources": [
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/hyundai/ioniq5-6.json",
+          "locator": "vehicle profile PID windows and scales",
+          "artifact_sha256": "7ca3dadb99590a9377c688d73b6291440d1eea942b18b3dcc3a9ab538775c507"
+        },
+        {
+          "name": "OBDb/Hyundai-IONIQ-5",
+          "url": "https://github.com/OBDb/Hyundai-IONIQ-5/tree/abfb2d2e1264706c857785b0daca40f240a4bfd3",
+          "revision": "abfb2d2e1264706c857785b0daca40f240a4bfd3",
+          "license": "CC-BY-SA-4.0",
+          "path": "signalsets/v3/default.json",
+          "locator": "signalset byte positions and scales for 220101/220105",
+          "artifact_sha256": "cadc9b7abc1340b701e3b7684e3c63b47c3dd02c47646caaf226d8e89fc9f6a8"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0101",
+          "payload_length": 59,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge",
+              "offset": 4,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 10,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -230,
+              "max_value": 230,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            },
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 12,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "V",
+              "min_value": 403.2,
+              "max_value": 806.4,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_max",
+              "name": "Battery max module temperature",
+              "offset": 14,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_min",
+              "name": "Battery min module temperature",
+              "offset": 15,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max",
+              "name": "Max cell voltage",
+              "offset": 23,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMax",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max_no",
+              "name": "Max voltage cell number",
+              "offset": 24,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min",
+              "name": "Min cell voltage",
+              "offset": 25,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMin",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min_no",
+              "name": "Min voltage cell number",
+              "offset": 26,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "aux_batt_voltage",
+              "name": "12V auxiliary battery voltage",
+              "offset": 29,
+              "width": 1,
+              "equation": "A/10",
+              "unit": "V",
+              "min_value": 9,
+              "max_value": 16,
+              "semantic_kind": "auxBatteryVoltage",
+              "recommended": false
+            },
+            {
+              "id": "cum_charge_ah",
+              "name": "Cumulative charge",
+              "offset": 30,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeCharge",
+              "recommended": false
+            },
+            {
+              "id": "cum_discharge_ah",
+              "name": "Cumulative discharge",
+              "offset": 34,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeDischarge",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_charged",
+              "name": "Cumulative energy charged",
+              "offset": 38,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeChargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_discharged",
+              "name": "Cumulative energy discharged",
+              "offset": 42,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeDischargeEnergy",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0105",
+          "payload_length": 43,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "Battery state of health",
+              "offset": 25,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            },
+            {
+              "id": "soc_display",
+              "name": "Displayed state of charge",
+              "offset": 31,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kia-ev6-egmp-2022-2024-community",
+      "display_name": "Kia EV6 (E-GMP)",
+      "description": "Community-corroborated read-only E-GMP BMS map, confirmed across OBDb, WiCAN and OVMS and against pinned real response captures.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (OVMS, WiCAN, OBDb) and decodes pinned real-vehicle response captures to physically plausible values. Telltale has not physically validated it on this vehicle.",
+        "Exact-length contract: the profile accepts only a 59-byte 220101 and 43-byte 220105 payload from responder 7EC. A firmware answering with a different shape fails closed - a dark gauge, never a guessed number.",
+        "Responses are multi-frame ISO 15765-2; an adapter or clone that mishandles flow control will time out rather than corrupt values.",
+        "Pack current is signed: positive while discharging, negative while charging or regenerating.",
+        "Bit-packed status flags (charging, relay, ignition) and cumulative operating time are not imported; the formula engine installs numeric gauges only.",
+        "Pack voltage bounds are derived from cell-count physics (2.8 V x 144s to 4.2 V x 192s) so both the 58 kWh and 77.4 kWh packs stay in range; an out-of-range reading is refused, not shown.",
+        "Battery inlet temperature is excluded on E-GMP: OVMS and OBDb disagree on its decode (signed vs offset-40), and a disagreement means exclusion."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Kia",
+      "model": "EV6",
+      "year_from": 2022,
+      "year_to": 2024,
+      "variant": "E-GMP 58/77.4 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "OBDb/Kia-EV6",
+        "url": "https://github.com/OBDb/Kia-EV6/tree/78819b208a425633dc67bb1de23a7f937f9038f2",
+        "revision": "78819b208a425633dc67bb1de23a7f937f9038f2",
+        "license": "CC-BY-SA-4.0",
+        "path": "signalsets/v3/default.json",
+        "locator": "signalset byte positions and scales for 220101/220105",
+        "artifact_sha256": "95dd64bc58a8fbafcc5960ee434f4a091c208fc2586b8202bba3a420cf24970a"
+      },
+      "secondary_sources": [
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/kia/ev6.json",
+          "locator": "vehicle profile PID windows and scales",
+          "artifact_sha256": "d18d4ba36580d808f0eda8bfbf88b1f78eb18664093808d3a53ff1ca9548e21a"
+        },
+        {
+          "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+          "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "license": "MIT",
+          "path": "vehicle/OVMS.V3/components/vehicle_hyundai_ioniq5/src/hif_can_poll.cpp",
+          "locator": "E-GMP BMS poll table and decode for 220101/220105 on 7E4/7EC",
+          "artifact_sha256": "e5ffbdadd1725cbc672249fd6c2ca4d475e8d68661abdcb0a4551d95289d89b2"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0101",
+          "payload_length": 59,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge",
+              "offset": 4,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 10,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -230,
+              "max_value": 230,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            },
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 12,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "V",
+              "min_value": 403.2,
+              "max_value": 806.4,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_max",
+              "name": "Battery max module temperature",
+              "offset": 14,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_min",
+              "name": "Battery min module temperature",
+              "offset": 15,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max",
+              "name": "Max cell voltage",
+              "offset": 23,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMax",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max_no",
+              "name": "Max voltage cell number",
+              "offset": 24,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min",
+              "name": "Min cell voltage",
+              "offset": 25,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMin",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min_no",
+              "name": "Min voltage cell number",
+              "offset": 26,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "aux_batt_voltage",
+              "name": "12V auxiliary battery voltage",
+              "offset": 29,
+              "width": 1,
+              "equation": "A/10",
+              "unit": "V",
+              "min_value": 9,
+              "max_value": 16,
+              "semantic_kind": "auxBatteryVoltage",
+              "recommended": false
+            },
+            {
+              "id": "cum_charge_ah",
+              "name": "Cumulative charge",
+              "offset": 30,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeCharge",
+              "recommended": false
+            },
+            {
+              "id": "cum_discharge_ah",
+              "name": "Cumulative discharge",
+              "offset": 34,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeDischarge",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_charged",
+              "name": "Cumulative energy charged",
+              "offset": 38,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeChargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_discharged",
+              "name": "Cumulative energy discharged",
+              "offset": 42,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeDischargeEnergy",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0105",
+          "payload_length": 43,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "Battery state of health",
+              "offset": 25,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            },
+            {
+              "id": "soc_display",
+              "name": "Displayed state of charge",
+              "offset": 31,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hyundai-kona-electric-os-2019-2023-community",
+      "display_name": "Hyundai Kona Electric (OS)",
+      "description": "Community-corroborated read-only BMS map for the OS Kona Electric, confirmed across OVMS, OBDb and WiCAN.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (OVMS, WiCAN, OBDb) and decodes pinned real-vehicle response captures to physically plausible values. Telltale has not physically validated it on this vehicle.",
+        "Exact-length contract: the profile accepts only a 59-byte 220101 and 43-byte 220105 payload from responder 7EC. A firmware answering with a different shape fails closed - a dark gauge, never a guessed number.",
+        "Responses are multi-frame ISO 15765-2; an adapter or clone that mishandles flow control will time out rather than corrupt values.",
+        "Pack current is signed: positive while discharging, negative while charging or regenerating.",
+        "Bit-packed status flags (charging, relay, ignition) and cumulative operating time are not imported; the formula engine installs numeric gauges only.",
+        "WiCAN decodes pack current with an inverted sign for this family; the installed sign convention follows OVMS and OBDb positions with OVMS signedness."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Hyundai",
+      "model": "Kona Electric",
+      "year_from": 2019,
+      "year_to": 2023,
+      "variant": "OS 39.2/64 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+        "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "license": "MIT",
+        "path": "vehicle/OVMS.V3/components/vehicle_kianiroev/src/kn_can_poll.cpp",
+        "locator": "Kona/e-Niro BMS poll table and decode for 220101/220105 on 7E4/7EC",
+        "artifact_sha256": "537242c15478e1fbd4b11d50877e28677229e7564c611a59bcf14cb64666cffb"
+      },
+      "secondary_sources": [
+        {
+          "name": "OBDb/Hyundai-Kona-Electric",
+          "url": "https://github.com/OBDb/Hyundai-Kona-Electric/tree/73dfeb0c86b20f7a755cc3aae0620e1d311f28a5",
+          "revision": "73dfeb0c86b20f7a755cc3aae0620e1d311f28a5",
+          "license": "CC-BY-SA-4.0",
+          "path": "signalsets/v3/default.json",
+          "locator": "signalset byte positions and scales for 220101/220105",
+          "artifact_sha256": "e151b7a9e1a814922203d991748aad60330d7036f186ac9ca7ce82f0b68e49eb"
+        },
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/hyundai/kona.json",
+          "locator": "vehicle profile PID windows and scales",
+          "artifact_sha256": "56d4409cdb369245b61288c986ced25487bb80465d5a0f4f0afcb00d6382f418"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0101",
+          "payload_length": 59,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge",
+              "offset": 4,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 10,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -230,
+              "max_value": 230,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            },
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 12,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "V",
+              "min_value": 240,
+              "max_value": 420,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_max",
+              "name": "Battery max module temperature",
+              "offset": 14,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_min",
+              "name": "Battery min module temperature",
+              "offset": 15,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max",
+              "name": "Max cell voltage",
+              "offset": 23,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMax",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max_no",
+              "name": "Max voltage cell number",
+              "offset": 24,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min",
+              "name": "Min cell voltage",
+              "offset": 25,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMin",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min_no",
+              "name": "Min voltage cell number",
+              "offset": 26,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "aux_batt_voltage",
+              "name": "12V auxiliary battery voltage",
+              "offset": 29,
+              "width": 1,
+              "equation": "A/10",
+              "unit": "V",
+              "min_value": 9,
+              "max_value": 16,
+              "semantic_kind": "auxBatteryVoltage",
+              "recommended": false
+            },
+            {
+              "id": "cum_charge_ah",
+              "name": "Cumulative charge",
+              "offset": 30,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeCharge",
+              "recommended": false
+            },
+            {
+              "id": "cum_discharge_ah",
+              "name": "Cumulative discharge",
+              "offset": 34,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeDischarge",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_charged",
+              "name": "Cumulative energy charged",
+              "offset": 38,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeChargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_discharged",
+              "name": "Cumulative energy discharged",
+              "offset": 42,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeDischargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "battery_inlet_temp",
+              "name": "Battery coolant inlet temperature",
+              "offset": 22,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "coolantTemperature",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0105",
+          "payload_length": 43,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "Battery state of health",
+              "offset": 25,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            },
+            {
+              "id": "soc_display",
+              "name": "Displayed state of charge",
+              "offset": 31,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            },
+            {
+              "id": "cell_deterioration_min",
+              "name": "Min cell deterioration",
+              "offset": 28,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kia-niro-ev-de-2019-2022-community",
+      "display_name": "Kia Niro EV / e-Niro (DE)",
+      "description": "Community-corroborated read-only BMS map for the DE Niro EV / e-Niro, sharing the Kona OS BMS layout, confirmed across OVMS, OBDb and WiCAN.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (OVMS, WiCAN, OBDb) and decodes pinned real-vehicle response captures to physically plausible values. Telltale has not physically validated it on this vehicle.",
+        "Exact-length contract: the profile accepts only a 59-byte 220101 and 43-byte 220105 payload from responder 7EC. A firmware answering with a different shape fails closed - a dark gauge, never a guessed number.",
+        "Responses are multi-frame ISO 15765-2; an adapter or clone that mishandles flow control will time out rather than corrupt values.",
+        "Pack current is signed: positive while discharging, negative while charging or regenerating.",
+        "Bit-packed status flags (charging, relay, ignition) and cumulative operating time are not imported; the formula engine installs numeric gauges only.",
+        "WiCAN decodes pack current with an inverted sign for this family; the installed sign convention follows OVMS and OBDb positions with OVMS signedness.",
+        "No Niro-specific raw capture existed at the pinned revisions; the exact payload lengths inherit from the byte-identical Kona OS layout."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Kia",
+      "model": "Niro EV",
+      "year_from": 2019,
+      "year_to": 2022,
+      "variant": "DE 39.2/64 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+        "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "license": "MIT",
+        "path": "vehicle/OVMS.V3/components/vehicle_kianiroev/src/kn_can_poll.cpp",
+        "locator": "Kona/e-Niro BMS poll table and decode for 220101/220105 on 7E4/7EC",
+        "artifact_sha256": "537242c15478e1fbd4b11d50877e28677229e7564c611a59bcf14cb64666cffb"
+      },
+      "secondary_sources": [
+        {
+          "name": "OBDb/Kia-Niro-EV",
+          "url": "https://github.com/OBDb/Kia-Niro-EV/tree/1500ec578559e0e69161a942bb1491dd54e268d0",
+          "revision": "1500ec578559e0e69161a942bb1491dd54e268d0",
+          "license": "CC-BY-SA-4.0",
+          "path": "signalsets/v3/default.json",
+          "locator": "signalset byte positions and scales for 220101/220105",
+          "artifact_sha256": "943ed89f4c8325fa599a243020da3b26975b6279461b9a534d927abd60782d44"
+        },
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/kia/niro-ev.json",
+          "locator": "vehicle profile PID windows and scales",
+          "artifact_sha256": "d334ad6cd7cbad2866d07dd43d4645f3994e88ca87b7b989b883ebacf049ddc0"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0101",
+          "payload_length": 59,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge",
+              "offset": 4,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 10,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -230,
+              "max_value": 230,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            },
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 12,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "V",
+              "min_value": 240,
+              "max_value": 420,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_max",
+              "name": "Battery max module temperature",
+              "offset": 14,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_min",
+              "name": "Battery min module temperature",
+              "offset": 15,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max",
+              "name": "Max cell voltage",
+              "offset": 23,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMax",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max_no",
+              "name": "Max voltage cell number",
+              "offset": 24,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min",
+              "name": "Min cell voltage",
+              "offset": 25,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMin",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min_no",
+              "name": "Min voltage cell number",
+              "offset": 26,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "aux_batt_voltage",
+              "name": "12V auxiliary battery voltage",
+              "offset": 29,
+              "width": 1,
+              "equation": "A/10",
+              "unit": "V",
+              "min_value": 9,
+              "max_value": 16,
+              "semantic_kind": "auxBatteryVoltage",
+              "recommended": false
+            },
+            {
+              "id": "cum_charge_ah",
+              "name": "Cumulative charge",
+              "offset": 30,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeCharge",
+              "recommended": false
+            },
+            {
+              "id": "cum_discharge_ah",
+              "name": "Cumulative discharge",
+              "offset": 34,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeDischarge",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_charged",
+              "name": "Cumulative energy charged",
+              "offset": 38,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeChargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_discharged",
+              "name": "Cumulative energy discharged",
+              "offset": 42,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeDischargeEnergy",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0105",
+          "payload_length": 43,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "Battery state of health",
+              "offset": 25,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            },
+            {
+              "id": "soc_display",
+              "name": "Displayed state of charge",
+              "offset": 31,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            },
+            {
+              "id": "cell_deterioration_min",
+              "name": "Min cell deterioration",
+              "offset": 28,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "toyota-prius-tnga-2016-2026",
+      "display_name": "Toyota Prius (TNGA)",
+      "description": "Capture-verified read-only hybrid-battery candidates for the TNGA Prius: SoC, pack voltage/current and block SoC from the hybrid control ECU at 7D2/7DA.",
+      "limitations": [
+        "Single-organization evidence: every licensed source is the OBDb org (Toyota-Prius signalset plus real-car captures on MY2022/2024/2025; Corolla Hybrid captures confirm 1F5B across TNGA models). No independent second source exists yet, so this entry stays experimental.",
+        "The classic 7E2 Mode 21 Prius tables circulating in forums exist only in unlicensed sources and are not shipped.",
+        "No battery temperature, capacity, or SoH DID appears in any licensed Toyota source; nothing is guessed to fill the gap.",
+        "The battery ECU 747 per-cell block is excluded: aggregating 56-96 cell voltages is beyond the installed formula engine.",
+        "Gen3 (2010-2015) responds to these DIDs on a real car per an OBDb support scan, but no value captures exist for it; formulas are unverified there."
+      ],
+      "status": "experimental",
+      "evidence": "sourceBacked",
+      "market": "source-unspecified",
+      "make": "Toyota",
+      "model": "Prius",
+      "year_from": 2016,
+      "year_to": 2026,
+      "variant": "TNGA (XW50 Gen4 / XW60 Gen5)",
+      "powertrain": "HEV",
+      "identity_evidence": {
+        "market": "unknown",
+        "year": "sourcePartial",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "OBDb/Toyota-Prius",
+        "url": "https://github.com/OBDb/Toyota-Prius/tree/0a8c4ec72be860861548a3aeb2be007eecd83941",
+        "revision": "0a8c4ec72be860861548a3aeb2be007eecd83941",
+        "license": "CC-BY-SA-4.0",
+        "path": "signalsets/v3/default.json",
+        "locator": "hybrid battery signals for 7D2 221F5B/221F9A/22106C, with tests/test_cases/2022 real-car captures",
+        "artifact_sha256": "e037a50ab2f256e5f2668aefc63c1ddb30b7686c372be199b3421972b933bd4b"
+      },
+      "commands": [
+        {
+          "request_header": "7D2",
+          "expected_responder": "7DA",
+          "mode": "22",
+          "identifier": "1F5B",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "hybrid_soc",
+              "name": "Hybrid battery state of charge",
+              "offset": 0,
+              "width": 1,
+              "equation": "A*100/255",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7D2",
+          "expected_responder": "7DA",
+          "mode": "22",
+          "identifier": "1F9A",
+          "payload_length": 6,
+          "signals": [
+            {
+              "id": "hv_pack_voltage",
+              "name": "HV battery pack voltage",
+              "offset": 2,
+              "width": 2,
+              "equation": "(A*256+B)/64",
+              "unit": "V",
+              "min_value": 100,
+              "max_value": 700,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "hv_pack_current",
+              "name": "HV battery pack current",
+              "offset": 4,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -300,
+              "max_value": 300,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7D2",
+          "expected_responder": "7DA",
+          "mode": "22",
+          "identifier": "106C",
+          "payload_length": 3,
+          "signals": [
+            {
+              "id": "block_soc_max",
+              "name": "Max battery block SoC",
+              "offset": 1,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "block_soc_min",
+              "name": "Min battery block SoC",
+              "offset": 2,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -16,12 +16,12 @@ void main() {
 
       expect(profiles.length, greaterThanOrEqualTo(60));
       expect(snapshot.profileCount, profiles.length);
-      expect(snapshot.profileCount, 205);
-      expect(snapshot.signalCount, 20);
+      expect(snapshot.profileCount, 210);
+      expect(snapshot.signalCount, 88);
       expect(snapshot.countsByPowertrain, {
-        'BEV': 74,
+        'BEV': 78,
         'FCEV': 5,
-        'HEV': 47,
+        'HEV': 48,
         'MHEV': 7,
         'PHEV': 69,
         'REEV': 3,
@@ -71,13 +71,13 @@ void main() {
                 ),
               )
               .toSet(),
-          hasLength(46),
+          hasLength(50),
         );
         expect(
           snapshot.catalog.profiles
               .map((profile) => (profile.source.name, profile.source.revision))
               .toSet(),
-          hasLength(27),
+          hasLength(28),
         );
         expect(
           snapshot.catalog.profiles
@@ -95,7 +95,7 @@ void main() {
                     profile.status == PowertrainProfileStatus.community,
               )
               .length,
-          0,
+          5,
         );
         expect(
           snapshot.catalog.profiles
@@ -134,7 +134,7 @@ void main() {
     );
 
     test(
-      'bundled entries remain non-installable until identity proof',
+      'only the cross-corroborated community entries are installable',
       () async {
         final snapshot = await PowertrainBatteryCatalogAsset.load(rootBundle);
         const validator = PowertrainBatteryProfileCatalogValidator();
@@ -142,7 +142,16 @@ void main() {
           (profile) => validator.validateProfile(profile).canInstall,
         );
 
-        expect(installable, isEmpty);
+        expect(
+          installable.map((profile) => profile.id).toSet(),
+          {
+            'mg-zs-ev-au-2021',
+            'hyundai-ioniq5-egmp-2021-2024-community',
+            'kia-ev6-egmp-2022-2024-community',
+            'hyundai-kona-electric-os-2019-2023-community',
+            'kia-niro-ev-de-2019-2022-community',
+          },
+        );
         final metadataOnlyMappings = snapshot.catalog.profiles.where(
           (profile) => {
             'chevrolet-bolt-ev-2017',
@@ -158,18 +167,30 @@ void main() {
           expect(profile.commands, isEmpty, reason: profile.id);
         }
 
-        final experimentalMappings = snapshot.catalog.profiles.where(
+        final executableMappings = snapshot.catalog.profiles.where(
           (profile) => {
             'mg-zs-ev-au-2021',
             'lexus-rx450hl-2020-source-vehicle',
           }.contains(profile.id),
         );
-        expect(experimentalMappings, hasLength(2));
-        for (final profile in experimentalMappings) {
+        expect(executableMappings, hasLength(2));
+        for (final profile in executableMappings) {
           final validation = validator.validateProfile(profile);
-          expect(profile.status, PowertrainProfileStatus.experimental);
-          expect(validation.canInstall, isFalse);
-          expect(validation.canProbe, isTrue);
+          if (profile.id == 'mg-zs-ev-au-2021') {
+            // Community: installable because two independent sources agree
+            // on every shipped formula, and still probe-eligible for a
+            // consented try-before-install read.
+            expect(profile.status, PowertrainProfileStatus.community);
+            expect(validation.canInstall, isTrue);
+            expect(validation.canProbe, isTrue);
+            expect(profile.secondarySources, isNotEmpty);
+          } else {
+            // The Lexus mapping's byte windows found no independent
+            // confirmation, so it stays experimental and probe-only.
+            expect(profile.status, PowertrainProfileStatus.experimental);
+            expect(validation.canInstall, isFalse);
+            expect(validation.canProbe, isTrue);
+          }
           expect(profile.source.artifactSha256, hasLength(64));
           expect(profile.identityEvidence, isNotNull);
           expect(profile.commands, isNotEmpty, reason: profile.id);
@@ -221,8 +242,10 @@ void main() {
         for (final command in mg.commands)
           for (final signal in command.signals) signal.id: signal,
       };
-      expect(mgSignals['max_cell_number']?.equation, 'A');
-      expect(mgSignals['min_cell_number']?.equation, 'A');
+      // The cell-index bytes were excluded by the cross-source review; only
+      // the corroborated voltage windows ship.
+      expect(mgSignals.containsKey('max_cell_number'), isFalse);
+      expect(mgSignals['max_cell_voltage']?.equation, '(A*256+B)/1000');
     });
 
     test(
@@ -257,7 +280,7 @@ void main() {
         expect(byId['toyota-mirai-fcev-2016-2026']?.powertrain, 'FCEV');
         expect(
           byId['mg-zs-ev-au-2021']?.status,
-          PowertrainProfileStatus.experimental,
+          PowertrainProfileStatus.community,
         );
         expect(
           byId['lexus-rx450hl-2020-2022']?.status,

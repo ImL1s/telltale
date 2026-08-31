@@ -376,12 +376,25 @@ void main() {
         PowertrainBatteryCatalogAsset.manifestAsset,
       );
       final rehashedCatalog = '$catalogJson\n';
+      // The appended newline changes the byte size by one; the digest below
+      // is sha256(catalog bytes + '\n') and must be recomputed whenever the
+      // bundled catalog changes:
+      //   python3 -c "import hashlib,pathlib;print(hashlib.sha256(
+      //     pathlib.Path('assets/powertrain_battery/'
+      //     'powertrain_battery_catalog.json').read_bytes()+b'\n')
+      //     .hexdigest())"
+      final storedSize = RegExp(
+        r'"size_bytes": (\d+)',
+      ).firstMatch(manifestJson)!.group(1)!;
       final rehashedManifest = manifestJson
           .replaceFirst(
             snapshot.catalogSha256,
-            '3d79e55b828dfdedf4ca0565a68b0c665e32333145d8029704a02a3ea18939d7',
+            '6a17544ce63bc659eeba75c8aadf727a1a8ba10e70d624e0dd6304259546a5cd',
           )
-          .replaceFirst('"size_bytes": 296763', '"size_bytes": 296764');
+          .replaceFirst(
+            '"size_bytes": $storedSize',
+            '"size_bytes": ${int.parse(storedSize) + 1}',
+          );
       final otherSnapshot = PowertrainBatteryCatalogAsset.fromStrings(
         manifestJson: rehashedManifest,
         catalogJson: rehashedCatalog,

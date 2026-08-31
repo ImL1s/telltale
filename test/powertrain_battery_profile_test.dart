@@ -2,11 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:torque_obd/obd/pid/pid.dart';
 import 'package:torque_obd/obd/powertrain_battery/powertrain_battery_profile.dart';
 import 'package:torque_obd/obd/powertrain_battery/profile_catalog_validator.dart';
 
 Map<String, Object?> _source({
   String revision = '2f485fcbffa2259d9e1db92d14483c1bef55dcca',
+  bool pinnedArtifact = true,
 }) => {
   'name': 'MG-EV-OBD-PID',
   'url':
@@ -16,7 +18,20 @@ Map<String, Object?> _source({
   'license': 'Apache-2.0',
   'path': 'MG ZS EV/MG ZS EV.csv',
   'locator': 'row: BMS DC Bus Voltage',
+  if (pinnedArtifact) 'artifact_sha256': 'b' * 64,
 };
+
+List<Map<String, Object?>> _secondarySources() => [
+  {
+    'name': 'independent poller',
+    'url': 'https://example.invalid/other-repo',
+    'revision': 'c' * 40,
+    'license': 'MIT',
+    'path': 'src/poller.cpp',
+    'locator': 'poll table rows for the shipped DIDs',
+    'artifact_sha256': 'd' * 64,
+  },
+];
 
 Map<String, Object?> _command({
   String requestHeader = '781',
@@ -52,7 +67,9 @@ Map<String, Object?> _profile({
   String status = 'ready',
   List<Map<String, Object?>>? commands,
   Map<String, Object?>? source,
+  List<Map<String, Object?>>? secondarySources,
 }) => {
+  'secondary_sources': secondarySources ?? _secondarySources(),
   'id': 'mg-zs-ev-au-2021',
   'display_name': 'MG ZS EV 2021 battery',
   'description': 'Read-only traction-battery telemetry.',
@@ -81,7 +98,7 @@ void main() {
     test('parses exact vehicle, source, request, and signal metadata', () {
       final catalog = PowertrainBatteryCatalog.fromJsonString(
         jsonEncode({
-          'schema_version': 2,
+          'schema_version': 3,
           'profiles': [
             _profile(),
             _profile(status: 'community')..['id'] = 'mg-zs-ev-community',
@@ -93,7 +110,7 @@ void main() {
         }),
       );
 
-      expect(catalog.schemaVersion, 2);
+      expect(catalog.schemaVersion, 3);
       expect(catalog.profiles, hasLength(4));
       expect(
         catalog.profiles.map((profile) => profile.status),
@@ -155,14 +172,61 @@ void main() {
   group('powertrain battery catalog validator', () {
     const validator = PowertrainBatteryProfileCatalogValidator();
 
-    test('ready and community status never grants installation', () {
+    test('installation opens only for fully-gated reviewed tiers', () {
+      // `ready` requires everything community does — corroboration and a
+      // pinned artifact — on top of all-exact identity. Its bar must never
+      // sit *below* the tier beneath it.
+      final ready = validator.validateProfile(
+        PowertrainBatteryProfile.fromJson(_profile()),
+      );
+      expect(ready.issues, isEmpty);
+      expect(ready.canInstall, isTrue);
+
+      // Without an independent secondary source and a pinned artifact hash,
+      // both reviewed tiers stay closed.
       for (final status in ['ready', 'community']) {
-        final result = validator.validateProfile(
-          PowertrainBatteryProfile.fromJson(_profile(status: status)),
+        final uncorroborated = validator.validateProfile(
+          PowertrainBatteryProfile.fromJson(
+            _profile(
+              status: status,
+              secondarySources: [],
+              source: _source(pinnedArtifact: false),
+            ),
+          ),
         );
-        expect(result.issues, isEmpty, reason: status);
-        expect(result.canInstall, isFalse, reason: status);
+        expect(uncorroborated.canInstall, isFalse, reason: status);
+        expect(
+          uncorroborated.issues.map((issue) => issue.code),
+          containsAll([
+            'missing_secondary_source',
+            'missing_source_artifact_hash',
+          ]),
+          reason: status,
+        );
       }
+
+      final corroboratedJson = _profile(status: 'community');
+      final corroborated = validator.validateProfile(
+        PowertrainBatteryProfile.fromJson(corroboratedJson),
+      );
+      expect(corroborated.issues, isEmpty);
+      expect(corroborated.canInstall, isTrue);
+
+      // Community may scope the variant to a generation — but only as
+      // sourcePartial, never unknown, and never for the other fields.
+      final generationScoped = validator.validateProfile(
+        PowertrainBatteryProfile.fromJson(
+          corroboratedJson
+            ..['identity_evidence'] = {
+              'market': 'exact',
+              'year': 'exact',
+              'model': 'exact',
+              'variant': 'sourcePartial',
+            },
+        ),
+      );
+      expect(generationScoped.issues, isEmpty);
+      expect(generationScoped.canInstall, isTrue);
 
       final research = validator.validateProfile(
         PowertrainBatteryProfile.fromJson(
@@ -255,17 +319,40 @@ void main() {
     });
 
     test('allows only source-attributed read-only diagnostic services', () {
-      for (final allowed in ['21', '22']) {
-        final identifier = allowed == '22' ? 'B041' : '5B';
-        final profile = PowertrainBatteryProfile.fromJson(
-          _profile(
-            commands: [_command(mode: allowed, identifier: identifier)],
-          ),
-        );
-        final result = validator.validateProfile(profile);
-        expect(result.issues, isEmpty, reason: allowed);
-        expect(result.canInstall, isFalse, reason: allowed);
-      }
+      // Mode 22 is the only installable service; Mode 21 is deliberately
+      // reserved for the one-shot probe (the polling allowlist refuses it),
+      // so a reviewed profile carrying it must fail closed at validation
+      // instead of installing a permanently dark gauge.
+      final installable = validator.validateProfile(
+        PowertrainBatteryProfile.fromJson(
+          _profile(commands: [_command(mode: '22', identifier: 'B041')]),
+        ),
+      );
+      expect(installable.issues, isEmpty);
+      expect(installable.canInstall, isTrue);
+      expect(PollableServices.isPollable('22B041'), isTrue);
+
+      final probeOnly = validator.validateProfile(
+        PowertrainBatteryProfile.fromJson(
+          _profile(commands: [_command(mode: '21', identifier: '5B')]),
+        ),
+      );
+      expect(probeOnly.canInstall, isFalse);
+      expect(
+        probeOnly.issues.map((issue) => issue.code),
+        contains('unpollable_service'),
+      );
+      expect(PollableServices.isPollable('215B'), isFalse);
+
+      final experimental21 = _profile(
+        status: 'experimental',
+        commands: [_command(mode: '21', identifier: '5B')],
+      );
+      final probeResult = validator.validateProfile(
+        PowertrainBatteryProfile.fromJson(experimental21),
+      );
+      expect(probeResult.issues, isEmpty);
+      expect(probeResult.canProbe, isTrue);
 
       for (final denied in [
         '01',
@@ -398,7 +485,7 @@ void main() {
         ),
       );
       expect(extended.issues, isEmpty);
-      expect(extended.canInstall, isFalse);
+      expect(extended.canInstall, isTrue);
     });
 
     test('rejects signal slices outside the declared payload', () {
@@ -494,7 +581,7 @@ void main() {
 
     test('catalog validation rejects duplicate profile and signal ids', () {
       final duplicateProfile = PowertrainBatteryCatalog.fromJson({
-        'schema_version': 2,
+        'schema_version': 3,
         'profiles': [_profile(), _profile()],
       });
       expect(

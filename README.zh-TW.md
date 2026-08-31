@@ -49,11 +49,15 @@ GitHub APK 使用社群簽章，無法更新 Google Play 版，也無法由 Play
 - 不需轉接器或車輛的內建 Demo ECU
 - 即時 PID 儀表、故障碼、凍結幀、排放就緒、自訂 PID，以及由使用者主動匯出
   的診斷紀錄
-- 可搜尋且經完整性檢查的 schema v2 大電池目錄，收錄 205 筆有來源的 PHEV、
+- 可搜尋且經完整性檢查的 schema v3 大電池目錄，收錄 210 筆有來源的 PHEV、
   HEV、BEV、MHEV、REEV 與 FCEV 車型設定：203 筆是只有 metadata、完全沒有
-  指令的 `researchOnly`，兩筆是必須主動開啟的 `experimental`。兩筆實驗設定
-  合計 15 條固定唯讀指令、20 個有邊界的訊號；目前可安裝數量為 0。動力分布為
-  BEV 74、FCEV 5、HEV 47、MHEV 7、PHEV 69、REEV 3
+  指令的 `researchOnly`；五筆是**可安裝**的跨來源佐證 `community` 條目
+  （MG ZS EV Mk1、Hyundai Ioniq 5、Kia EV6、Hyundai Kona Electric、
+  Kia Niro EV——唯讀 BMS 儀表，每條公式都經至少兩個獨立實作逐 byte 比對，
+  安裝時需確認車輛身分，且每次連線都要重新確認車輛才會開始讀取）；兩筆是
+  只能走單次實驗室的 `experimental`（Lexus RX450hL、Toyota Prius TNGA）。
+  可執行子集合計 88 個有邊界的唯讀訊號；動力分布為 BEV 78、FCEV 5、
+  HEV 48、MHEV 7、PHEV 69、REEV 3
 - 內建經完整性檢查、完全離線的美國 EPA Find-a-Car 快照：50,242 筆精確配置、
   146 個 make／廠牌（製造商部門）標籤、年式 1984–2027。只套用語意能與公式設定逐欄對上的官方資料，
   不推測車重、扭力、風阻、VE 或傳動效率

@@ -23,6 +23,7 @@ import '../../../state/pid_registry.dart';
 import '../../../state/settings.dart';
 import '../../widgets/gauges/dial_gauge.dart';
 import '../../widgets/panel.dart';
+import '../../widgets/powertrain_profile_confirm_banner.dart';
 import '../pids/pid_manager_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -48,6 +49,7 @@ class DashboardScreen extends ConsumerWidget {
             SliverToBoxAdapter(
               child: _StatusStrip(connection: connection, snapshot: snapshot),
             ),
+            const SliverToBoxAdapter(child: PowertrainProfileConfirmBanner()),
             if (activePids.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,

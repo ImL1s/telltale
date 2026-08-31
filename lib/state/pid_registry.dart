@@ -10,12 +10,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../obd/pid/pid.dart';
 import '../obd/pid/pid_library.dart';
+import '../obd/powertrain_battery/powertrain_battery_catalog.dart';
 import '../obd/powertrain_battery/powertrain_battery_profile.dart';
 import '../obd/powertrain_battery/profile_pid_installer.dart';
+import '../obd/powertrain_battery/profile_wire_contract.dart';
 
 const _kCustomPidsKey = 'custom_pids_v1';
 const _kActivePidIdsKey = 'active_pid_ids_v1';
 const _kPowertrainProfilePidsKey = 'powertrain_profile_pids_v1';
+const _kPowertrainProfileInstallsKey = 'powertrain_profile_installs_v1';
 
 /// Injected at startup in `main()` so the rest of the app can read preferences
 /// synchronously instead of every screen awaiting the same future.
@@ -71,9 +74,12 @@ class PidRegistry extends Notifier<List<Pid>> {
     for (final pid in custom) {
       byCanonicalId[Pid.canonicalId(pid.id)] = pid;
     }
-    // No catalog profile is installable in this release. Ignore and erase any
-    // value injected under the former experimental persistence key rather
-    // than rehydrating it into the production PID registry.
+    // Storage is not a trusted source for profile PIDs. The former key held
+    // full Pid JSON, which would let a tampered preference carry a modified
+    // formula past the SHA-256-verified catalog — so it is still ignored and
+    // erased. Installations persist as `{profile_id, vehicle_year}` references
+    // under [_kPowertrainProfileInstallsKey] and are rebuilt from the verified
+    // catalog by [restoreInstalledProfiles] once it has loaded.
     if (prefs.containsKey(_kPowertrainProfilePidsKey)) {
       unawaited(prefs.remove(_kPowertrainProfilePidsKey));
     }
@@ -177,24 +183,173 @@ class PidRegistry extends Notifier<List<Pid>> {
     // next toggle.
   }
 
-  /// Installs or replaces every signal owned by [profile] in one persisted
-  /// operation. Installation only makes definitions available; it does not
-  /// add them to the dashboard or authorize vehicle traffic.
+  /// Installs or replaces every signal owned by a catalog profile in one
+  /// persisted operation. Installation only makes definitions available; it
+  /// does not add them to the dashboard, and polling still requires a
+  /// per-connection authorization for the exact vehicle.
+  ///
+  /// The profile is named by id and resolved from the verified [snapshot],
+  /// never accepted as a caller-built object: whatever installs is exactly
+  /// what passed the catalog's SHA-256 manifest check and full validation,
+  /// and a self-declared profile has no way in.
+  ///
+  /// [vehicleYear] is the model year the user confirmed at install time. It
+  /// is stored with the reference so the connection-time authorization prompt
+  /// can name the exact vehicle rather than a range.
   Future<void> installPowertrainProfile(
-    PowertrainBatteryProfile profile,
-  ) async {
-    PowertrainProfilePidInstaller.build(profile);
+    PowertrainBatteryCatalogSnapshot snapshot,
+    String profileId, {
+    required int vehicleYear,
+  }) async {
+    if (!isPowertrainCatalogSha256(snapshot.catalogSha256)) {
+      throw const PowertrainProfileInstallException(
+        'catalog snapshot carries no verified SHA-256',
+      );
+    }
+    final profile = snapshot.catalog.profiles
+        .where((candidate) => candidate.id == profileId)
+        .firstOrNull;
+    if (profile == null) {
+      throw PowertrainProfileInstallException(
+        '$profileId is not in the verified catalog',
+      );
+    }
+    if (!profile.appliesToYear(vehicleYear)) {
+      throw PowertrainProfileInstallException(
+        '$vehicleYear is outside ${profile.id}\'s documented year range',
+      );
+    }
+    final pids = PowertrainProfilePidInstaller.build(profile);
+    // Persist a snapshot first, commit second. Nothing observable — not the
+    // provider state, not the [installedVehicleYear] getter — changes until
+    // the storage write has succeeded, so a failure leaves every reader
+    // consistent and there is nothing to roll back. Publishing last matters
+    // separately: the state assignment notifies the dashboard's
+    // reconciliation synchronously, and a failure after that point could
+    // not reach across providers to undo what the notification caused.
+    final nextYears = Map.of(_installedYears)..[profile.id] = vehicleYear;
+    await _persistProfileInstalls(nextYears);
+    _installedYears
+      ..clear()
+      ..addAll(nextYears);
+    state = [
+      for (final pid in state)
+        if (pid.ownerProfileId != profile.id) pid,
+      ...pids,
+    ];
   }
 
   Future<void> uninstallPowertrainProfile(String profileId) async {
-    final next = [
+    final nextYears = Map.of(_installedYears)..remove(profileId);
+    await _persistProfileInstalls(nextYears);
+    _installedYears
+      ..clear()
+      ..addAll(nextYears);
+    state = [
       for (final pid in state)
         if (pid.ownerProfileId != profileId) pid,
     ];
-    state = next;
-    await ref
-        .read(sharedPreferencesProvider)
-        .remove(_kPowertrainProfilePidsKey);
+  }
+
+  /// The model year confirmed when [profileId] was installed, if it is.
+  int? installedVehicleYear(String profileId) => _installedYears[profileId];
+
+  final Map<String, int> _installedYears = {};
+
+  /// Whether the startup restore has produced an authoritative answer.
+  ///
+  /// Until then, a `profile:` layout id that does not resolve is *pending* —
+  /// its definition may still arrive from the verified catalog. Afterwards,
+  /// an unresolved profile id means withdrawn or uninstalled, and the
+  /// dashboard may treat it like any other deletion.
+  bool get powertrainRestoreSettled => _powertrainRestoreSettled;
+  bool _powertrainRestoreSettled = false;
+
+  /// Rebuilds installed profile PIDs from the verified [catalog].
+  ///
+  /// Only `{profile_id, vehicle_year}` references are persisted, so the
+  /// formulas and byte windows always come from the catalog that just passed
+  /// its manifest SHA-256 check — never from mutable preferences. A reference
+  /// whose profile has left the catalog, lost its installable status, or no
+  /// longer covers the stored year is dropped and the storage rewritten, so a
+  /// catalog downgrade uninstalls cleanly instead of resurrecting stale PIDs.
+  Future<void> restoreInstalledProfiles(
+    PowertrainBatteryCatalog catalog,
+  ) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final stored = prefs.getStringList(_kPowertrainProfileInstallsKey);
+    if (stored == null || stored.isEmpty) {
+      _powertrainRestoreSettled = true;
+      // Nothing to rebuild, but the answer is now authoritative — notify so
+      // the dashboard can reconcile layout ids that will never resolve.
+      state = [...state];
+      return;
+    }
+
+    final byId = {for (final profile in catalog.profiles) profile.id: profile};
+    final restored = <Pid>[];
+    final nextYears = <String, int>{};
+    for (final entry in stored) {
+      Object? decoded;
+      try {
+        decoded = jsonDecode(entry);
+      } on FormatException {
+        continue;
+      }
+      if (decoded is! Map<String, dynamic>) continue;
+      final profileId = decoded['profile_id'];
+      final vehicleYear = decoded['vehicle_year'];
+      if (profileId is! String || vehicleYear is! int) continue;
+      final profile = byId[profileId];
+      if (profile == null || !profile.appliesToYear(vehicleYear)) continue;
+      try {
+        restored.addAll(PowertrainProfilePidInstaller.build(profile));
+      } on PowertrainProfileInstallException {
+        continue;
+      }
+      nextYears[profileId] = vehicleYear;
+    }
+
+    // The stored references are the sole authority: every profile PID in the
+    // current state is replaced by what the verified catalog rebuilds, and a
+    // profile whose reference did not survive is gone rather than lingering.
+    //
+    // Persist the snapshot first, then commit, mark settled, and assign —
+    // nothing observable changes on a failed write, and the state
+    // assignment notifies listeners synchronously, so the dashboard's
+    // reconciliation must observe the settled flag on that very
+    // notification.
+    await _persistProfileInstalls(nextYears);
+    _installedYears
+      ..clear()
+      ..addAll(nextYears);
+    _powertrainRestoreSettled = true;
+    state = [
+      for (final pid in state)
+        if (pid.ownerProfileId == null) pid,
+      ...restored,
+    ];
+  }
+
+  Future<void> _persistProfileInstalls(Map<String, int> years) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    // `SharedPreferences` reports failure as `false`, not as an exception,
+    // and swallowing it here is how an install could survive until the next
+    // restart and then silently vanish.
+    final saved = years.isEmpty
+        ? await prefs.remove(_kPowertrainProfileInstallsKey)
+        : await prefs.setStringList(_kPowertrainProfileInstallsKey, [
+            for (final entry in years.entries)
+              jsonEncode({
+                'profile_id': entry.key,
+                'vehicle_year': entry.value,
+              }),
+          ]);
+    if (!saved) {
+      throw const PowertrainProfileInstallException(
+        'installed-profile references could not be persisted',
+      );
+    }
   }
 
   Future<void> _persist() async {
@@ -251,6 +406,19 @@ final pidRegistryProvider = NotifierProvider<PidRegistry, List<Pid>>(
 
 /// The PIDs currently on the dashboard, in display order.
 class ActivePids extends Notifier<List<Pid>> {
+  /// The user's chosen layout by canonical id — including ids that do not
+  /// currently resolve.
+  ///
+  /// The state below is the *visible* subset. Keeping the full list matters
+  /// because installed battery-profile PIDs are rebuilt from the verified
+  /// catalog asynchronously after start: their ids arrive here from storage
+  /// before the registry holds their definitions, and dropping them at that
+  /// moment — as resolving straight into state used to — silently erased
+  /// the user's battery gauges from the persisted layout on every restart.
+  /// An id that stays unresolved is invisible, nothing more; it is written
+  /// back only by explicit user edits, so a deletion is still a deletion.
+  List<String> _layoutIds = const [];
+
   @override
   List<Pid> build() {
     final prefs = ref.watch(sharedPreferencesProvider);
@@ -268,52 +436,130 @@ class ActivePids extends Notifier<List<Pid>> {
     final storedIds = prefs.getStringList(_kActivePidIdsKey);
 
     // Never stored: a first run, so start from the shipped layout.
-    if (storedIds == null) return PidLibrary.defaultDashboard;
+    if (storedIds == null) {
+      _layoutIds = [
+        for (final pid in PidLibrary.defaultDashboard) Pid.canonicalId(pid.id),
+      ];
+      return PidLibrary.defaultDashboard;
+    }
 
     // Stored *and empty*: the user cleared the dashboard. Restoring the
     // defaults there overrode a deliberate choice — every gauge came back on
     // the next launch, with no way to make it stick.
-    if (storedIds.isEmpty) return const [];
+    if (storedIds.isEmpty) {
+      _layoutIds = const [];
+      return const [];
+    }
 
     // Compared canonically. Canonicalising `header` and `modeAndPid` on load
     // changes `Pid.id`, and these stored ids hold the spelling an older build
     // wrote — so an active custom gauge stopped resolving and disappeared
     // without a word, while the other ids kept resolving and suppressed the
     // "nothing resolved" fallback that would have made it visible.
-    final byId = {for (final pid in registry) Pid.canonicalId(pid.id): pid};
-    final resolved = storedIds
-        .map((id) => byId[Pid.canonicalId(id)])
-        .nonNulls
-        .toList();
+    _layoutIds = [for (final id in storedIds) Pid.canonicalId(id)];
+    // The restore can settle before this provider is first read — there is
+    // no later registry notification to reconcile on, so the settled ghost
+    // pruning has to happen here too, with the same all-profile fallback.
+    // Unresolved built-in/custom ids keep their historical build behavior:
+    // invisible until the next explicit edit rewrites storage.
+    if (ref.read(pidRegistryProvider.notifier).powertrainRestoreSettled) {
+      final byId = {for (final pid in registry) Pid.canonicalId(pid.id): pid};
+      final pruned = [
+        for (final id in _layoutIds)
+          if (byId.containsKey(id) || !id.startsWith('profile:')) id,
+      ];
+      if (pruned.length != _layoutIds.length) {
+        if (pruned.isEmpty &&
+            _layoutIds.every((id) => id.startsWith('profile:'))) {
+          _layoutIds = [
+            for (final pid in PidLibrary.defaultDashboard)
+              Pid.canonicalId(pid.id),
+          ];
+        } else {
+          _layoutIds = pruned;
+        }
+        unawaited(_persist());
+      }
+    }
+    final resolved = _resolve(registry);
     // Stored, non-empty, and nothing resolved: every id has since been
     // deleted. That is a broken layout rather than a chosen one, so fall back
-    // rather than showing a blank dashboard with no way to recover.
-    return resolved.isEmpty ? PidLibrary.defaultDashboard : resolved;
+    // rather than showing a blank dashboard with no way to recover. A layout
+    // that still names profile ids is *pending*, not broken — their
+    // definitions arrive when the catalog restore finishes — so it keeps
+    // waiting instead of overwriting the user's choice.
+    if (resolved.isEmpty &&
+        !_layoutIds.any((id) => id.startsWith('profile:'))) {
+      _layoutIds = [
+        for (final pid in PidLibrary.defaultDashboard) Pid.canonicalId(pid.id),
+      ];
+      return PidLibrary.defaultDashboard;
+    }
+    return resolved;
+  }
+
+  List<Pid> _resolve(List<Pid> registry) {
+    final byId = {for (final pid in registry) Pid.canonicalId(pid.id): pid};
+    return _layoutIds.map((id) => byId[id]).nonNulls.toList();
   }
 
   /// Folds a registry change into the dashboard without consulting storage.
   ///
-  /// Two jobs, and both used to be done by rebuilding from `prefs`:
+  /// Three jobs:
   ///
   ///  * a definition that left the registry leaves the grid, or the tile
   ///    points at something that no longer exists;
   ///  * a definition that was *edited* is replaced, or the gauge goes on
   ///    painting the old formula — a wrong number with nothing on screen to
-  ///    say so.
+  ///    say so;
+  ///  * a layout id that could not resolve before — an installed profile
+  ///    PID whose catalog restore had not finished — comes back the moment
+  ///    its definition arrives.
   ///
-  /// Order is preserved because the user chose it.
+  /// Order is preserved because the user chose it. A built-in or custom id
+  /// that stops resolving means its definition was deleted, so its slot is
+  /// pruned and the pruned layout persisted — a deletion is a deletion, and
+  /// it outlives the session. A `profile:` id is different only while the
+  /// startup restore has not yet answered: its definition is rebuilt
+  /// asynchronously from the verified catalog, so until then an absence is
+  /// *pending*, and pruning it silently erased the user's battery gauges
+  /// from the layout on every restart. Once the restore settles, an
+  /// unresolved profile id means withdrawn or uninstalled, and it is pruned
+  /// and persisted like any other deletion — reinstalling later must not
+  /// resurrect gauges the user did not put back.
   void _onRegistryChanged(List<Pid>? previous, List<Pid> next) {
     final byId = {for (final pid in next) Pid.canonicalId(pid.id): pid};
-    final kept = <Pid>[];
-    for (final pid in state) {
-      final current = byId[Pid.canonicalId(pid.id)];
-      if (current != null) kept.add(current);
+    final restoreSettled = ref
+        .read(pidRegistryProvider.notifier)
+        .powertrainRestoreSettled;
+    final pruned = [
+      for (final id in _layoutIds)
+        if (byId.containsKey(id) ||
+            (!restoreSettled && id.startsWith('profile:')))
+          id,
+    ];
+    if (pruned.length != _layoutIds.length) {
+      if (pruned.isEmpty &&
+          _layoutIds.every((id) => id.startsWith('profile:'))) {
+        // A dashboard that held only battery gauges just lost every one of
+        // them to a catalog withdrawal or uninstall. That is a broken
+        // layout, not a chosen one — fall back like the startup path does,
+        // instead of leaving a permanently blank screen.
+        _layoutIds = [
+          for (final pid in PidLibrary.defaultDashboard)
+            Pid.canonicalId(pid.id),
+        ];
+      } else {
+        _layoutIds = pruned;
+      }
+      unawaited(_persist());
     }
+    final resolved = _resolve(next);
 
-    var changed = kept.length != state.length;
+    var changed = resolved.length != state.length;
     if (!changed) {
-      for (var i = 0; i < kept.length; i++) {
-        if (!identical(kept[i], state[i])) {
+      for (var i = 0; i < resolved.length; i++) {
+        if (!identical(resolved[i], state[i])) {
           changed = true;
           break;
         }
@@ -323,12 +569,7 @@ class ActivePids extends Notifier<List<Pid>> {
     // resyncs its active set on every notification.
     if (!changed) return;
 
-    final droppedSome = kept.length != state.length;
-    state = kept;
-    // Only when the *identity* list changed. An edit leaves storage correct
-    // already, and rewriting it on every formula tweak is a write per
-    // keystroke's worth of saves.
-    if (droppedSome) unawaited(_persist());
+    state = resolved;
   }
 
   bool contains(Pid pid) => state.any((p) => p.id == pid.id);
@@ -343,6 +584,7 @@ class ActivePids extends Notifier<List<Pid>> {
 
   Future<void> add(Pid pid) async {
     if (contains(pid)) return;
+    _layoutIds = [..._layoutIds, Pid.canonicalId(pid.id)];
     state = [...state, pid];
     await _persist();
   }
@@ -351,7 +593,19 @@ class ActivePids extends Notifier<List<Pid>> {
   Future<void> insert(int index, Pid pid) async {
     if (contains(pid)) return;
     final next = [...state];
-    next.insert(index.clamp(0, next.length), pid);
+    final visibleIndex = index.clamp(0, next.length);
+    final layout = [..._layoutIds];
+    // The index is into the *visible* list; the layout may hold invisible
+    // pending ids, so the insertion lands before the visible anchor's slot.
+    final layoutIndex = visibleIndex >= next.length
+        ? layout.length
+        : layout.indexOf(Pid.canonicalId(next[visibleIndex].id));
+    layout.insert(
+      layoutIndex < 0 ? layout.length : layoutIndex,
+      Pid.canonicalId(pid.id),
+    );
+    next.insert(visibleIndex, pid);
+    _layoutIds = layout;
     state = next;
     await _persist();
   }
@@ -369,6 +623,12 @@ class ActivePids extends Notifier<List<Pid>> {
   Future<void> replace(Pid previous, Pid replacement) async {
     final index = state.indexWhere((p) => p.id == previous.id);
     if (index < 0) return;
+    final layoutIndex = _layoutIds.indexOf(Pid.canonicalId(previous.id));
+    if (layoutIndex >= 0) {
+      final layout = [..._layoutIds];
+      layout[layoutIndex] = Pid.canonicalId(replacement.id);
+      _layoutIds = layout;
+    }
     final next = [...state];
     next[index] = replacement;
     state = next;
@@ -377,6 +637,11 @@ class ActivePids extends Notifier<List<Pid>> {
 
   Future<void> remove(Pid pid) async {
     if (!contains(pid)) return;
+    final canonical = Pid.canonicalId(pid.id);
+    _layoutIds = [
+      for (final id in _layoutIds)
+        if (id != canonical) id,
+    ];
     state = state.where((p) => p.id != pid.id).toList();
     await _persist();
   }
@@ -389,19 +654,25 @@ class ActivePids extends Notifier<List<Pid>> {
   /// passing that one here unadjusted would drop items one slot short.
   Future<void> reorder(int oldIndex, int newIndex) async {
     if (oldIndex < 0 || oldIndex >= state.length) return;
+    final previousVisible = {for (final pid in state) Pid.canonicalId(pid.id)};
     final next = [...state];
     final item = next.removeAt(oldIndex);
     next.insert(newIndex.clamp(0, next.length), item);
     state = next;
+    // Re-thread the new visible order through the layout, leaving any
+    // invisible pending ids in their original slots.
+    final visibleOrder = [for (final pid in next) Pid.canonicalId(pid.id)];
+    var cursor = 0;
+    _layoutIds = [
+      for (final id in _layoutIds)
+        if (previousVisible.contains(id)) visibleOrder[cursor++] else id,
+    ];
     await _persist();
   }
 
   Future<void> _persist() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setStringList(
-      _kActivePidIdsKey,
-      state.map((p) => p.id).toList(),
-    );
+    await prefs.setStringList(_kActivePidIdsKey, [..._layoutIds]);
   }
 }
 

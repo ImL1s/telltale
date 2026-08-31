@@ -17,6 +17,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:torque_obd/core/theme/app_theme.dart';
 import 'package:torque_obd/obd/physics/vehicle_profile.dart';
@@ -71,9 +72,15 @@ Future<void> pumpDashboard(
   List<Pid> activePids = const [],
   VehicleProfile profile = const VehicleProfile(),
 }) async {
+  // The per-connection profile-confirmation banner reads the PID registry,
+  // which reads preferences; empty mock values keep the banner in its
+  // nothing-installed state without touching real storage.
+  SharedPreferences.setMockInitialValues({});
+  final prefs = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
         obdSessionProvider.overrideWith(_ConnectedSession.new),
         activePidsProvider.overrideWith(() => _FixedActivePids(activePids)),
         vehicleProfileProvider.overrideWith(() => _FixedProfile(profile)),
