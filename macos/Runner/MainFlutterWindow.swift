@@ -23,10 +23,17 @@ class MainFlutterWindow: NSWindow {
         return
       }
       do {
-        guard let cacheURL = FileManager.default.urls(
+        let cacheURL: URL
+        if let args = call.arguments as? [String: Any],
+           let path = args["path"] as? String,
+           !path.isEmpty {
+          cacheURL = URL(fileURLWithPath: path, isDirectory: true)
+        } else if let fallback = FileManager.default.urls(
           for: .cachesDirectory,
           in: .userDomainMask
-        ).first else {
+        ).first {
+          cacheURL = fallback
+        } else {
           result(FlutterError(
             code: "capacity_unavailable",
             message: "Application cache directory is unavailable",

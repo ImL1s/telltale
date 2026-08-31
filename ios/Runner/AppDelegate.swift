@@ -23,12 +23,19 @@ import UIKit
         return
       }
       do {
-        let cacheURL = try FileManager.default.url(
-          for: .cachesDirectory,
-          in: .userDomainMask,
-          appropriateFor: nil,
-          create: true
-        )
+        let cacheURL: URL
+        if let args = call.arguments as? [String: Any],
+           let path = args["path"] as? String,
+           !path.isEmpty {
+          cacheURL = URL(fileURLWithPath: path, isDirectory: true)
+        } else {
+          cacheURL = try FileManager.default.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+          )
+        }
         let values = try cacheURL.resourceValues(
           forKeys: [.volumeAvailableCapacityForImportantUsageKey]
         )

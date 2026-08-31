@@ -1,12 +1,37 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <string>
 
 #include <windows.h>
 
 #include <flutter/standard_method_codec.h>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+
+std::wstring Utf8ToWide(const std::string& utf8) {
+  if (utf8.empty()) {
+    return {};
+  }
+  const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                       utf8.data(),
+                                       static_cast<int>(utf8.size()), nullptr,
+                                       0);
+  if (size <= 0) {
+    return {};
+  }
+  std::wstring wide(static_cast<size_t>(size), L'\0');
+  if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+                          static_cast<int>(utf8.size()), wide.data(),
+                          size) <= 0) {
+    return {};
+  }
+  return wide;
+}
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -43,14 +68,31 @@ bool FlutterWindow::OnCreate() {
           result->NotImplemented();
           return;
         }
-        wchar_t path[MAX_PATH];
-        const DWORD length = GetTempPathW(MAX_PATH, path);
-        if (length == 0 || length > MAX_PATH) {
-          result->Error("capacity_failed", "Temp path unavailable");
+        // Probe the volume that owns the Dart share-cache directory, not
+        // %TEMP% — enterprise profiles often redirect TEMP to another drive.
+        const auto* arguments =
+            std::get_if<flutter::EncodableMap>(call.arguments());
+        if (arguments == nullptr) {
+          result->Error("capacity_failed", "Cache path required");
+          return;
+        }
+        const auto path_it = arguments->find(flutter::EncodableValue("path"));
+        if (path_it == arguments->end()) {
+          result->Error("capacity_failed", "Cache path required");
+          return;
+        }
+        const auto* path_utf8 = std::get_if<std::string>(&path_it->second);
+        if (path_utf8 == nullptr || path_utf8->empty()) {
+          result->Error("capacity_failed", "Cache path required");
+          return;
+        }
+        const std::wstring path = Utf8ToWide(*path_utf8);
+        if (path.empty()) {
+          result->Error("capacity_failed", "Cache path encoding failed");
           return;
         }
         ULARGE_INTEGER available{};
-        if (!GetDiskFreeSpaceExW(path, &available, nullptr, nullptr) ||
+        if (!GetDiskFreeSpaceExW(path.c_str(), &available, nullptr, nullptr) ||
             available.QuadPart == 0) {
           result->Error("capacity_invalid",
                         "Available bytes were not positive");

@@ -13,9 +13,12 @@ class AppStorageCapacity {
     'com.cbstudio.telltale/app_storage_capacity',
   );
 
-  Future<int?> availableBytes(Directory _) async {
+  Future<int?> availableBytes(Directory directory) async {
     try {
-      final value = await _channel.invokeMethod<Object?>('getAvailableBytes');
+      final value = await _channel.invokeMethod<Object?>(
+        'getAvailableBytes',
+        <String, Object?>{'path': directory.path},
+      );
       return value is int && value > 0 ? value : null;
     } on Object {
       return null;

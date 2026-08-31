@@ -159,6 +159,54 @@ void main() {
     },
   );
 
+  test(
+    'clock skew does not reopen an unavailable lane without a new value',
+    () {
+      final source = wall;
+      recorder.prepare(_header(wall));
+      recorder.openAcceptance();
+      recorder.ingest(
+        TelemetrySnapshot(
+          readings: {PidLibrary.engineRpm.id: _rpm(900, source)},
+          capturedAt: wall,
+        ),
+      );
+
+      wall = wall.add(const Duration(seconds: 3));
+      elapsed += const Duration(seconds: 3).inMicroseconds;
+      recorder.ingest(TelemetrySnapshot(capturedAt: wall));
+      expect(recorder.state.gapCount, 1);
+      expect(recorder.state.statusCount, 1);
+
+      // Wall clock jumps backward so the old sample looks fresh again.
+      wall = source.add(const Duration(milliseconds: 100));
+      elapsed += 1000;
+      recorder.ingest(
+        TelemetrySnapshot(
+          readings: {PidLibrary.engineRpm.id: _rpm(900, source)},
+          capturedAt: wall,
+        ),
+      );
+      expect(
+        recorder.state.valueCount,
+        1,
+        reason: 'same source timestamp must not emit a recovery value',
+      );
+
+      wall = wall.add(const Duration(seconds: 3));
+      elapsed += const Duration(seconds: 3).inMicroseconds;
+      recorder.ingest(TelemetrySnapshot(capturedAt: wall));
+      expect(
+        recorder.state.gapCount,
+        1,
+        reason:
+            'reopening without a value would invent a second gap and '
+            'damage the strict reader footer',
+      );
+      expect(recorder.state.statusCount, 1);
+    },
+  );
+
   test('changed exact definition closes before accepting the reading', () {
     recorder.prepare(_header(wall));
     recorder.openAcceptance();

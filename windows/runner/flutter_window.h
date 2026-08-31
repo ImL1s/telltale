@@ -32,7 +32,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
 
   // Kept alive for the lifetime of the window so share preflight can probe
-  // free space on the volume that owns the process temp/cache path.
+  // free space on the volume that owns the Dart-supplied share-cache path.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       capacity_channel_;
 };

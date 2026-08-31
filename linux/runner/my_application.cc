@@ -30,14 +30,25 @@ static void app_storage_capacity_method_call_cb(FlMethodChannel* channel,
     return;
   }
 
-  const gchar* cache = g_get_user_cache_dir();
+  // Probe the volume that owns the Dart share-cache directory, not the
+  // generic XDG cache root — they can live on different mounts.
+  const gchar* cache = nullptr;
+  FlValue* args = fl_method_call_get_args(method_call);
+  if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+    FlValue* path_value = fl_value_lookup_string(args, "path");
+    if (path_value != nullptr &&
+        fl_value_get_type(path_value) == FL_VALUE_TYPE_STRING) {
+      cache = fl_value_get_string(path_value);
+    }
+  }
   struct statvfs st;
-  if (cache == nullptr || statvfs(cache, &st) != 0) {
+  if (cache == nullptr || cache[0] == '\0' || statvfs(cache, &st) != 0) {
     g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(
-        fl_method_error_response_new("capacity_failed",
-                                     cache == nullptr ? "Cache path unavailable"
-                                                      : g_strerror(errno),
-                                     nullptr));
+        fl_method_error_response_new(
+            "capacity_failed",
+            cache == nullptr || cache[0] == '\0' ? "Cache path required"
+                                                 : g_strerror(errno),
+            nullptr));
     fl_method_call_respond(method_call, response, nullptr);
     return;
   }

@@ -169,10 +169,14 @@ class TelemetryRecorder {
       if (isFresh) {
         final sourceUtc = reading.timestamp.toUtc();
         final sourceUs = sourceUtc.microsecondsSinceEpoch;
-        _available[id] = true;
-        _lastStatus.remove(id);
+        // Do not reopen an unavailable lane without a new value line. Wall
+        // clocks can jump backward so an already-recorded sample looks fresh
+        // again; marking available here would invent a second gap when it
+        // ages out, and the strict reader rejects that footer mismatch.
         if (_lastSourceTimestampUs[id] == sourceUs) continue;
         _lastSourceTimestampUs[id] = sourceUs;
+        _available[id] = true;
+        _lastStatus.remove(id);
         onEvent(
           TelemetryEvent.value(
             observedAtUtc: observedAt,

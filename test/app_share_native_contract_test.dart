@@ -20,6 +20,27 @@ void main() {
         .setMockMethodCallHandler(shareChannel, null);
   });
 
+  test('capacity probe forwards the share-cache path to native', () async {
+    MethodCall? captured;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(capacityChannel, (call) async {
+          captured = call;
+          return 4096;
+        });
+
+    expect(
+      await const AppStorageCapacity().availableBytes(
+        Directory(r'C:\Users\x\AppData\Local\telltale'),
+      ),
+      4096,
+    );
+    expect(captured?.method, 'getAvailableBytes');
+    expect(
+      captured?.arguments,
+      containsPair('path', r'C:\Users\x\AppData\Local\telltale'),
+    );
+  });
+
   test('capacity probe accepts only positive integral byte counts', () async {
     const probe = AppStorageCapacity();
 
@@ -105,10 +126,13 @@ void main() {
       final macos = File('macos/Runner/MainFlutterWindow.swift')
           .readAsStringSync();
 
-      expect(android, contains('StatFs(cacheDir.path)'));
+      expect(android, contains('StatFs(probePath)'));
+      expect(android, contains('call.argument<String>("path")'));
       expect(android, contains('APP_STORAGE_CAPACITY_CHANNEL'));
       expect(ios, contains('cachesDirectory'));
+      expect(ios, contains('args["path"]'));
       expect(ios, contains('volumeAvailableCapacityForImportantUsageKey'));
+      expect(macos, contains('args["path"]'));
       expect(macos, contains('NSSharingServiceDelegate'));
       expect(macos, contains('didShareItems'));
       expect(macos, contains('didFailToShareItems'));
@@ -138,8 +162,12 @@ void main() {
       final linux = File('linux/runner/my_application.cc').readAsStringSync();
       expect(windows, contains('com.cbstudio.telltale/app_storage_capacity'));
       expect(windows, contains('GetDiskFreeSpaceExW'));
+      expect(windows, contains('Cache path required'));
+      expect(windows, isNot(contains('GetTempPathW')));
       expect(linux, contains('com.cbstudio.telltale/app_storage_capacity'));
       expect(linux, contains('statvfs'));
+      expect(linux, contains('fl_value_lookup_string(args, "path")'));
+      expect(linux, isNot(contains('g_get_user_cache_dir')));
     },
   );
 

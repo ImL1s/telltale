@@ -27,7 +27,8 @@ class MainActivity : FlutterActivity() {
             APP_STORAGE_CAPACITY_CHANNEL,
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "getAvailableBytes" -> appCacheAvailableBytes(result)
+                "getAvailableBytes" ->
+                    appCacheAvailableBytes(call.argument<String>("path"), result)
                 else -> result.notImplemented()
             }
         }
@@ -205,9 +206,13 @@ class MainActivity : FlutterActivity() {
         result.success(null)
     }
 
-    private fun appCacheAvailableBytes(result: MethodChannel.Result) {
+    private fun appCacheAvailableBytes(
+        path: String?,
+        result: MethodChannel.Result,
+    ) {
         try {
-            val bytes = StatFs(cacheDir.path).availableBytes
+            val probePath = if (path.isNullOrEmpty()) cacheDir.path else path
+            val bytes = StatFs(probePath).availableBytes
             if (bytes > 0L) {
                 result.success(bytes)
             } else {
