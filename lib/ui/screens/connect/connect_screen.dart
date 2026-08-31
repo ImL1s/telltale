@@ -100,7 +100,11 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
 
   bool get _classicAvailable => classicTransportAvailable;
 
+  bool get _bleAvailable => bleTransportAvailable;
+
   Future<void> _select(TransportKind kind) async {
+    if (kind == TransportKind.bluetoothClassic && !_classicAvailable) return;
+    if (kind == TransportKind.bluetoothLe && !_bleAvailable) return;
     setState(() {
       _expanded = _expanded == kind ? null : kind;
       _devices = const [];
@@ -427,14 +431,23 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                 separatorBuilder: (_, _) => const SizedBox(height: Spacing.md),
                 itemBuilder: (context, index) {
                   final kind = TransportKind.values[index];
-                  final unavailable = kind.isAndroidOnly && !_classicAvailable;
+                  final unavailable = switch (kind) {
+                    TransportKind.bluetoothClassic => !_classicAvailable,
+                    TransportKind.bluetoothLe => !_bleAvailable,
+                    _ => false,
+                  };
+                  final disabledReason = switch (kind) {
+                    TransportKind.bluetoothClassic when unavailable =>
+                      classicUnavailableReason,
+                    TransportKind.bluetoothLe when unavailable =>
+                      bleUnavailableReason,
+                    _ => null,
+                  };
                   return _TransportCard(
                     kind: kind,
                     isExpanded: _expanded == kind,
                     isDisabled: unavailable || connection.isBusy,
-                    disabledReason: unavailable
-                        ? classicUnavailableReason
-                        : null,
+                    disabledReason: disabledReason,
                     onTap: () => _select(kind),
                     child: _bodyFor(kind, palette),
                   );
@@ -1347,7 +1360,9 @@ class _LastAdapterCard extends ConsumerWidget {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: () => _reconnect(context, ref, last),
+                    onPressed: _reconnectAllowed(last)
+                        ? () => _reconnect(context, ref, last)
+                        : null,
                     icon: const Icon(Icons.link, size: 18),
                     label: const Text('直接連線'),
                   ),
@@ -1360,17 +1375,36 @@ class _LastAdapterCard extends ConsumerWidget {
                 ),
               ],
             ),
+            if (!_reconnectAllowed(last)) ...[
+              const SizedBox(height: Spacing.xs),
+              Text(
+                last.kind == TransportKind.bluetoothClassic
+                    ? classicUnavailableReason
+                    : bleUnavailableReason,
+                style: context.texts.labelSmall,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
+  /// Same host gates as the transport cards — a remembered Classic/BLE
+  /// adapter must not offer reconnect on a host where that transport is
+  /// disabled in the UI.
+  bool _reconnectAllowed(LastAdapter last) => switch (last.kind) {
+        TransportKind.bluetoothClassic => classicTransportAvailable,
+        TransportKind.bluetoothLe => bleTransportAvailable,
+        TransportKind.wifi || TransportKind.demo => true,
+      };
+
   Future<void> _reconnect(
     BuildContext context,
     WidgetRef ref,
     LastAdapter last,
   ) async {
+    if (!_reconnectAllowed(last)) return;
     // Taken before the first await, because this card does not survive its
     // own tap: the wizard hides it for the whole busy phase, so by the time
     // the connect resolves this context is unmounted and a mounted-check
@@ -1536,28 +1570,45 @@ String get classicUnavailableReason => Platform.isIOS
     ? 'iOS 不開放第三方 App 使用藍牙 SPP'
     : 'Bluetooth Classic（SPP）目前僅在 Android 驗證過';
 
+/// Whether Bluetooth LE scanning/connect is usable on this host.
+///
+/// `universal_ble` registers native plugins on Android, iOS, macOS, and
+/// Windows. Linux has no registrant (`linux/flutter/generated_plugins.cmake`
+/// lists only Classic + url_launcher), so enabling the BLE card there reaches
+/// a missing platform channel instead of BlueZ. Gate the UI the same way
+/// Classic is gated: honest "not available here" beats a green compile with a
+/// broken tap target.
+bool get bleTransportAvailable => !Platform.isLinux;
+
+/// Why the BLE transport card is greyed out when [bleTransportAvailable] is
+/// false.
+String get bleUnavailableReason =>
+    'Bluetooth LE 目前在 Linux 尚未接入原生實作（universal_ble 無 Linux plugin）';
+
 List<TransportQuestion> whichTransportGuidance({
   required bool classicAvailable,
+  bool bleAvailable = true,
 }) => [
   (
     transport: TransportKind.wifi,
     question: '手機的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？',
     answer: '選 Wi-Fi。先把手機連上那個網路，再回來輸入位址。',
   ),
-  (
-    transport: TransportKind.bluetoothLe,
-    question: '盒子、賣場標題或裝置名稱上有 BLE、4.0、5.0 這些字？',
-    // The fallback is in the answer rather than only in the note at the
-    // bottom, because the cheap clones lie: a box marked "Bluetooth 4.0"
-    // is sometimes an SPP-only adapter with a dual-mode chip it does not
-    // use. Somebody who answered honestly and got nothing needs the next
-    // step attached to the answer that failed them, not four lines below
-    // it.
-    answer:
-        '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
-        '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
-        '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。',
-  ),
+  if (bleAvailable)
+    (
+      transport: TransportKind.bluetoothLe,
+      question: '盒子、賣場標題或裝置名稱上有 BLE、4.0、5.0 這些字？',
+      // The fallback is in the answer rather than only in the note at the
+      // bottom, because the cheap clones lie: a box marked "Bluetooth 4.0"
+      // is sometimes an SPP-only adapter with a dual-mode chip it does not
+      // use. Somebody who answered honestly and got nothing needs the next
+      // step attached to the answer that failed them, not four lines below
+      // it.
+      answer:
+          '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
+          '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
+          '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。',
+    ),
   if (classicAvailable)
     (
       transport: TransportKind.bluetoothClassic,
@@ -1633,6 +1684,7 @@ class _WhichTransportCardState extends ConsumerState<_WhichTransportCard> {
               const SizedBox(height: Spacing.sm),
               for (final row in whichTransportGuidance(
                 classicAvailable: classicTransportAvailable,
+                bleAvailable: bleTransportAvailable,
               ))
                 _WhichRow(question: row.question, answer: row.answer),
               const SizedBox(height: Spacing.sm),

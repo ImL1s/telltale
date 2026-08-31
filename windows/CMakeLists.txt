@@ -34,6 +34,15 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# MSVC 14.51+ (VS 18 / windows-latest) promotes experimental-coroutine
+# deprecation to a hard error (STL1011 / C2338). Several Flutter Windows
+# plugins still pull <experimental/coroutine> (notably
+# permission_handler_windows). Silence until those plugins migrate to C++20
+# <coroutine>. Must be directory-scoped before plugin add_subdirectory.
+if(MSVC)
+  add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+endif()
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by

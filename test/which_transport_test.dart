@@ -24,7 +24,8 @@ void main() {
     // people who needed it.
     for (final classicAvailable in [true, false]) {
       final questions =
-          whichTransportGuidance(classicAvailable: classicAvailable).map((q) => q.question);
+          whichTransportGuidance(classicAvailable: classicAvailable)
+              .map((q) => q.question);
       for (final q in questions) {
         expect(q.contains('配對清單') || q.contains('配對新裝置'), isFalse,
             reason: 'visibility in the pairing list does not separate Classic '
@@ -63,8 +64,21 @@ void main() {
     // mentions Classic as a fallback, and a substring check called that a
     // second route.
     final ios = whichTransportGuidance(classicAvailable: false);
-    expect(ios.map((q) => q.transport), isNot(contains(TransportKind.bluetoothClassic)));
+    expect(ios.map((q) => q.transport),
+        isNot(contains(TransportKind.bluetoothClassic)));
     expect(ios, hasLength(2));
+  });
+
+  test('a host without BLE is not routed to Bluetooth LE at all', () {
+    // Same honesty rule as Classic: Linux has no universal_ble registrant, so
+    // the guidance must not advertise a card the shell greys out.
+    final linuxish = whichTransportGuidance(
+      classicAvailable: false,
+      bleAvailable: false,
+    );
+    expect(linuxish.map((q) => q.transport),
+        isNot(contains(TransportKind.bluetoothLe)));
+    expect(linuxish.map((q) => q.transport), [TransportKind.wifi]);
   });
 
   test('the guidance and the transport card read the same predicate', () {
@@ -80,6 +94,14 @@ void main() {
       reason: 'offering Classic and being able to use it are the same '
           'question and must not be asked twice',
     );
+    expect(
+      whichTransportGuidance(
+        classicAvailable: classicTransportAvailable,
+        bleAvailable: bleTransportAvailable,
+      ).any((q) => q.transport == TransportKind.bluetoothLe),
+      bleTransportAvailable,
+      reason: 'offering BLE and being able to use it are the same question',
+    );
   });
 
   test('classic unavailable copy names the host constraint, not always iOS', () {
@@ -93,6 +115,11 @@ void main() {
         isTrue,
       );
     }
+  });
+
+  test('ble unavailable copy is non-empty when BLE is gated off', () {
+    expect(bleUnavailableReason, isNot(isEmpty));
+    expect(bleUnavailableReason.toLowerCase(), contains('linux'));
   });
 
   test('each transport is the destination of exactly one question', () {
@@ -115,8 +142,13 @@ void main() {
     // question — "is the app itself working". Routing hardware here would tell
     // somebody with a real adapter that their car is a simulation.
     for (final classicAvailable in [true, false]) {
-      for (final q in whichTransportGuidance(classicAvailable: classicAvailable)) {
-        expect(q.transport, isNot(TransportKind.demo), reason: q.question);
+      for (final bleAvailable in [true, false]) {
+        for (final q in whichTransportGuidance(
+          classicAvailable: classicAvailable,
+          bleAvailable: bleAvailable,
+        )) {
+          expect(q.transport, isNot(TransportKind.demo), reason: q.question);
+        }
       }
     }
   });

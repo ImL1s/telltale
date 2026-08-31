@@ -4,6 +4,12 @@
 # with nothing held back. So the checks here are the ones that decide whether a
 # build is honest, not a subset kept for show.
 #
+# Free public runners here are the authoritative remote compile matrix for
+# multiplatform enablement (Android + Apple iOS/macOS + Linux + Windows). The
+# private source repo may be Actions-billing-blocked; do not treat private
+# Actions green as a merge requirement when this workflow already exercises
+# every target platform.
+#
 # One check is unusual and is the point of the whole file: the `oracle` job runs
 # the test suite against an ELM327 simulator that nobody on this project wrote.
 # Every other test in this repository is our parser against our simulator, and
