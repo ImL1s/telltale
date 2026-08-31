@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <pthread.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -95,12 +96,14 @@ FlValue* EnumerateBluetoothSppPorts() {
 struct IdleBytes {
   SppSerialChannel* channel;
   uint64_t generation;
+  guint source_id = 0;
   std::vector<uint8_t> bytes;
 };
 
 struct IdleError {
   SppSerialChannel* channel;
   uint64_t generation;
+  guint source_id = 0;
   int err;
 };
 
@@ -119,12 +122,46 @@ struct _SppSerialChannel {
   std::atomic<uint64_t> open_generation{0};
   pthread_t read_thread{};
   bool read_thread_started = false;
+  // g_idle_add payloads hold a raw `this`. Track source IDs so ClosePort /
+  // destroy can g_source_remove them before the channel is freed.
+  std::mutex idle_mutex;
+  std::vector<guint> pending_idle_sources;
 };
 
 namespace {
 
+void TrackIdleSource(SppSerialChannel* channel, guint source_id) {
+  if (channel == nullptr || source_id == 0) return;
+  std::lock_guard<std::mutex> lock(channel->idle_mutex);
+  channel->pending_idle_sources.push_back(source_id);
+}
+
+void UntrackIdleSource(SppSerialChannel* channel, guint source_id) {
+  if (channel == nullptr || source_id == 0) return;
+  std::lock_guard<std::mutex> lock(channel->idle_mutex);
+  auto& sources = channel->pending_idle_sources;
+  for (auto it = sources.begin(); it != sources.end(); ++it) {
+    if (*it == source_id) {
+      sources.erase(it);
+      return;
+    }
+  }
+}
+
+void DrainIdleSources(SppSerialChannel* channel) {
+  std::vector<guint> sources;
+  {
+    std::lock_guard<std::mutex> lock(channel->idle_mutex);
+    sources.swap(channel->pending_idle_sources);
+  }
+  for (guint source_id : sources) {
+    g_source_remove(source_id);
+  }
+}
+
 gboolean SendBytesIdle(gpointer data) {
   auto* payload = static_cast<IdleBytes*>(data);
+  UntrackIdleSource(payload->channel, payload->source_id);
   if (payload->channel != nullptr &&
       payload->generation == payload->channel->open_generation.load() &&
       payload->channel->listening.load() &&
@@ -135,12 +172,12 @@ gboolean SendBytesIdle(gpointer data) {
     fl_event_channel_send(payload->channel->event_channel, value, nullptr,
                           &error);
   }
-  delete payload;
   return G_SOURCE_REMOVE;
 }
 
 gboolean SendErrorIdle(gpointer data) {
   auto* payload = static_cast<IdleError*>(data);
+  UntrackIdleSource(payload->channel, payload->source_id);
   if (payload->channel != nullptr &&
       payload->generation == payload->channel->open_generation.load() &&
       payload->channel->listening.load() &&
@@ -150,8 +187,30 @@ gboolean SendErrorIdle(gpointer data) {
     fl_event_channel_send_error(payload->channel->event_channel, "read_failed",
                                 "read failed", details, nullptr, &error);
   }
-  delete payload;
   return G_SOURCE_REMOVE;
+}
+
+void DestroyIdleBytes(gpointer data) {
+  delete static_cast<IdleBytes*>(data);
+}
+
+void DestroyIdleError(gpointer data) {
+  delete static_cast<IdleError*>(data);
+}
+
+void QueueBytes(SppSerialChannel* self, uint64_t generation,
+                std::vector<uint8_t> bytes) {
+  auto* payload = new IdleBytes{self, generation, 0, std::move(bytes)};
+  payload->source_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, SendBytesIdle,
+                                       payload, DestroyIdleBytes);
+  TrackIdleSource(self, payload->source_id);
+}
+
+void QueueError(SppSerialChannel* self, uint64_t generation, int err) {
+  auto* payload = new IdleError{self, generation, 0, err};
+  payload->source_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, SendErrorIdle,
+                                       payload, DestroyIdleError);
+  TrackIdleSource(self, payload->source_id);
 }
 
 void* ReadLoop(void* arg) {
@@ -176,21 +235,29 @@ void* ReadLoop(void* arg) {
       }
       // Permanent failure (device gone / hangup) — surface to Dart.
       self->reading.store(false);
-      auto* payload = new IdleError{self, generation, errno};
-      g_idle_add(SendErrorIdle, payload);
+      QueueError(self, generation, errno);
       break;
     }
     if (n == 0) {
-      // With VMIN=0 and VTIME=2, a zero-length read is a termios inter-byte
-      // timeout (no data for ~200 ms), not EOF / hangup. Treat it like an
-      // idle poll so a quiet ELM327 does not tear the Classic link down.
+      // With VMIN=0 and VTIME=2, a zero-length read is usually a termios
+      // inter-byte timeout. A hung-up RFCOMM node can also return 0 after the
+      // input queue drains — poll for POLLHUP/POLLERR before treating it as
+      // idle so SerialTransport learns about link loss promptly.
+      pollfd pfd{};
+      pfd.fd = fd;
+      pfd.events = POLLIN | POLLERR | POLLHUP | POLLNVAL;
+      const int pr = poll(&pfd, 1, 0);
+      if (pr > 0 &&
+          (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        self->reading.store(false);
+        QueueError(self, generation, EIO);
+        break;
+      }
       continue;
     }
 
-    auto* payload = new IdleBytes{
-        self, generation,
-        std::vector<uint8_t>(buffer.begin(), buffer.begin() + n)};
-    g_idle_add(SendBytesIdle, payload);
+    QueueBytes(self, generation,
+               std::vector<uint8_t>(buffer.begin(), buffer.begin() + n));
   }
   return nullptr;
 }
@@ -213,6 +280,9 @@ void ClosePort(SppSerialChannel* self) {
     pthread_join(self->read_thread, nullptr);
     self->read_thread_started = false;
   }
+  // Reader is joined — cancel any still-queued idles before a destroy free,
+  // or before a reopen starts listening again with a new generation.
+  DrainIdleSources(self);
 }
 
 bool ConfigureTermios(int fd, int baud) {

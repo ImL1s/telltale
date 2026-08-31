@@ -292,7 +292,11 @@ class SppSerialChannel::Impl {
     timeouts.ReadTotalTimeoutConstant = 50;
     timeouts.WriteTotalTimeoutMultiplier = 0;
     timeouts.WriteTotalTimeoutConstant = 2000;
-    SetCommTimeouts(handle, &timeouts);
+    if (!SetCommTimeouts(handle, &timeouts)) {
+      CloseHandle(handle);
+      result->Error("open_failed", "SetCommTimeouts failed");
+      return;
+    }
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
