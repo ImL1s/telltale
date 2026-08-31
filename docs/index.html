@@ -123,15 +123,21 @@
 
     <div class="actions" aria-label="下載與專案連結">
       <a class="button primary" href="https://github.com/ImL1s/telltale/releases">從 GitHub Releases 下載 APK</a>
+      <a class="button" href="https://play.google.com/store/apps/details?id=com.cbstudio.telltale">從 Google Play 安裝</a>
       <a class="button" href="https://github.com/ImL1s/telltale">查看原始碼</a>
     </div>
 
+    <p>Google Play 版為付費下載，但同版本的功能與原始碼、社群 APK 相同，沒有付費解鎖項目。購買相當於支持持續維護，也省去自行建置、安裝與管理更新；願意自行 build 的使用者仍可免費使用原始碼或 GitHub APK。</p>
+
     <p class="notice"><strong>安裝前注意：</strong>GitHub APK 使用社群簽章，無法更新 Google Play 版，Play 版也無法直接更新它。兩者互換必須先解除安裝，會刪除 App 本機資料；請先匯出需要保留的診斷紀錄並記下設定。</p>
+
+    <h3>實驗性動力電池資料實驗室</h3>
+    <p>動力電池實驗室預設關閉。資料目錄包含 205 個有來源依據的 PHEV、HEV、BEV、MHEV、REEV 與 FCEV profile，其中 203 個僅供研究，兩個可選用的實驗 profile 也不會安裝到一般儀表板。每次連線與嘗試都需要短效、一次性的明確同意，只送出一個固定的唯讀指令；不掃描識別碼、不批次送出、不自動重試，也不排程輪詢。詳見 <a href="https://github.com/ImL1s/telltale/blob/main/docs/powertrain-battery-profiles.md">動力電池 profile、證據與安全邊界</a>。</p>
 
     <h3>目前的驗證邊界</h3>
     <div class="evidence">
-      <p><strong>已驗證：</strong>Samsung 實體手機到 Mac 的真實 BLE/GATT 無線路徑，搭配模擬 ELM327，已完成掃描、連線、UART 寫入與通知。</p>
-      <p><strong>尚未驗證：</strong>CAR25 或其他購入轉接器、其韌體與 profile、ECU/CAN 匯流排，以及真車。</p>
+      <p><strong>已驗證：</strong>Samsung 實體手機到 Mac 的真實 BLE/GATT 無線路徑，搭配模擬 ELM327，已完成掃描、連線、UART 寫入與通知。另有一組 Samsung、CL-OBDII-M25B 與 Toyota GT86 的實車觀察和保留的 session 紀錄；保留下來的怠速輪詢片段使用 CAN 11-bit / 500 kbit/s，未出現 <code>NO DATA</code>、CAN/BUS 錯誤、逾時或格式錯誤回覆。</p>
+      <p><strong>仍未證明：</strong>這項單一觀察不等於轉接器韌體、PID 準確性、DTC 完整性、負載行駛或一般 GT86 支援的認證。它也不能證明其他轉接器、ECU/BMS，或目錄中的 PHEV 與其他動力電池 profile 會提供相同 PID、比例或 payload。</p>
     </div>
 
     <p>請只在車輛停妥時操作，或交由乘客操作。清除 DTC 前先保存診斷證據。App 不會主動上傳資料；你匯出的紀錄可能含 VIN、裝置與轉接器識別資訊。</p>
@@ -154,15 +160,21 @@
 
     <div class="actions" aria-label="Downloads and project links">
       <a class="button primary" href="https://github.com/ImL1s/telltale/releases">Download APK from GitHub Releases</a>
+      <a class="button" href="https://play.google.com/store/apps/details?id=com.cbstudio.telltale">Install from Google Play</a>
       <a class="button" href="https://github.com/ImL1s/telltale">View source</a>
     </div>
 
+    <p>The Google Play edition is paid, but has the same features as the source and community APK at the same version, with no paid unlocks. Buying it supports ongoing maintenance and avoids building, installing, and managing updates yourself; users who prefer to build it themselves can continue to use the source or GitHub APK for free.</p>
+
     <p class="notice"><strong>Before installing:</strong> GitHub APKs use a community signing key. They cannot update, or be updated by, the Google Play build. Switching requires uninstalling Telltale, which removes local app data; export diagnostic records and note any settings you need first.</p>
+
+    <h3>Experimental powertrain-battery laboratory</h3>
+    <p>The powertrain-battery laboratory is off by default. Its catalog contains 205 source-backed PHEV, HEV, BEV, MHEV, REEV, and FCEV profiles: 203 are research-only, and the two opt-in experimental profiles are not installed into normal dashboards. Every connection and attempt requires new, short-lived, one-use consent and sends only one pinned read-only command; there is no identifier scan, batch, automatic retry, or scheduled polling. See the <a href="https://github.com/ImL1s/telltale/blob/main/docs/powertrain-battery-profiles.md">powertrain-battery profile, evidence, and safety boundaries</a>.</p>
 
     <h3>Current verification boundary</h3>
     <div class="evidence">
-      <p><strong>Verified:</strong> a real Samsung-to-Mac BLE/GATT radio path using a simulated ELM327, including discovery, connection, UART writes, and notifications.</p>
-      <p><strong>Not yet verified:</strong> CAR25 or another purchased adapter, its firmware and profile, an ECU/CAN bus, or a real vehicle.</p>
+      <p><strong>Verified:</strong> a real Samsung-to-Mac BLE/GATT radio path using a simulated ELM327, including discovery, connection, UART writes, and notifications. Separately, one Samsung, CL-OBDII-M25B, and Toyota GT86 combination produced a retained real-vehicle session; its retained idle-polling segments used CAN 11-bit / 500 kbit/s and contained no <code>NO DATA</code>, CAN/BUS error, timeout, or malformed reply.</p>
+      <p><strong>Still not proven:</strong> this one observation does not certify adapter firmware, PID accuracy, complete DTC coverage, loaded-road behaviour, or general GT86 support. It also does not prove that another adapter, ECU/BMS, or any catalogued PHEV or other powertrain-battery profile exposes the same PID, scale, or payload.</p>
     </div>
 
     <p>Use Telltale only while parked or as a passenger. Save diagnostic evidence before clearing DTCs. The app proactively uploads nothing; exported records may contain VIN, device, and adapter identifiers.</p>
