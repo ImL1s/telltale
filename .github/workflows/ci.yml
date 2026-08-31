@@ -4,11 +4,13 @@
 # with nothing held back. So the checks here are the ones that decide whether a
 # build is honest, not a subset kept for show.
 #
-# Free public runners here are the authoritative remote compile matrix for
-# multiplatform enablement (Android + Apple iOS/macOS + Linux + Windows). The
-# private source repo may be Actions-billing-blocked; do not treat private
-# Actions green as a merge requirement when this workflow already exercises
-# every target platform.
+# Free public runners here are the authoritative remote matrix for
+# multiplatform enablement (Android + Apple iOS/macOS + Linux + Windows).
+# Compile gates alone are not enough: Apple/Linux/Windows jobs also run a
+# Demo/export/transport functional smoke suite after building. The private
+# source repo may be Actions-billing-blocked; do not treat private Actions
+# green as a merge requirement when this workflow already exercises every
+# target platform.
 #
 # One check is unusual and is the point of the whole file: the `oracle` job runs
 # the test suite against an ELM327 simulator that nobody on this project wrote.
@@ -126,9 +128,9 @@ jobs:
             -s test/tool -p 'test_*.py' -v
 
   apple:
-    name: Apple compile gates
+    name: Apple build + functional smoke
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -143,22 +145,31 @@ jobs:
 
       - run: flutter pub get
 
-      # Neither of these has ever been run on a device, and compiling is not
-      # running. What it does catch is the failure that reaches iOS and macOS
-      # users first anyway: a dependency that does not build there at all. The
-      # BLE package was replaced without either platform being compiled for
-      # days, and a plugin that silently dropped iOS support would have been
-      # invisible until somebody tried to ship one.
+      # Compiling is not running. These builds still catch plugins that drop
+      # Apple support; the smoke suite below exercises Demo → dashboard and
+      # export on the same runner that produced the binaries.
       - name: Build iOS without code signing
         run: flutter build ios --no-codesign
 
       - name: Build macOS debug
         run: flutter build macos --debug
 
+      - name: Functional smoke (Demo journey, export, transport gates)
+        run: |
+          set -euo pipefail
+          flutter test \
+            test/demo_connect_journey_test.dart \
+            test/transcript_export_smoke_test.dart \
+            test/which_transport_test.dart \
+            test/wifi_transport_test.dart \
+            test/telemetry_heartbeat_test.dart \
+            test/app_wakelock_test.dart \
+            test/remembered_adapter_navigation_test.dart
+
   linux:
-    name: Linux compile gate
+    name: Linux build + functional smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -187,10 +198,25 @@ jobs:
       - name: Build Linux debug
         run: flutter build linux --debug
 
+      # Widget/unit smoke on the Linux runner after a successful desktop binary.
+      # This is not a GTK `flutter run` of the binary, but it is the Demo
+      # connect path and export contract the binary embeds.
+      - name: Functional smoke (Demo journey, export, transport gates)
+        run: |
+          set -euo pipefail
+          flutter test \
+            test/demo_connect_journey_test.dart \
+            test/transcript_export_smoke_test.dart \
+            test/which_transport_test.dart \
+            test/wifi_transport_test.dart \
+            test/telemetry_heartbeat_test.dart \
+            test/app_wakelock_test.dart \
+            test/remembered_adapter_navigation_test.dart
+
   windows:
-    name: Windows compile gate
+    name: Windows build + functional smoke
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: bash
@@ -207,6 +233,18 @@ jobs:
 
       - name: Build Windows debug
         run: flutter build windows --debug
+
+      - name: Functional smoke (Demo journey, export, transport gates)
+        run: |
+          set -euo pipefail
+          flutter test \
+            test/demo_connect_journey_test.dart \
+            test/transcript_export_smoke_test.dart \
+            test/which_transport_test.dart \
+            test/wifi_transport_test.dart \
+            test/telemetry_heartbeat_test.dart \
+            test/app_wakelock_test.dart \
+            test/remembered_adapter_navigation_test.dart
 
   privacy:
     name: the two privacy policies agree

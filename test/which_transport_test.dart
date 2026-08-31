@@ -126,6 +126,18 @@ void main() {
     expect(bleUnavailableReason, isNot(isEmpty));
   });
 
+  test('desktop Wi-Fi guidance does not pretend the host is a phone', () {
+    final desktop = whichTransportGuidance(
+      classicAvailable: false,
+      phoneCentricCopy: false,
+    ).firstWhere((q) => q.transport == TransportKind.wifi);
+    expect(desktop.question, contains('系統'));
+    expect(desktop.question, isNot(contains('手機')));
+    expect(desktop.answer, contains('這台裝置'));
+    expect(wifiConnectInstructions(isPhone: false), contains('這台電腦'));
+    expect(wifiConnectInstructions(isPhone: true), contains('手機'));
+  });
+
   test('each transport is the destination of exactly one question', () {
     // Two questions leading to the same place means one of them is not
     // separating anything, which is how the pairing-list version went wrong.

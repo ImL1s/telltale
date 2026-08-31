@@ -10,6 +10,7 @@ library;
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -36,8 +37,26 @@ String formatTranscriptSize(int bytes) =>
 /// A file rather than a text share: these run to hundreds of kilobytes and
 /// every messaging app truncates a long string. The name carries the timestamp
 /// so two exports from one afternoon do not overwrite each other.
-Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
-  final session = ref.read(obdSessionProvider.notifier);
+Future<String?> exportTranscript(
+  WidgetRef ref, {
+  required bool withHex,
+  @visibleForTesting Future<Directory> Function()? temporaryDirectory,
+  @visibleForTesting Future<ShareResult> Function(ShareParams params)? share,
+}) =>
+    exportSessionTranscript(
+      ref.read(obdSessionProvider.notifier),
+      withHex: withHex,
+      temporaryDirectory: temporaryDirectory,
+      share: share,
+    );
+
+/// Session-facing export used by UI and by host-agnostic tests.
+Future<String?> exportSessionTranscript(
+  ObdSession session, {
+  required bool withHex,
+  @visibleForTesting Future<Directory> Function()? temporaryDirectory,
+  @visibleForTesting Future<ShareResult> Function(ShareParams params)? share,
+}) async {
   // One read, so the heading and the bytes are from the same session.
   //
   // Reading them separately put an await between them — the temporary
@@ -51,13 +70,13 @@ Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
     String two(int v) => v.toString().padLeft(2, '0');
     final stamp = '${now.year}${two(now.month)}${two(now.day)}'
         '-${two(now.hour)}${two(now.minute)}${two(now.second)}';
-    final dir = await getTemporaryDirectory();
+    final dir = await (temporaryDirectory ?? getTemporaryDirectory)();
     final file = File('${dir.path}/torque-obd-$stamp.txt');
     await file.writeAsBytes(transcript.encode(
       header: record.header,
       withHex: withHex,
     ));
-    await SharePlus.instance.share(ShareParams(
+    final params = ShareParams(
       // Declared, not inferred.
       //
       // Without it Android is left to guess from the extension, and the guess
@@ -72,7 +91,8 @@ Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
       files: [XFile(file.path, mimeType: 'text/plain')],
       subject: 'Telltale 傳輸紀錄 $stamp',
       fileNameOverrides: ['torque-obd-$stamp.txt'],
-    ));
+    );
+    await (share ?? SharePlus.instance.share)(params);
     return null;
   } on Object catch (e) {
     return '匯出失敗：$e';

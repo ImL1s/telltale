@@ -8,6 +8,7 @@ library;
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -486,7 +487,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         // the difference between a wrong tap costing ten seconds and
         // costing half a minute of believing the app is broken.
         listHint:
-            '這裡列出手機上所有已配對的裝置 — 耳機、喇叭也會在內，'
+            '這裡列出系統上所有已配對的裝置 — 耳機、喇叭也會在內，'
             '看起來像轉接器的排在前面。選錯了就按「取消」，'
             '不必等它自己失敗，取消後可以馬上改選別的。',
         showSettingsAction: _permissionPermanentlyDenied,
@@ -744,10 +745,7 @@ class _WifiBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '請先將手機連上轉接器發出的 Wi-Fi 熱點，再輸入其位址。'
-          '系統若問「此 Wi-Fi 無法連上網際網路，是否繼續使用」，選繼續使用。'
-          '在 Android 上，App 連線時會嘗試把流量固定在 Wi-Fi 路由，'
-          '避免被行動數據搶走。',
+          wifiConnectInstructions(),
           style: context.texts.bodyMedium,
         ),
         const SizedBox(height: Spacing.lg),
@@ -1588,14 +1586,39 @@ bool get bleTransportAvailable => true;
 /// false. Kept for UI wiring; every current host returns true above.
 String get bleUnavailableReason => 'Bluetooth LE 在此主機尚不可用';
 
+/// Wi-Fi body copy. Phone hosts keep cellular-handoff guidance; desktop hosts
+/// talk about the computer joining the adapter AP without inventing a binder.
+String wifiConnectInstructions({@visibleForTesting bool? isPhone}) {
+  final phone = isPhone ?? _phoneFormFactor;
+  if (phone) {
+    return '請先將手機連上轉接器發出的 Wi-Fi 熱點，再輸入其位址。'
+        '系統若問「此 Wi-Fi 無法連上網際網路，是否繼續使用」，選繼續使用。'
+        '在 Android 上，App 連線時會嘗試把流量固定在 Wi-Fi 路由，'
+        '避免被行動數據搶走。';
+  }
+  return '請先將這台電腦連上轉接器發出的 Wi-Fi 熱點，再輸入其位址。'
+      '系統若提示此網路無法連上網際網路，請選擇繼續使用。'
+      '桌面系統通常會把熱點當預設路由；不需要 Android 那套 Wi-Fi 路由綁定。';
+}
+
+bool get _phoneFormFactor =>
+    !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
 List<TransportQuestion> whichTransportGuidance({
   required bool classicAvailable,
   bool bleAvailable = true,
-}) => [
+  @visibleForTesting bool? phoneCentricCopy,
+}) {
+  final phone = phoneCentricCopy ?? _phoneFormFactor;
+  return [
   (
     transport: TransportKind.wifi,
-    question: '手機的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？',
-    answer: '選 Wi-Fi。先把手機連上那個網路，再回來輸入位址。',
+    question: phone
+        ? '手機的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？'
+        : '系統的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？',
+    answer: phone
+        ? '選 Wi-Fi。先把手機連上那個網路，再回來輸入位址。'
+        : '選 Wi-Fi。先把這台裝置連上那個網路，再回來輸入位址。',
   ),
   if (bleAvailable)
     (
@@ -1620,7 +1643,8 @@ List<TransportQuestion> whichTransportGuidance({
           '選 Bluetooth Classic。先在系統設定裡配對完成，'
           'App 不能代替你配對。配對碼多半是 1234 或 0000。',
     ),
-];
+  ];
+}
 
 /// What to say when a BLE scan finishes having found nothing.
 ///

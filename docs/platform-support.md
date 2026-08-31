@@ -6,81 +6,70 @@ identity users see is **Telltale** / `com.cbstudio.telltale`.
 ## Verification backbone
 
 Private `ImL1s/torque` Actions may be unavailable (billing). **Public
-`ImL1s/telltale` CI is the authoritative remote compile matrix** for this
-enablement: Android (field/rig APK), Apple (iOS + macOS), Linux, and Windows
-jobs on free runners. Product code still originates in private `app/` and is
-archive-synced; telltale `.github/` is publish-only and carries the desktop
-gates independently.
+`ImL1s/telltale` CI is the authoritative remote matrix** for multiplatform
+enablement. Compile gates are necessary but **not sufficient**: functional
+smoke (Demo journey, Wi‑Fi TCP unit path, export, host gates) must also pass
+on free runners. Product code still originates in private `app/` and is
+archive-synced; telltale `.github/` is publish-only.
 
-## Matrix
+## Functional matrix (honest)
 
-| Platform | Runner folder | CI compile gate (telltale) | Core transports (OS-allowed) |
-|---|---|---|---|
-| Android | `android/` | field + rig APK identities | Demo, Wi-Fi, BLE, Classic SPP |
-| iOS | `ios/` | `flutter build ios --no-codesign` | Demo, Wi-Fi, BLE |
-| macOS | `macos/` | `flutter build macos --debug` | Demo, Wi-Fi, BLE |
-| Windows | `windows/` | `flutter build windows --debug` | Demo, Wi-Fi, BLE |
-| Linux | `linux/` | `flutter build linux --debug` | Demo, Wi-Fi, BLE (BlueZ/D-Bus) |
+Legend: **pass** = exercised by automated test and/or local run evidence on
+this branch · **wired** = code path present, field/device evidence still thin ·
+**OS-blocked** = host cannot provide the capability · **deferred** = not on
+this branch / not yet proven.
 
-“Supported” here means a **runnable app path** with Demo and Wi-Fi at minimum,
-plus BLE where the host stack exists — not merely `flutter build` succeeding.
-Classic SPP is called out separately below.
+| Feature | Android | iOS | macOS | Windows | Linux |
+|---|---|---|---|---|---|
+| Demo connect → live telemetry UI | **pass** (device + `demo_connect_journey_test`) | **pass** (journey test; sim/device thin) | **pass** (journey + local `Telltale.app` smoke) | **pass** (journey test; device thin) | **pass** (journey test; device thin) |
+| Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP |
+| BLE scan/connect | **pass** (field) | **wired** CoreBluetooth | **wired** entitlements | **wired** WinRT plugin | **wired** Dart BlueZ/D-Bus (needs BlueZ at runtime) |
+| Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | product-gated | product-gated |
+| Transcript export / share | **pass** | **wired** share_plus | **wired** share_plus | **wired** share_plus | **wired** (Dart share + url_launcher; weaker UX) |
+| PID CSV pick/share | **pass** | **wired** | **wired** sandbox | **wired** | **wired** |
+| SharedPreferences boot | **pass** | **pass** | **pass** | **pass** | **pass** |
+| Wakelock while connected | **pass** | **pass** | **pass** | **wired** | no-op (no plugin; intentional) |
+| Session telemetry / `app_share*` stack | on `master` checkout, **deferred on this branch** | — | — | — | — |
+| CI beyond `flutter build` | analyze + full `flutter test` + APKs | build + functional smoke suite | build + functional smoke suite | build + functional smoke suite | build + functional smoke suite |
 
-## Bluetooth Classic (SPP) — permanent / product host gates
+## Bluetooth Classic (SPP)
 
 UI predicate: `classicTransportAvailable` → **Android only**. Guidance,
-transport cards, and remembered-adapter reconnect all fail closed on the same
-predicate.
+transport cards, and remembered-adapter reconnect all fail closed together.
 
 | Host | Status | Why |
 |---|---|---|
-| Android | Supported | Verified ELM327 RFCOMM/SPP path |
-| iOS | **Permanent OS/API host gate** | Third-party apps cannot open generic SPP; External Accessory / MFi only. Not a product bug and not a CI failure. |
-| macOS / Windows / Linux | **Product verification gate** | `flutter_classic_bluetooth` registers plugins, but this app has not field-verified ELM327 SPP on desktop. Card stays greyed until that evidence exists. |
+| Android | Supported | Verified ELM327 RFCOMM/SPP |
+| iOS | **Permanent OS/API host gate** | No generic third-party SPP |
+| macOS / Windows / Linux | Product verification gate | Plugins exist; ELM327 SPP not field-verified — card stays grey |
 
-Linux CI / local builds still need `libbluetooth-dev` because
-`flutter_classic_bluetooth`'s Linux CMake hard-requires BlueZ headers at
-configure time, even while the Classic **card** stays gated off.
+Linux CI still needs `libbluetooth-dev` because `flutter_classic_bluetooth`'s
+Linux CMake requires BlueZ headers at configure time.
 
 ## Bluetooth LE
 
-UI predicate: `bleTransportAvailable` → **true on every shipping host**.
+`bleTransportAvailable` → **true** on every shipping host.
 
-`universal_ble` provides:
-
-- Native pigeon plugins on Android, iOS, macOS, Windows (listed in each
-  platform’s `generated_plugins.cmake` / registrant).
-- A **Dart BlueZ** backend on Linux (`package:bluez` over D-Bus). There is
-  intentionally **no** Linux Flutter plugin registrant — absence from
-  `linux/flutter/generated_plugins.cmake` is correct, not a missing
-  implementation.
-
-Runtime on Linux needs a working BlueZ stack (D-Bus). Compile CI does not need
-a Bluetooth adapter. Field evidence with a real ELM327 BLE dongle on Linux is
-still desirable; the UI path is no longer blocked by the earlier
-`MissingPluginException` misdiagnosis.
+- Android / iOS / macOS / Windows: `universal_ble` native plugins.
+- Linux: Dart BlueZ backend (`package:bluez` over D-Bus). **No** Flutter
+  plugin registrant is expected. Runtime needs BlueZ; compile CI does not need
+  an adapter. Field evidence with a real ELM327 BLE dongle on Linux is still
+  required before calling Linux BLE “mature”.
 
 ## Desktop / Apple runnable notes
 
-- **macOS:** sandbox entitlements include network client + Bluetooth; Demo and
-  Wi-Fi TCP are in-tree. Debug Profile also allows JIT + local server for
-  tooling.
-- **Windows:** runner branded `Telltale` / `telltale.exe`. MSVC needs
-  `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS` so 14.51+ does not
-  hard-fail `permission_handler_windows` on deprecated
-  `<experimental/coroutine>`.
-- **Linux:** wakelock is a deliberate no-op (`wakelock_plus` has no Linux
-  plugin); Demo / Wi-Fi / BLE do not depend on it.
-- **iOS:** Classic permanently unavailable; Demo / Wi-Fi / BLE remain the core
-  path. Local-network usage string is set for Wi-Fi adapter joins.
+- **macOS:** network client + Bluetooth entitlements; Demo smoke-launched
+  locally as `Telltale.app`. SystemChrome orientation skipped on desktop.
+- **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for
+  `permission_handler_windows`.
+- **Linux:** wakelock no-op; Demo / Wi‑Fi / BLE (BlueZ) do not depend on it.
+- **iOS:** Classic permanently unavailable; Demo / Wi‑Fi / BLE are the core
+  path. Wi‑Fi / guidance copy stays phone-centric on iOS/Android only.
 
-## First enablement vs later work
+## Still deferred (does **not** meet the full functional bar alone)
 
-**Done (compile + scaffold + core transport honesty):** Windows/Linux runners,
-public telltale compile matrix, Classic fail-closed (iOS permanent + desktop
-unverified), Linux BLE UI enabled via BlueZ Dart path.
-
-**Still deferred:** store packaging (MSIX / Flatpak / notarized DMG), Classic
-desktop enablement with device evidence, Linux BLE field verification against
-a real adapter, Windows signing for community builds, and shell density tweaks
-for keyboard/mouse primary layouts.
+- Store packaging (MSIX / Flatpak / notarized DMG)
+- Classic desktop enablement with device evidence
+- Linux / desktop BLE field verification against a real adapter
+- Bringing `master`’s session telemetry / `app_share*` stack onto this branch
+- Keyboard/mouse shell density polish
