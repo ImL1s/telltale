@@ -40,7 +40,8 @@ add_definitions(-DUNICODE -D_UNICODE)
 # permission_handler_windows). Silence until those plugins migrate to C++20
 # <coroutine>. Must be directory-scoped before plugin add_subdirectory.
 if(MSVC)
-  add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNING)
+  # STL1011 message text names the plural form; keep that exact macro.
+  add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
 endif()
 
 # Compilation settings that should be applied to most targets.

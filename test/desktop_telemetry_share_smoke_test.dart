@@ -142,7 +142,7 @@ void main() {
 
   test('bridge swallows platform exceptions as failed without throwing',
       () async {
-    final bridge = AppSharePlatformBridge(useNativeMacOsShare: false);
+    const bridge = AppSharePlatformBridge(useNativeMacOsShare: false);
     // No share_plus binding in unit tests → soft-fail, never throw.
     final result = await bridge.share(
       AppSharePlatformRequest(

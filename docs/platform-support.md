@@ -72,7 +72,8 @@ device or simulator is attached; do not treat green CI as a field BLE pass.
   `default-flavor: field` requires matching Xcode scheme + configs (`field.xcscheme`, `Debug-field`/`Release-field`/`Profile-field`);
   Android-only `rig` stays out of Apple schemes.
 - **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for
-  `permission_handler_windows` (singular `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNING`).
+  `permission_handler_windows` (plural `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS`,
+  matching MSVC STL1011’s own suppress token).
 - **Linux:** wakelock no-op; Demo / Wi‑Fi / BLE (BlueZ) do not depend on it.
 - **iOS:** Classic permanently unavailable; Demo / Wi‑Fi / BLE are the core
   path. Wi‑Fi / guidance copy stays phone-centric on iOS/Android only.
