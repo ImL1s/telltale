@@ -375,10 +375,23 @@ class SppSerialChannel::Impl {
       if (!ok) {
         const DWORD err = GetLastError();
         if (err == ERROR_OPERATION_ABORTED || err == ERROR_INVALID_HANDLE) {
+          // Expected during ClosePort / CancelIoEx — unwind quietly.
           break;
         }
-        // Transient timeout / empty read — keep listening.
-        continue;
+        // With COMMTIMEOUTS above, idle reads succeed with zero bytes.
+        // Any other ReadFile failure is permanent (device unplugged /
+        // ERROR_DEVICE_NOT_CONNECTED / ERROR_GEN_FAILURE, …). Retrying
+        // would spin a core and never tell SerialTransport the link died.
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          reading_ = false;
+          if (sink_ != nullptr) {
+            sink_->Error(
+                "read_failed", "ReadFile failed",
+                &flutter::EncodableValue(static_cast<int64_t>(err)));
+          }
+        }
+        break;
       }
       if (read == 0) continue;
 

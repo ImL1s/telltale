@@ -148,6 +148,26 @@ void main() {
       expect(transport.isConnected, isFalse);
     });
 
+    test('inbound stream errors mark the Classic link disconnected', () async {
+      final session = _FakeSppSession();
+      final transport = SerialTransport(
+        portName: 'COM4',
+        displayLabel: 'OBDBLE',
+        session: session,
+      );
+      await transport.connect();
+      expect(transport.isConnected, isTrue);
+
+      // Mirrors the native ReadLoop: permanent ReadFile failures Error the
+      // EventChannel so SerialTransport can drop the session instead of
+      // spinning on a dead COM handle.
+      session.inboundController.addError(
+        PlatformException(code: 'read_failed', message: 'ReadFile failed'),
+      );
+      await pumpEventQueue();
+      expect(transport.isConnected, isFalse);
+    });
+
     test('write before connect is WriteRefusedException', () async {
       final transport = SerialTransport(
         portName: 'COM1',
