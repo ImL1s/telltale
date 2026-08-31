@@ -107,13 +107,18 @@ void main() {
         await store.save(saved, 'Recovered\n', fromRealHardware: true),
         isTrue,
       );
-      final descriptor = await store.openStreaming();
+      final displayed = await store.load();
+      expect(displayed, isNotNull);
+      final descriptor = await store.openStreaming(expected: displayed);
       expect(descriptor, isNotNull);
       final expectedRecovered = await _collect(descriptor!.open());
       final recovered = await _invoke(
         roots,
         4,
-        (controller) => controller.shareRecoveredTranscript(store: store),
+        (controller) => controller.shareRecoveredTranscript(
+          store: store,
+          expected: displayed!,
+        ),
       );
       expect(recovered.bytes, expectedRecovered);
       expect(recovered.request.subject, 'Telltale 傳輸紀錄（上一次連線）');
@@ -237,8 +242,14 @@ void main() {
         );
         await (platform as _NeverPlatform).invoked.future;
       }
-      await AppShareEntryController(coordinator)
-          .shareRecoveredTranscript(store: store);
+      await AppShareEntryController(coordinator).shareRecoveredTranscript(
+        store: store,
+        expected: StoredTranscript(
+          header: 'x',
+          body: 'y',
+          savedAt: DateTime.utc(2026),
+        ),
+      );
       expect(store.opens, 0, reason: denial);
     }
   });
@@ -458,7 +469,9 @@ final class _CapturePlatform implements AppSharePlatform {
 final class _CountingStore extends TranscriptStore {
   int opens = 0;
   @override
-  Future<StreamingStoredTranscript?> openStreaming() async {
+  Future<StreamingStoredTranscript?> openStreaming({
+    StoredTranscript? expected,
+  }) async {
     opens++;
     throw StateError('descriptor must not open');
   }

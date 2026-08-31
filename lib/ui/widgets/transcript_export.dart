@@ -134,15 +134,24 @@ final recoveredTranscriptProvider = FutureProvider<StoredTranscript?>((ref) {
 /// bytes came off disk, written by an app that is no longer running. That is
 /// the case this exists for — Android killed it, or the phone died, and the
 /// only copy is the one that was saved on the way out.
+///
+/// [displayed] is the snapshot currently shown in the panel. Export refuses
+/// when `last-session.log` no longer matches it, so a later periodic snapshot
+/// cannot be shared under the previous-connection label.
 Future<String?> exportRecoveredTranscript(
-  WidgetRef ref, [
-  StoredTranscript? _,
-]) async {
+  WidgetRef ref,
+  StoredTranscript displayed,
+) async {
   try {
     final store = ref.read(managedTranscriptStoreProvider);
     final outcome = await ref
         .read(appShareEntryControllerProvider)
-        .shareRecoveredTranscript(store: store);
+        .shareRecoveredTranscript(store: store, expected: displayed);
+    if (outcome.error == ShareError.storageFailure) {
+      // openStreaming returned null because the file changed or vanished.
+      ref.invalidate(recoveredTranscriptProvider);
+      return '上一次連線的紀錄已更新，請再確認。';
+    }
     return outcome.userFacingError;
   } on Object catch (e) {
     return '匯出失敗：$e';
@@ -199,15 +208,21 @@ class RecoveredTranscriptPanel extends ConsumerWidget {
                   onPressed: () async {
                     final outcome = await ref
                         .read(managedTranscriptStoreProvider)
-                        .clear();
+                        .clear(expected: stored);
                     if (outcome.succeeded) {
                       ref.invalidate(recoveredTranscriptProvider);
                     } else if (context.mounted) {
+                      if (outcome.error ==
+                          TranscriptMutationError.identityChanged) {
+                        ref.invalidate(recoveredTranscriptProvider);
+                      }
                       final message = switch (outcome.error) {
                         TranscriptMutationError.artifactBusy => '另一個檔案作業尚未完成。',
                         TranscriptMutationError.policyDenied ||
                         TranscriptMutationError.safetyChanged =>
                           '目前車速或連線狀態不允許刪除紀錄。',
+                        TranscriptMutationError.identityChanged =>
+                          '上一次連線的紀錄已更新，請再確認。',
                         TranscriptMutationError.storageFailure =>
                           '無法刪除上一次連線的紀錄。',
                         null => '',

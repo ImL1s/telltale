@@ -99,5 +99,4 @@ BLE/Classic field rows as blocked-by-hardware.
 - Linux / desktop BLE field verification against a real adapter
 - Human confirmation of every desktop share-sheet target (macOS staging +
   channel handoff is proven; picker selection is not automated)
-- Replay elapsed-time normalization when a session starts late in an app clock
 - Keyboard/mouse shell density polish

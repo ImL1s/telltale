@@ -130,6 +130,45 @@ void main() {
     );
   });
 
+  test(
+    'resume after interrupt starts a fresh discovery instead of joining the retired one',
+    () async {
+      final transport = FakeElm327(
+        protocol: BusProtocol.can11,
+        ecus: [
+          FakeEcu(
+            name: 'ECM',
+            requestId: '7E0',
+            responseId: '7E8',
+            responses: const {
+              '0100': [0x41, 0x00, 0x00, 0x18, 0x00, 0x00],
+            },
+          ),
+        ],
+      );
+      final engine = await _connect(transport);
+      addTearDown(engine.dispose);
+      transport.slowCommands['0100'] = const Duration(milliseconds: 120);
+
+      final interrupted = engine.discoverSupportedPids();
+      expect(engine.capabilitySummary.phase, ObdCapabilityDiscoveryPhase.running);
+      engine.interruptCapabilityDiscovery();
+
+      // Mimic `_resumeNow`: a new discovery must not coalesce onto the retired
+      // future that is about to exit without verifying any block.
+      final resumed = engine.discoverSupportedPids();
+      await interrupted;
+      final supported = await resumed;
+
+      expect(supported, contains('010C'));
+      expect(
+        engine.capabilitySummary.phase,
+        ObdCapabilityDiscoveryPhase.attemptFinished,
+      );
+      expect(engine.capabilitySummary.verifiedBlockIds, contains('0100'));
+    },
+  );
+
   test('successful attempt publishes verified terminal coverage', () async {
     final transport = FakeElm327(
       protocol: BusProtocol.can11,

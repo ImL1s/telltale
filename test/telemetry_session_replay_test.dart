@@ -13,8 +13,10 @@ Future<String> _writeReplay(
   Directory documents, {
   int valuePairs = 800,
   Duration wallClockDuration = const Duration(microseconds: 1600000),
+  int elapsedOriginUs = 0,
+  String sessionId = '10000000000000000000000000000001',
 }) async {
-  const id = '10000000000000000000000000000001';
+  final id = sessionId;
   final started = DateTime.utc(2026, 8, 30, 2);
   final definitions = [
     freezePidDefinition(PidLibrary.engineRpm),
@@ -30,11 +32,13 @@ Future<String> _writeReplay(
   );
   final events = <TelemetryEvent>[];
   for (var index = 0; index < valuePairs; index++) {
-    final elapsed = index * 2000;
+    final elapsed = elapsedOriginUs + index * 2000;
     events.add(
       TelemetryEvent.value(
-        observedAtUtc: started.add(Duration(microseconds: elapsed)),
-        sourceTimestampUtc: started.add(Duration(microseconds: elapsed)),
+        observedAtUtc: started.add(Duration(microseconds: elapsed - elapsedOriginUs)),
+        sourceTimestampUtc: started.add(
+          Duration(microseconds: elapsed - elapsedOriginUs),
+        ),
         elapsedUs: elapsed,
         pidId: definitions.first.definition.id,
         value: 1000 + index.toDouble(),
@@ -43,7 +47,9 @@ Future<String> _writeReplay(
     if (index == valuePairs ~/ 2) {
       events.add(
         TelemetryEvent.status(
-          observedAtUtc: started.add(Duration(microseconds: elapsed + 1)),
+          observedAtUtc: started.add(
+            Duration(microseconds: elapsed - elapsedOriginUs + 1),
+          ),
           elapsedUs: elapsed + 1,
           pidId: definitions.first.definition.id,
           status: TelemetryStatus.noAnswer,
@@ -52,8 +58,12 @@ Future<String> _writeReplay(
     }
     events.add(
       TelemetryEvent.value(
-        observedAtUtc: started.add(Duration(microseconds: elapsed + 2)),
-        sourceTimestampUtc: started.add(Duration(microseconds: elapsed + 2)),
+        observedAtUtc: started.add(
+          Duration(microseconds: elapsed - elapsedOriginUs + 2),
+        ),
+        sourceTimestampUtc: started.add(
+          Duration(microseconds: elapsed - elapsedOriginUs + 2),
+        ),
         elapsedUs: elapsed + 2,
         pidId: definitions[1].definition.id,
         value: index / 10,
@@ -156,6 +166,49 @@ void main() {
       expect(
         result.replay!.endedAtUtc.difference(result.replay!.startedAtUtc),
         const Duration(hours: 12),
+      );
+    },
+  );
+
+  test(
+    'replay normalizes a non-zero app-clock origin to session-relative time',
+    () async {
+      final documents = await Directory.systemTemp.createTemp('replay-origin');
+      addTearDown(() => documents.delete(recursive: true));
+      // A one-minute recording that begins ten minutes after app launch must
+      // replay for ~60s from chart origin 0, not stretch across ~11 minutes.
+      const originUs = 10 * 60 * 1000000;
+      final id = await _writeReplay(
+        documents,
+        valuePairs: 4,
+        elapsedOriginUs: originUs,
+        sessionId: '10000000000000000000000000000003',
+      );
+
+      final result = await TelemetrySessionLibraryService(
+        documentsDirectory: () async => documents,
+      ).replay(id);
+
+      final replay = result.replay!;
+      expect(replay.elapsedDurationUs, 6002);
+      expect(
+        replay.elapsedDurationUs,
+        lessThan(originUs),
+        reason: 'duration must be session length, not absolute last elapsedUs',
+      );
+      final earliest = replay.lanes
+          .expand((lane) => lane.primitives)
+          .map((primitive) => primitive.elapsedUs)
+          .reduce((a, b) => a < b ? a : b);
+      expect(earliest, 0, reason: 'session origin must be normalized to zero');
+      expect(
+        replay.lanes.every(
+          (lane) => lane.primitives.every(
+            (primitive) =>
+                primitive.elapsedUs >= 0 && primitive.elapsedUs <= 6002,
+          ),
+        ),
+        isTrue,
       );
     },
   );

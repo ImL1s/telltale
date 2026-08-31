@@ -844,6 +844,10 @@ class PollingEngine {
     if (_capabilityPhase != ObdCapabilityDiscoveryPhase.running) return;
     _capabilityDiscoveryEpoch++;
     _capabilityPhase = ObdCapabilityDiscoveryPhase.interrupted;
+    // Drop the coalescer slot so a resume can start a fresh scan instead of
+    // joining the retired in-flight future that is about to exit on epoch
+    // mismatch and leave discovery incomplete for the rest of the connection.
+    _discoveryInFlight = null;
     _publishCapabilitySummary();
   }
 

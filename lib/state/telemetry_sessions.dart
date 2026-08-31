@@ -894,6 +894,8 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
   final available = <String, bool>{};
   final segment = <String, int>{};
   var invalidSelection = false;
+  var elapsedOriginUs = 0;
+  var elapsedOriginCaptured = false;
   var elapsedDurationUs = 0;
   const reader = TelemetrySessionReader();
   final result = await reader.read(
@@ -927,11 +929,22 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
       }
       final canonicalEvent = line.canonicalEvent;
       if (canonicalEvent != null) {
-        elapsedDurationUs = canonicalEvent.elapsedUs;
+        if (!elapsedOriginCaptured) {
+          elapsedOriginUs = canonicalEvent.elapsedUs;
+          elapsedOriginCaptured = true;
+        }
+        elapsedDurationUs = canonicalEvent.elapsedUs - elapsedOriginUs;
       }
       final id = line.object['pidId'];
-      final elapsed = line.object['elapsedUs'];
-      if (id is! String || elapsed is! int) return;
+      final rawElapsed = line.object['elapsedUs'];
+      if (id is! String || rawElapsed is! int) return;
+      if (!elapsedOriginCaptured) {
+        elapsedOriginUs = rawElapsed;
+        elapsedOriginCaptured = true;
+      }
+      final elapsed = rawElapsed - elapsedOriginUs;
+      if (elapsed < 0) return;
+      if (elapsed > elapsedDurationUs) elapsedDurationUs = elapsed;
       final accumulator = accumulators[id];
       if (accumulator == null) return;
       if (line.kind == TelemetryRecordLineKind.status) {

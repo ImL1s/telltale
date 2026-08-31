@@ -97,12 +97,13 @@ final class AppShareEntryController {
 
   Future<AppShareOutcome> shareRecoveredTranscript({
     required TranscriptStore store,
+    required StoredTranscript expected,
   }) => _coordinator.share(
     AppShareRequest.lazy(
       sourceKind: ShareSourceKind.recoveredTranscript,
       subject: 'Telltale 傳輸紀錄（上一次連線）',
       prepareSource: () async {
-        final descriptor = await store.openStreaming();
+        final descriptor = await store.openStreaming(expected: expected);
         if (descriptor == null) return null;
         return PreparedAppShareSource(
           streamFactory: descriptor.open,

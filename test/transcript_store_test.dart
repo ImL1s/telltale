@@ -135,6 +135,38 @@ void main() {
   );
 
   test(
+    'openStreaming and clear refuse when the displayed snapshot no longer matches',
+    () async {
+      final store = TranscriptStore(
+        directory: () async => _dir,
+        destructivePolicy: _StorePolicy(),
+      );
+      final first = ObdTranscript()
+        ..recordWrite('ATZ\r'.codeUnits, DateTime(2026, 8, 17, 12));
+      expect(
+        await store.save(first, '# first\n', fromRealHardware: true),
+        isTrue,
+      );
+      final displayed = await store.load();
+      expect(displayed, isNotNull);
+
+      final second = ObdTranscript()
+        ..recordWrite('ATI\r'.codeUnits, DateTime(2026, 8, 17, 12, 1));
+      // Ensure the write lands at a distinct savedAt.
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      expect(
+        await store.save(second, '# second\n', fromRealHardware: true),
+        isTrue,
+      );
+
+      expect(await store.openStreaming(expected: displayed), isNull);
+      final cleared = await store.clear(expected: displayed);
+      expect(cleared.error, TranscriptMutationError.identityChanged);
+      expect(await store.load(), isNotNull, reason: 'replacement must remain');
+    },
+  );
+
+  test(
     'canonical save survives unrelated artifact work while clear contends',
     () async {
       final gate = ArtifactOperationGate();

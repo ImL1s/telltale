@@ -131,6 +131,7 @@ enum TranscriptMutationError {
   policyDenied,
   safetyChanged,
   storageFailure,
+  identityChanged,
 }
 
 class TranscriptMutationOutcome {
@@ -277,7 +278,13 @@ class TranscriptStore {
 
   /// Validates the bounded metadata prefix and returns a streaming body view.
   /// Metadata beyond 64 KiB is refused rather than guessed.
-  Future<StreamingStoredTranscript?> openStreaming() async {
+  ///
+  /// When [expected] is supplied, the on-disk artifact must still match that
+  /// displayed snapshot (savedAt + body length + hardware flag). A newer
+  /// periodic snapshot must not be exported under the previous-connection label.
+  Future<StreamingStoredTranscript?> openStreaming({
+    StoredTranscript? expected,
+  }) async {
     RandomAccessFile? handle;
     var transferred = false;
     try {
@@ -321,6 +328,16 @@ class TranscriptStore {
       final headerBytes = utf8.encode(header.isEmpty ? '' : '$header\n');
       final bodyOffset = markerAt + markerBytes.length;
       if (bodyOffset > fileLength) return null;
+      final expectedByteLength = headerBytes.length + fileLength - bodyOffset;
+      if (expected != null &&
+          !_matchesExpected(
+            expected: expected,
+            savedAt: savedAt,
+            fromRealHardware: fromRealHardware,
+            bodyByteLength: fileLength - bodyOffset,
+          )) {
+        return null;
+      }
       transferred = true;
       return StreamingStoredTranscript(
         handle,
@@ -328,13 +345,29 @@ class TranscriptStore {
         headerBytes: headerBytes,
         savedAt: savedAt,
         fromRealHardware: fromRealHardware,
-        expectedByteLength: headerBytes.length + fileLength - bodyOffset,
+        expectedByteLength: expectedByteLength,
       );
     } on Object {
       return null;
     } finally {
       if (!transferred) await handle?.close();
     }
+  }
+
+  static bool _matchesExpected({
+    required StoredTranscript expected,
+    required DateTime savedAt,
+    required bool fromRealHardware,
+    required int bodyByteLength,
+  }) {
+    if (!savedAt.isAtSameMomentAs(expected.savedAt)) return false;
+    if (fromRealHardware != expected.fromRealHardware) return false;
+    // Body is streamed, not reloaded; length is the identity check that still
+    // catches a replaced last-session.log without a second full read. Header
+    // text is not compared here because load() and the streaming prefix parser
+    // disagree on whether the line break before the sentinel is part of the
+    // header.
+    return bodyByteLength == utf8.encode(expected.body).length;
   }
 
   static int _indexOfBytes(List<int> haystack, List<int> needle) {
@@ -364,7 +397,11 @@ class TranscriptStore {
   }
 
   /// Removes the snapshot. Called once the user has taken it away.
-  Future<TranscriptMutationOutcome> clear() async {
+  ///
+  /// When [expected] is supplied, refuses to delete if the on-disk file no
+  /// longer matches the artifact the UI is showing (for example after a new
+  /// 30-second snapshot replaced `last-session.log`).
+  Future<TranscriptMutationOutcome> clear({StoredTranscript? expected}) async {
     final ownerId = 'transcript-clear-${_ownerSequence++}';
     final artifact = _artifactGate.tryAcquire(
       ownerId,
@@ -400,6 +437,22 @@ class TranscriptStore {
         return const TranscriptMutationOutcome.failure(
           TranscriptMutationError.safetyChanged,
         );
+      }
+      if (expected != null) {
+        final current = await load();
+        if (!valid()) {
+          return const TranscriptMutationOutcome.failure(
+            TranscriptMutationError.safetyChanged,
+          );
+        }
+        if (current == null) {
+          return const TranscriptMutationOutcome.success();
+        }
+        if (!_sameDisplayed(current, expected)) {
+          return const TranscriptMutationOutcome.failure(
+            TranscriptMutationError.identityChanged,
+          );
+        }
       }
       final file = await _file();
       if (!valid()) {
@@ -441,5 +494,12 @@ class TranscriptStore {
       _saveGate.release(mutation.token!);
       _artifactGate.release(artifact.token!);
     }
+  }
+
+  static bool _sameDisplayed(StoredTranscript current, StoredTranscript expected) {
+    return current.savedAt.isAtSameMomentAs(expected.savedAt) &&
+        current.fromRealHardware == expected.fromRealHardware &&
+        current.header == expected.header &&
+        current.body == expected.body;
   }
 }

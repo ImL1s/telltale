@@ -231,10 +231,15 @@ Future<void> _recoveredTranscriptShare(
   Directory documents,
 ) async {
   final store = TranscriptStore(directory: () async => documents);
+  final expected = await store.load();
+  expect(expected, isNotNull);
   await _realSourceShare(
     scratch: scratch,
     kind: ShareSourceKind.recoveredTranscript,
-    share: (controller) => controller.shareRecoveredTranscript(store: store),
+    share: (controller) => controller.shareRecoveredTranscript(
+      store: store,
+      expected: expected!,
+    ),
   );
 }
 
