@@ -10,8 +10,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../core/app_wakelock.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_theme.dart';
 import '../state/obd_session.dart';
@@ -52,7 +52,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   void dispose() {
-    if (_wakelockOn) unawaited(WakelockPlus.disable());
+    if (_wakelockOn) unawaited(setAppWakelock(false));
     super.dispose();
   }
 
@@ -65,7 +65,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   void _syncWakelock(bool shouldHold) {
     if (shouldHold == _wakelockOn) return;
     _wakelockOn = shouldHold;
-    unawaited(shouldHold ? WakelockPlus.enable() : WakelockPlus.disable());
+    unawaited(setAppWakelock(shouldHold));
   }
 
   int _indexFor(BuildContext context) {
