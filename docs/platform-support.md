@@ -76,20 +76,29 @@ a field BLE pass.
 
 ### When an adapter arrives (field verify)
 
-Power the dongle (ignition ON), then on the preferred host:
+Power the dongle (ignition ON), then from the Flutter app root:
+
+```bash
+# One command: ACL preflight → field debug install → BLE/Classic journey
+tool/field_bt_verify/run.sh
+# ACL / bonded inventory only:
+tool/field_bt_verify/run.sh --probe-only
+```
+
+Manual inventory still useful:
 
 ```bash
 # macOS inventory
 system_profiler SPBluetoothDataType | rg -i 'OBD|ELM|V-?LINK|Vgate'
 
-# Android bonded + live scan via the field APK Connect → Bluetooth LE
+# Android bonded + ACL flags
 ADB=~/Library/Android/sdk/platform-tools/adb
-$ADB -s R5CX10VFFBA shell dumpsys bluetooth_manager | strings | rg -i 'OBD|ELM'
-
-# App journey (best host with radio + powered adapter)
-cd app && ~/fvm/versions/3.47.0/bin/flutter run --flavor field -d <device>
-# Connect → BLE scan → select adapter → live PIDs → record → History export
+$ADB -s R5CX10VFFBA shell dumpsys bluetooth_manager | strings | rg -i 'OBD|ELM|ACL BR/EDR'
 ```
+
+The harness writes pass/fail evidence under `docs/verification/field-bt-probe-*.txt`
+and refuses to claim a journey pass while ACL is down. Details:
+[`tool/field_bt_verify/README.md`](../tool/field_bt_verify/README.md).
 
 Historical Android field transcript on this workstation (adapter presently
 unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
@@ -146,12 +155,12 @@ unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
 - Android attached: `R5CX10VFFBA` (S24 Ultra), `RFCNC0WNT9H`, `emulator-5554`.
 - S24 Ultra bonded list includes **`OBDBLE` / `OBDII` (SPP)** — dual-mode
   adapter historically proven over BLE on 2026-08-27 (see recovered transcript
-  above). Re-check `20260831T232922Z`: phone BT **ON**, ACL BR/EDR and LE both
-  still **N** (`ConnectionState` disconnected); evidence:
-  `docs/verification/obdble-acl-recheck-20260831T232922Z.txt`. Treat as
-  **bonded but unpowered / out of range** — no fresh connect→PID→record this
-  session. Prior same-day checks `20260831T223755Z` / `20260831T222101Z` /
-  `20260831T212448Z` reached the same verdict.
+  above). Re-check `field-bt-probe-20260831T235526Z` via
+  `tool/field_bt_verify/run.sh --probe-only`: phone BT **ON**, ACL BR/EDR and
+  LE both still **N** (`ConnectionState` disconnected). Treat as **bonded but
+  unpowered / out of range** — no fresh connect→PID→record this session. Prior
+  same-day checks `20260831T232922Z` / `20260831T223755Z` /
+  `20260831T222101Z` / `20260831T212448Z` reached the same verdict.
 - macOS paired set is phones/keyboards/earbuds/gamepads only (no ELM327).
   Classic UI is enabled via IOBluetooth RFCOMM; field proof still needs a
   powered adapter paired to this Mac.

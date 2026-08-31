@@ -17,6 +17,27 @@ Round 9 added a proxy in that socket that logs every byte and can hold a reply
 back, which is how the timing findings were tested and how one of them was
 found to have been testing nothing at all.
 
+## 2026-09-01 — OBDBLE ACL recheck + field_bt_verify harness
+
+Samsung `R5CX10VFFBA`: Bluetooth adapter **ON**, bonded **OBDBLE** /
+**OBDII (SPP)** still present, but `ConnectionState: STATE_DISCONNECTED` and
+the bonded line reports `ACL BR/EDR:N LE:N`. Fresh harness probe:
+`field-bt-probe-20260831T235526Z.txt` (prior same-day
+`obdble-acl-recheck-*.txt` reached the same verdict). Mac
+`system_profiler SPBluetoothDataType` shows no OBD-like peripheral.
+**No** app-level connect attempted — nothing was advertising; ACL stayed down.
+**No** fresh field BLE or Classic journey this session — do not treat as a pass.
+
+When the dongle is powered, the one-command gate is:
+
+```bash
+cd app && tool/field_bt_verify/run.sh
+```
+
+See `tool/field_bt_verify/README.md`. It refuses the journey while ACL is down
+and only then drives `integration_test/field_bt_journey_test.dart` (field
+flavor) through Connect → live PIDs → short record.
+
 ## 2026-09-01 — OBDBLE ACL recheck (still unpowered)
 
 Samsung `R5CX10VFFBA`: Bluetooth adapter **ON**, bonded **OBDBLE** /
