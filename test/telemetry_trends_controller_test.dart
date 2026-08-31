@@ -165,6 +165,32 @@ void main() {
     },
   );
 
+  test('future-dated readings stay unavailable on trend lanes', () {
+    final controller = TelemetryTrendsController(
+      activePids: [PidLibrary.engineRpm],
+      storedIds: [PidLibrary.engineRpm.id],
+    );
+    final observed = DateTime.utc(2026, 8, 30);
+    controller.ingest(
+      _snapshot(
+        PidLibrary.engineRpm,
+        900,
+        observed.add(const Duration(seconds: 1)),
+      ),
+      observedAtUtc: observed,
+      elapsedUs: 1,
+    );
+
+    final lane = controller.state.lanes[PidLibrary.engineRpm.id]!;
+    expect(
+      lane.primitives.whereType<TimelineValue>(),
+      isEmpty,
+      reason: 'source after observedAt must match driving-safety / recorder',
+    );
+    expect(lane.currentValue, isNull);
+    expect(lane.currentStatus, TelemetryStatus.stale);
+  });
+
   test('prunes to 60 seconds and bounds every lane to 1200 primitives', () {
     final controller = TelemetryTrendsController(
       activePids: [PidLibrary.engineRpm],

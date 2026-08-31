@@ -98,6 +98,10 @@ void main() {
       ),
     );
     final nextSource = readingAt.add(const Duration(milliseconds: 20));
+    // Observation time must not precede the reading timestamp — future-dated
+    // sources are rejected (same fail-closed rule as trends / driving safety).
+    wall = nextSource;
+    elapsed += 10000;
     recorder.ingest(
       TelemetrySnapshot(
         readings: {PidLibrary.engineRpm.id: _rpm(1000, nextSource)},
@@ -204,6 +208,37 @@ void main() {
             'damage the strict reader footer',
       );
       expect(recorder.state.statusCount, 1);
+    },
+  );
+
+  test(
+    'future-dated source timestamps are unavailable, not fresh values',
+    () {
+      recorder.prepare(_header(wall));
+      recorder.openAcceptance();
+      recorder.ingest(
+        TelemetrySnapshot(
+          readings: {
+            PidLibrary.engineRpm.id: _rpm(
+              900,
+              wall.add(const Duration(seconds: 1)),
+            ),
+          },
+          capturedAt: wall,
+        ),
+      );
+
+      expect(
+        recorder.state.valueCount,
+        0,
+        reason:
+            'sourceTimestampUtc after observedAtUtc must not enter the '
+            'canonical stream — isStaleAt treats negative age as fresh',
+      );
+      expect(emitted.where((e) => e.kind == TelemetryEventKind.value), isEmpty);
+      expect(recorder.state.statusCount, 1);
+      expect(emitted.single.kind, TelemetryEventKind.status);
+      expect(emitted.single.status, TelemetryStatus.stale);
     },
   );
 

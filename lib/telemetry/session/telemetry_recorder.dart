@@ -165,6 +165,7 @@ class TelemetryRecorder {
       final isFresh =
           reading != null &&
           reading.value.isFinite &&
+          !reading.timestamp.toUtc().isAfter(observedAt) &&
           !reading.isStaleAt(observedAt);
       if (isFresh) {
         final sourceUtc = reading.timestamp.toUtc();
