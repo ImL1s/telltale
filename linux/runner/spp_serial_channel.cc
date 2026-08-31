@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -93,11 +94,13 @@ FlValue* EnumerateBluetoothSppPorts() {
 
 struct IdleBytes {
   SppSerialChannel* channel;
+  uint64_t generation;
   std::vector<uint8_t> bytes;
 };
 
 struct IdleError {
   SppSerialChannel* channel;
+  uint64_t generation;
   int err;
 };
 
@@ -110,6 +113,10 @@ struct _SppSerialChannel {
   int fd = -1;
   std::atomic<bool> reading{false};
   std::atomic<bool> listening{false};
+  // Bumped in ClosePort so g_idle payloads queued by a prior reader are
+  // discarded after reopen — listening alone is not enough once Dart
+  // re-subscribes or keeps the EventChannel alive across open cycles.
+  std::atomic<uint64_t> open_generation{0};
   pthread_t read_thread{};
   bool read_thread_started = false;
 };
@@ -118,7 +125,9 @@ namespace {
 
 gboolean SendBytesIdle(gpointer data) {
   auto* payload = static_cast<IdleBytes*>(data);
-  if (payload->channel != nullptr && payload->channel->listening.load() &&
+  if (payload->channel != nullptr &&
+      payload->generation == payload->channel->open_generation.load() &&
+      payload->channel->listening.load() &&
       payload->channel->event_channel != nullptr) {
     g_autoptr(FlValue) value = fl_value_new_uint8_list(
         payload->bytes.data(), payload->bytes.size());
@@ -132,7 +141,9 @@ gboolean SendBytesIdle(gpointer data) {
 
 gboolean SendErrorIdle(gpointer data) {
   auto* payload = static_cast<IdleError*>(data);
-  if (payload->channel != nullptr && payload->channel->listening.load() &&
+  if (payload->channel != nullptr &&
+      payload->generation == payload->channel->open_generation.load() &&
+      payload->channel->listening.load() &&
       payload->channel->event_channel != nullptr) {
     g_autoptr(FlValue) details = fl_value_new_int(payload->err);
     g_autoptr(GError) error = nullptr;
@@ -145,6 +156,7 @@ gboolean SendErrorIdle(gpointer data) {
 
 void* ReadLoop(void* arg) {
   auto* self = static_cast<SppSerialChannel*>(arg);
+  const uint64_t generation = self->open_generation.load();
   std::vector<uint8_t> buffer(512);
   while (self->reading.load()) {
     int fd = -1;
@@ -164,7 +176,7 @@ void* ReadLoop(void* arg) {
       }
       // Permanent failure (device gone / hangup) — surface to Dart.
       self->reading.store(false);
-      auto* payload = new IdleError{self, errno};
+      auto* payload = new IdleError{self, generation, errno};
       g_idle_add(SendErrorIdle, payload);
       break;
     }
@@ -176,13 +188,17 @@ void* ReadLoop(void* arg) {
     }
 
     auto* payload = new IdleBytes{
-        self, std::vector<uint8_t>(buffer.begin(), buffer.begin() + n)};
+        self, generation,
+        std::vector<uint8_t>(buffer.begin(), buffer.begin() + n)};
     g_idle_add(SendBytesIdle, payload);
   }
   return nullptr;
 }
 
 void ClosePort(SppSerialChannel* self) {
+  // Invalidate any g_idle callbacks already queued by the current reader
+  // before joining it, so a fast reopen cannot deliver stale bytes/errors.
+  self->open_generation.fetch_add(1);
   self->reading.store(false);
   int fd = -1;
   {

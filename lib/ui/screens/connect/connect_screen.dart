@@ -1597,8 +1597,19 @@ typedef TransportQuestion = ({
 /// - **iOS:** permanent OS/API host limit — no generic third-party SPP.
 ///
 /// Empty paired/port lists fail closed in the wizard (no fake adapters).
+///
+/// [classicIoBluetoothHostOverride] is a test seam — do not mock
+/// [Platform.isMacOS] globally. Production leaves it null.
+@visibleForTesting
+bool? classicIoBluetoothHostOverride;
+
+bool get classicIoBluetoothHostSupported =>
+    classicIoBluetoothHostOverride ?? Platform.isMacOS;
+
 bool get classicTransportAvailable =>
-    Platform.isAndroid || Platform.isMacOS || sppSerialHostSupported;
+    Platform.isAndroid ||
+    classicIoBluetoothHostSupported ||
+    sppSerialHostSupported;
 
 /// Why the Classic transport card is greyed out on hosts without a path.
 ///

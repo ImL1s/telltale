@@ -60,17 +60,15 @@ void main() {
 
   tearDown(() {
     sppSerialHostOverride = null;
+    classicIoBluetoothHostOverride = null;
   });
 
   group('classicTransportAvailable', () {
     test('stays closed when host override forces SPP serial off on non-Apple',
         () {
+      classicIoBluetoothHostOverride = false;
       sppSerialHostOverride = false;
-      // On this macOS CI host Classic is available via IOBluetooth, not SPP
-      // serial — so the gate stays open even with sppSerialHostOverride=false.
-      if (Platform.isMacOS) {
-        expect(classicTransportAvailable, isTrue);
-      } else if (Platform.isAndroid) {
+      if (Platform.isAndroid) {
         expect(classicTransportAvailable, isTrue);
       } else {
         expect(classicTransportAvailable, isFalse);
@@ -79,14 +77,17 @@ void main() {
     });
 
     test('opens when desktop SPP serial host is asserted', () {
+      classicIoBluetoothHostOverride = false;
       sppSerialHostOverride = true;
       expect(classicTransportAvailable, isTrue);
     });
 
     test('macOS Classic is enabled via IOBluetooth, not SPP serial', () {
+      classicIoBluetoothHostOverride = true;
       sppSerialHostOverride = false;
-      expect(classicTransportAvailable, Platform.isMacOS || Platform.isAndroid);
+      expect(classicIoBluetoothHostSupported, isTrue);
       expect(sppSerialHostSupported, isFalse);
+      expect(classicTransportAvailable, isTrue);
       expect(classicUnavailableReason, isNot(contains('尚未場測')));
       expect(classicUnavailableReason, isNot(contains('暫不開放')));
     });

@@ -3,8 +3,6 @@
 /// and the plugin method-channel contract the wizard/session rely on.
 library;
 
-import 'dart:io' show Platform;
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,15 +18,19 @@ void main() {
 
   tearDown(() {
     sppSerialHostOverride = null;
+    classicIoBluetoothHostOverride = null;
     ClassicTransport.attemptsForTest = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(methods, null);
   });
 
   test('macOS Classic gate is open without SPP serial host', () {
-    // CI runs on macOS; this is the host-gate contract, not a field radio pass.
-    expect(Platform.isMacOS, isTrue);
+    // analyze/test CI is Linux; Apple smoke is macOS. Assert the IOBluetooth
+    // host gate via the test seam — not Platform.isMacOS — so the contract
+    // holds on every runner. This is not a field radio pass.
+    classicIoBluetoothHostOverride = true;
     sppSerialHostOverride = false;
+    expect(classicIoBluetoothHostSupported, isTrue);
     expect(sppSerialHostSupported, isFalse);
     expect(classicTransportAvailable, isTrue);
     expect(classicUnavailableReason, isNot(contains('暫不開放')));
