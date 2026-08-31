@@ -31,8 +31,11 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
   "$FLUTTER" build linux --release
 fi
 
+# default-flavor: field → …/field/release/bundle; keep unflavored as fallback.
 BUNDLE=""
 for candidate in \
+  "$ROOT/build/linux/x64/field/release/bundle" \
+  "$ROOT/build/linux/arm64/field/release/bundle" \
   "$ROOT/build/linux/x64/release/bundle" \
   "$ROOT/build/linux/arm64/release/bundle"
 do
@@ -42,7 +45,7 @@ do
   fi
 done
 if [[ -z "$BUNDLE" ]]; then
-  echo "Refusing: missing Linux release bundle under build/linux/*/release/bundle" >&2
+  echo "Refusing: missing Linux release bundle under build/linux/*/[field/]release/bundle" >&2
   exit 1
 fi
 
@@ -54,7 +57,14 @@ m = re.search(r"^version:\s*([^\s+]+)", text, re.M)
 print(m.group(1) if m else "0.0.0")
 PY
 )"
-ARCH="$(basename "$(dirname "$(dirname "$BUNDLE")")")"
+# …/<arch>/[field/]release/bundle → arch is two or three levels above bundle.
+_release_dir="$(dirname "$BUNDLE")"
+_flavor_or_arch="$(dirname "$_release_dir")"
+if [[ "$(basename "$_flavor_or_arch")" == "field" ]]; then
+  ARCH="$(basename "$(dirname "$_flavor_or_arch")")"
+else
+  ARCH="$(basename "$_flavor_or_arch")"
+fi
 TAR="$OUT_DIR/Telltale-${VERSION}-linux-${ARCH}.tar.gz"
 rm -f "$TAR"
 tar -C "$(dirname "$BUNDLE")" -czf "$TAR" "$(basename "$BUNDLE")"

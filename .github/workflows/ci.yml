@@ -170,13 +170,18 @@ jobs:
 
       # Unsigned desktop archive from the debug tree already built above.
       # Release DMG + notarization need Apple secrets — see tool/packaging/.
+      # default-flavor: field → Debug-field (unflavored Debug kept as fallback).
       - name: Package unsigned macOS .app zip
         run: |
           set -euo pipefail
-          app=(build/macos/Build/Products/Debug/*.app)
-          test -d "${app[0]}"
+          shopt -s nullglob
+          apps=(
+            build/macos/Build/Products/Debug-field/*.app
+            build/macos/Build/Products/Debug/*.app
+          )
+          test ${#apps[@]} -gt 0
           mkdir -p build/packaging
-          ditto -c -k --sequesterRsrc --keepParent "${app[0]}" \
+          ditto -c -k --sequesterRsrc --keepParent "${apps[0]}" \
             build/packaging/Telltale-macos-debug-unsigned.zip
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -238,8 +243,14 @@ jobs:
       - name: Package unsigned Linux debug tarball
         run: |
           set -euo pipefail
+          # default-flavor: field → …/field/debug/bundle
           bundle=""
-          for candidate in build/linux/x64/debug/bundle build/linux/arm64/debug/bundle; do
+          for candidate in \
+            build/linux/x64/field/debug/bundle \
+            build/linux/arm64/field/debug/bundle \
+            build/linux/x64/debug/bundle \
+            build/linux/arm64/debug/bundle
+          do
             if [[ -d "$candidate" ]]; then bundle="$candidate"; break; fi
           done
           test -n "$bundle"
@@ -293,7 +304,10 @@ jobs:
       - name: Package unsigned Windows debug zip
         shell: pwsh
         run: |
+          # default-flavor: field → …/field/runner/Debug
           $runner = @(
+            'build/windows/x64/field/runner/Debug',
+            'build/windows/arm64/field/runner/Debug',
             'build/windows/x64/runner/Debug',
             'build/windows/arm64/runner/Debug'
           ) | Where-Object { Test-Path $_ } | Select-Object -First 1

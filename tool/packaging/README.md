@@ -12,6 +12,17 @@ submission.
 
 All accept `--skip-build` when a Release tree already exists.
 
+`pubspec.yaml` sets `default-flavor: field`, so Flutter writes:
+
+| Host | Flavored Release path |
+|---|---|
+| macOS | `build/macos/Build/Products/Release-field/Telltale.app` |
+| Linux | `build/linux/<arch>/field/release/bundle` |
+| Windows | `build/windows/<arch>/field/runner/Release` |
+
+The scripts (and public telltale CI debug archives) prefer those paths and
+fall back to the unflavored layout if present.
+
 ## macOS DMG + notarization (called out, not automated)
 
 ```bash

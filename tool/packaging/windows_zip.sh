@@ -32,9 +32,11 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
   "$FLUTTER" build windows --release
 fi
 
-# Flutter 3.x places the runner under x64 (or arm64 on ARM hosts).
+# default-flavor: field nests under …/field/runner/Release; keep unflavored fallback.
 RUNNER=""
 for candidate in \
+  "$ROOT/build/windows/x64/field/runner/Release" \
+  "$ROOT/build/windows/arm64/field/runner/Release" \
   "$ROOT/build/windows/x64/runner/Release" \
   "$ROOT/build/windows/arm64/runner/Release"
 do
@@ -44,7 +46,7 @@ do
   fi
 done
 if [[ -z "$RUNNER" ]]; then
-  echo "Refusing: no Release runner under build/windows/*/runner/Release" >&2
+  echo "Refusing: no Release runner under build/windows/*/[field/]runner/Release" >&2
   exit 1
 fi
 

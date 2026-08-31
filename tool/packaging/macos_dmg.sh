@@ -33,9 +33,19 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
   "$FLUTTER" build macos --release
 fi
 
-APP_PATH="$ROOT/build/macos/Build/Products/Release/${APP_NAME}.app"
-if [[ ! -d "$APP_PATH" ]]; then
-  echo "Refusing: missing $APP_PATH — run without --skip-build" >&2
+# default-flavor: field → Release-field; keep unflavored Release as fallback.
+APP_PATH=""
+for candidate in \
+  "$ROOT/build/macos/Build/Products/Release-field/${APP_NAME}.app" \
+  "$ROOT/build/macos/Build/Products/Release/${APP_NAME}.app"
+do
+  if [[ -d "$candidate" ]]; then
+    APP_PATH="$candidate"
+    break
+  fi
+done
+if [[ -z "$APP_PATH" ]]; then
+  echo "Refusing: missing ${APP_NAME}.app under Build/Products/Release[-field]" >&2
   exit 1
 fi
 
