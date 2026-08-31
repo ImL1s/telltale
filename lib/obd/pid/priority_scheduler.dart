@@ -19,8 +19,12 @@ class QueuedRequest implements Comparable<QueuedRequest> {
   final int weight;
   final DateTime enqueuedAt;
 
-  QueuedRequest(this.pid, this.priority, {this.weight = 0, DateTime? enqueuedAt})
-      : enqueuedAt = enqueuedAt ?? DateTime.now();
+  QueuedRequest(
+    this.pid,
+    this.priority, {
+    this.weight = 0,
+    DateTime? enqueuedAt,
+  }) : enqueuedAt = enqueuedAt ?? DateTime.now();
 
   @override
   int compareTo(QueuedRequest other) {
@@ -32,7 +36,8 @@ class QueuedRequest implements Comparable<QueuedRequest> {
   }
 
   @override
-  String toString() => 'QueuedRequest(${pid.shortName}, ${priority.name}, w=$weight)';
+  String toString() =>
+      'QueuedRequest(${pid.shortName}, ${priority.name}, w=$weight)';
 }
 
 /// Throughput statistics surfaced to the UI's connection status strip.
@@ -124,6 +129,18 @@ class PriorityScheduler {
   List<QueuedRequest> popBatch() {
     if (_queue.isEmpty) return const [];
     final head = _queue.removeAt(0);
+    if (_isProfileResponseMember(head.pid)) {
+      final batch = [head];
+      var i = 0;
+      while (i < _queue.length) {
+        if (_sharesProfileResponse(head.pid, _queue[i].pid)) {
+          batch.add(_queue.removeAt(i));
+        } else {
+          i++;
+        }
+      }
+      return batch;
+    }
     if (!fastModeEnabled || !canBatch || !head.pid.isMode01) return [head];
     if (!(isBatchable?.call(head.pid) ?? true)) return [head];
 
@@ -132,7 +149,8 @@ class PriorityScheduler {
     var i = 0;
     while (i < _queue.length && batch.length < maxBatchSize) {
       final candidate = _queue[i];
-      final fitsBatch = candidate.pid.isMode01 &&
+      final fitsBatch =
+          candidate.pid.isMode01 &&
           candidate.pid.header == head.pid.header &&
           !seen.contains(candidate.pid.modeAndPid) &&
           (isBatchable?.call(candidate.pid) ?? true);
@@ -145,6 +163,22 @@ class PriorityScheduler {
     }
     return batch;
   }
+
+  static bool _isProfileResponseMember(Pid pid) =>
+      !pid.isMode01 &&
+      (pid.ownerProfileId?.isNotEmpty ?? false) &&
+      (pid.sourceSignalId?.isNotEmpty ?? false) &&
+      (pid.expectedResponseId?.isNotEmpty ?? false);
+
+  static bool _sharesProfileResponse(Pid first, Pid second) =>
+      _isProfileResponseMember(second) &&
+      first.ownerProfileId == second.ownerProfileId &&
+      first.header.toUpperCase() == second.header.toUpperCase() &&
+      PollableServices.normalise(first.modeAndPid) ==
+          PollableServices.normalise(second.modeAndPid) &&
+      first.expectedResponseId!.toUpperCase() ==
+          second.expectedResponseId!.toUpperCase() &&
+      first.responseDataLengthBytes == second.responseDataLengthBytes;
 
   /// Drops queued work for PIDs that are no longer active.
   ///
@@ -196,6 +230,16 @@ class PriorityScheduler {
   /// PIDs/sec on CAN vehicles.
   String buildCommand(List<QueuedRequest> requests) {
     if (requests.isEmpty) return '';
+    if (requests.length > 1 &&
+        _isProfileResponseMember(requests.first.pid) &&
+        requests
+            .skip(1)
+            .every(
+              (request) =>
+                  _sharesProfileResponse(requests.first.pid, request.pid),
+            )) {
+      return requests.first.pid.modeAndPid;
+    }
     if (!fastModeEnabled || !canBatch || requests.length == 1) {
       return requests.first.pid.modeAndPid;
     }
@@ -203,7 +247,8 @@ class PriorityScheduler {
     final suffixes = <String>[];
     for (final request in requests) {
       final code = request.pid.modeAndPid;
-      if (request.pid.isMode01 && request.pid.header == requests.first.pid.header) {
+      if (request.pid.isMode01 &&
+          request.pid.header == requests.first.pid.header) {
         suffixes.add(code.substring(2));
       }
     }
@@ -249,10 +294,10 @@ class PriorityScheduler {
     _completions.removeWhere((t) => t.isBefore(cutoff));
 
     return SchedulerStats(
-        pidsPerSecond: _completions.length.toDouble(),
-        corruptionCount: corruptionCount,
-        fastModeEnabled: fastModeEnabled,
-        interCommandDelay: interCommandDelay,
-      );
+      pidsPerSecond: _completions.length.toDouble(),
+      corruptionCount: corruptionCount,
+      fastModeEnabled: fastModeEnabled,
+      interCommandDelay: interCommandDelay,
+    );
   }
 }

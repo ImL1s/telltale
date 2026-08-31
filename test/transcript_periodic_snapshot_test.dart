@@ -158,6 +158,10 @@ void main() {
     // exactly as it would be while somebody is driving, and this is the state
     // in which the app used to have nothing on disk at all.
     await Future<void>.delayed(const Duration(milliseconds: 250));
+    // The periodic timer only promises to queue the durable write. APFS
+    // `flush: true` can finish after the fixed delay on a busy test runner, so
+    // observe the queued operation instead of racing the filesystem.
+    await session.drainTranscriptSnapshotsForTest();
 
     final stored = await _store().load();
     expect(
@@ -191,6 +195,9 @@ void main() {
 
     await Future<void>.delayed(const Duration(milliseconds: 150));
     await session.disconnect();
+    // Disconnect queues its final snapshot without blocking the UI. Measure
+    // the idle state only after that deliberate write has drained.
+    await session.drainTranscriptSnapshotsForTest();
     final afterTraffic = store.saves;
     expect(afterTraffic, greaterThan(0));
 

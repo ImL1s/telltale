@@ -44,6 +44,15 @@ class Pid {
   /// True for PIDs the user authored rather than ones shipped with the app.
   final bool isCustom;
 
+  /// Provenance and runtime constraints for catalog-generated signals.
+  final String? ownerProfileId;
+  final String? sourceSignalId;
+  final String? sourceRevision;
+  final String? expectedResponseId;
+  final int? dataOffsetBytes;
+  final int? dataLengthBytes;
+  final int? responseDataLengthBytes;
+
   const Pid({
     required this.name,
     required this.shortName,
@@ -57,6 +66,13 @@ class Pid {
     this.redlineFrom,
     this.isCustom = false,
     this.variant,
+    this.ownerProfileId,
+    this.sourceSignalId,
+    this.sourceRevision,
+    this.expectedResponseId,
+    this.dataOffsetBytes,
+    this.dataLengthBytes,
+    this.responseDataLengthBytes,
   });
 
   /// Distinguishes two definitions of the same signal that are not the same
@@ -72,8 +88,18 @@ class Pid {
   /// lookup in the registry would quietly swap the user's formula in under the
   /// built-in's name, including for the physics inputs.
   String get id {
+    final profile = ownerProfileId;
+    final signal = sourceSignalId;
+    if (profile != null &&
+        profile.isNotEmpty &&
+        signal != null &&
+        signal.isNotEmpty) {
+      return 'profile:${profile.length}:$profile:${signal.length}:$signal';
+    }
     final suffix = variant == null ? '' : '#$variant';
-    return isCustom ? 'custom:$header:$modeAndPid$suffix' : '$header:$modeAndPid$suffix';
+    return isCustom
+        ? 'custom:$header:$modeAndPid$suffix'
+        : '$header:$modeAndPid$suffix';
   }
 
   /// The form in which a stored id is compared.
@@ -106,8 +132,9 @@ class Pid {
   }
 
   /// Mode byte as an int, e.g. `0x01` for `010C`. Null if unparseable.
-  int? get mode =>
-      modeAndPid.length >= 2 ? int.tryParse(modeAndPid.substring(0, 2), radix: 16) : null;
+  int? get mode => modeAndPid.length >= 2
+      ? int.tryParse(modeAndPid.substring(0, 2), radix: 16)
+      : null;
 
   bool get isMode01 => modeAndPid.toUpperCase().startsWith('01');
 
@@ -166,14 +193,16 @@ class Pid {
   }
 
   /// The span a gauge sweeps across. Guaranteed non-zero so callers can divide.
-  double get span => (maxValue - minValue).abs() < 1e-9 ? 1.0 : maxValue - minValue;
+  double get span =>
+      (maxValue - minValue).abs() < 1e-9 ? 1.0 : maxValue - minValue;
 
   /// Clamps [value] into the gauge's declared range.
   double clamp(double value) =>
       value.isNaN ? minValue : value.clamp(minValue, maxValue).toDouble();
 
   /// Normalises [value] to 0..1 across the gauge's range.
-  double normalise(double value) => ((clamp(value) - minValue) / span).clamp(0.0, 1.0);
+  double normalise(double value) =>
+      ((clamp(value) - minValue) / span).clamp(0.0, 1.0);
 
   bool get hasRedline => redlineFrom != null && redlineFrom! < maxValue;
 
@@ -191,6 +220,13 @@ class Pid {
     bool clearRedline = false,
     bool? isCustom,
     String? variant,
+    String? ownerProfileId,
+    String? sourceSignalId,
+    String? sourceRevision,
+    String? expectedResponseId,
+    int? dataOffsetBytes,
+    int? dataLengthBytes,
+    int? responseDataLengthBytes,
   }) {
     return Pid(
       name: name ?? this.name,
@@ -205,49 +241,77 @@ class Pid {
       redlineFrom: clearRedline ? null : (redlineFrom ?? this.redlineFrom),
       isCustom: isCustom ?? this.isCustom,
       variant: variant ?? this.variant,
+      ownerProfileId: ownerProfileId ?? this.ownerProfileId,
+      sourceSignalId: sourceSignalId ?? this.sourceSignalId,
+      sourceRevision: sourceRevision ?? this.sourceRevision,
+      expectedResponseId: expectedResponseId ?? this.expectedResponseId,
+      dataOffsetBytes: dataOffsetBytes ?? this.dataOffsetBytes,
+      dataLengthBytes: dataLengthBytes ?? this.dataLengthBytes,
+      responseDataLengthBytes:
+          responseDataLengthBytes ?? this.responseDataLengthBytes,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'shortName': shortName,
-        'modeAndPid': modeAndPid,
-        'equation': equation,
-        'minValue': minValue,
-        'maxValue': maxValue,
-        'units': units,
-        'header': header,
-        'priority': priority.name,
-        'redlineFrom': redlineFrom,
-        'isCustom': isCustom,
-        'variant': variant,
-      };
+    'name': name,
+    'shortName': shortName,
+    'modeAndPid': modeAndPid,
+    'equation': equation,
+    'minValue': minValue,
+    'maxValue': maxValue,
+    'units': units,
+    'header': header,
+    'priority': priority.name,
+    'redlineFrom': redlineFrom,
+    'isCustom': isCustom,
+    'variant': variant,
+    'ownerProfileId': ownerProfileId,
+    'sourceSignalId': sourceSignalId,
+    'sourceRevision': sourceRevision,
+    'expectedResponseId': expectedResponseId,
+    'dataOffsetBytes': dataOffsetBytes,
+    'dataLengthBytes': dataLengthBytes,
+    'responseDataLengthBytes': responseDataLengthBytes,
+  };
 
   factory Pid.fromJson(Map<String, dynamic> json) => Pid(
-        name: json['name'] as String? ?? 'Unnamed',
-        shortName: json['shortName'] as String? ?? '',
-        // Through the same canonicaliser the request builder uses, not merely
-        // upper-cased. A stored `01 0C` reaches `pidByte` as `substring(2, 4)`
-        // — the string `' 0'` — which parses to null, so the response splitter
-        // cannot associate a perfectly valid `41 0C 1A F8` with the gauge and
-        // the reading simply never appears. The header half of this was fixed
-        // and its sibling was left as it was.
-        modeAndPid: PollableServices.normalise(json['modeAndPid'] as String? ?? ''),
-        equation: json['equation'] as String? ?? 'A',
-        minValue: (json['minValue'] as num?)?.toDouble() ?? 0,
-        maxValue: (json['maxValue'] as num?)?.toDouble() ?? 100,
-        units: json['units'] as String? ?? '',
-        // Normalised on the way *in*, not merely upper-cased. A definition
-        // stored by an older build can hold `7 E 0`, and reading it back
-        // unchanged reproduces the defect the editor was fixed for — one
-        // launch later, where nobody is looking for it.
-        header: BusAddressing.resolveHeader(
-            json['header'] as String? ?? kDefaultHeader),
-        priority: PriorityTier.fromName(json['priority'] as String?),
-        redlineFrom: (json['redlineFrom'] as num?)?.toDouble(),
-        isCustom: json['isCustom'] as bool? ?? false,
-        variant: json['variant'] as String?,
-      );
+    name: json['name'] as String? ?? 'Unnamed',
+    shortName: json['shortName'] as String? ?? '',
+    // Through the same canonicaliser the request builder uses, not merely
+    // upper-cased. A stored `01 0C` reaches `pidByte` as `substring(2, 4)`
+    // — the string `' 0'` — which parses to null, so the response splitter
+    // cannot associate a perfectly valid `41 0C 1A F8` with the gauge and
+    // the reading simply never appears. The header half of this was fixed
+    // and its sibling was left as it was.
+    modeAndPid: PollableServices.normalise(json['modeAndPid'] as String? ?? ''),
+    equation: json['equation'] as String? ?? 'A',
+    minValue: (json['minValue'] as num?)?.toDouble() ?? 0,
+    maxValue: (json['maxValue'] as num?)?.toDouble() ?? 100,
+    units: json['units'] as String? ?? '',
+    // Normalised on the way *in*, not merely upper-cased. A definition
+    // stored by an older build can hold `7 E 0`, and reading it back
+    // unchanged reproduces the defect the editor was fixed for — one
+    // launch later, where nobody is looking for it.
+    header: BusAddressing.resolveHeader(
+      json['header'] as String? ?? kDefaultHeader,
+    ),
+    priority: PriorityTier.fromName(json['priority'] as String?),
+    redlineFrom: (json['redlineFrom'] as num?)?.toDouble(),
+    isCustom: json['isCustom'] as bool? ?? false,
+    variant: json['variant'] as String?,
+    ownerProfileId: json['ownerProfileId'] as String?,
+    sourceSignalId: json['sourceSignalId'] as String?,
+    sourceRevision: json['sourceRevision'] as String?,
+    expectedResponseId: _optionalHeader(json['expectedResponseId']),
+    dataOffsetBytes: (json['dataOffsetBytes'] as num?)?.toInt(),
+    dataLengthBytes: (json['dataLengthBytes'] as num?)?.toInt(),
+    responseDataLengthBytes: (json['responseDataLengthBytes'] as num?)?.toInt(),
+  );
+
+  static String? _optionalHeader(Object? value) {
+    if (value is! String || value.trim().isEmpty) return null;
+    return value.trim().toUpperCase().replaceAll(' ', '');
+  }
 
   /// Torque's on-disk CSV row order, plus this app's own columns.
   ///
@@ -257,18 +321,18 @@ class Pid {
   /// ours reads them back, so an export/import round trip is lossless instead
   /// of silently resetting every custom gauge to defaults.
   List<String> toCsvRow() => [
-        name,
-        shortName,
-        modeAndPid,
-        equation,
-        minValue.toString(),
-        maxValue.toString(),
-        units,
-        header,
-        priority.name,
-        redlineFrom?.toString() ?? '',
-        variant ?? '',
-      ];
+    name,
+    shortName,
+    modeAndPid,
+    equation,
+    minValue.toString(),
+    maxValue.toString(),
+    units,
+    header,
+    priority.name,
+    redlineFrom?.toString() ?? '',
+    variant ?? '',
+  ];
 
   @override
   bool operator ==(Object other) => other is Pid && other.id == id;
@@ -381,7 +445,6 @@ abstract final class PollableServices {
   }
 }
 
-
 /// One place that decides whether a PID definition is admissible.
 ///
 /// The CSV importer refused a malformed range or header and the editor did
@@ -392,7 +455,9 @@ abstract final class PollableServices {
 /// never exist on any bus.
 abstract final class PidDefinition {
   /// 11-bit CAN is 3 hex digits, the legacy families 6, 29-bit CAN 8.
-  static final RegExp _header = RegExp(r'^([0-9A-F]{3}|[0-9A-F]{6}|[0-9A-F]{8})$');
+  static final RegExp _header = RegExp(
+    r'^([0-9A-F]{3}|[0-9A-F]{6}|[0-9A-F]{8})$',
+  );
 
   /// Why this definition cannot be saved, or null when it can.
   /// [requireBounds] distinguishes the two callers. The CSV importer treats

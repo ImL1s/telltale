@@ -20,6 +20,7 @@ import '../../../state/obd_session.dart';
 import '../../../state/pid_registry.dart';
 import '../../widgets/panel.dart';
 import 'pid_editor_screen.dart';
+import 'powertrain_battery_catalog_screen.dart';
 
 class PidManagerScreen extends ConsumerStatefulWidget {
   const PidManagerScreen({super.key});
@@ -38,7 +39,8 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
 
   void _snack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _handleMenu(_PidMenuAction action) async {
@@ -106,11 +108,14 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
     _snack(
       (outcome ??
               const PidImportOutcome(
-                  inserted: 0, replaced: 0, duplicatesInFile: []))
+                inserted: 0,
+                replaced: 0,
+                duplicatesInFile: [],
+              ))
           .describe(
-        skippedRows: result.hasErrors ? result.errors.length : 0,
-        defaultedRanges: result.hasWarnings ? result.warnings.length : 0,
-      ),
+            skippedRows: result.hasErrors ? result.errors.length : 0,
+            defaultedRanges: result.hasWarnings ? result.warnings.length : 0,
+          ),
     );
   }
 
@@ -141,7 +146,8 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
     final palette = context.palette;
     final registry = ref.watch(pidRegistryProvider);
     final active = ref.watch(activePidsProvider);
-    final snapshot = ref.watch(telemetryProvider).value ?? const TelemetrySnapshot();
+    final snapshot =
+        ref.watch(telemetryProvider).value ?? const TelemetrySnapshot();
     final engine = ref.watch(obdSessionProvider.notifier).engine;
 
     final activeIds = active.map((p) => p.id).toSet();
@@ -206,7 +212,10 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
                             child: ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.file_download_outlined, size: 20),
+                              leading: Icon(
+                                Icons.file_download_outlined,
+                                size: 20,
+                              ),
                               title: Text('匯入 CSV'),
                             ),
                           ),
@@ -215,7 +224,10 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
                             child: ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.file_upload_outlined, size: 20),
+                              leading: Icon(
+                                Icons.file_upload_outlined,
+                                size: 20,
+                              ),
                               title: Text('匯出自訂 PID'),
                             ),
                           ),
@@ -241,8 +253,18 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
                         showCheckmark: false,
                         selectedColor: palette.accent.withValues(alpha: 0.16),
                         labelStyle: context.texts.labelMedium?.copyWith(
-                          color: _activeOnly ? palette.accent : palette.textSecondary,
+                          color: _activeOnly
+                              ? palette.accent
+                              : palette.textSecondary,
                         ),
+                      ),
+                      const Spacer(),
+                      OutlinedButton.icon(
+                        key: const Key('open_powertrain_battery_catalog'),
+                        onPressed: () =>
+                            context.push(PowertrainBatteryCatalogScreen.path),
+                        icon: const Icon(Icons.electric_car_outlined, size: 18),
+                        label: const Text('大電池目錄'),
                       ),
                     ],
                   ),
@@ -264,7 +286,8 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
                         Spacing.xxl,
                       ),
                       itemCount: visible.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: Spacing.sm),
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: Spacing.sm),
                       itemBuilder: (context, index) {
                         final pid = visible[index];
                         return _PidRow(
@@ -277,7 +300,8 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
                           // marks every PID in a block that failed to read —
                           // and every custom PID the masks describe at all —
                           // as one this car does not have.
-                          isUnsupported: engine?.isKnownUnsupported(pid) ?? false,
+                          isUnsupported:
+                              engine?.isKnownUnsupported(pid) ?? false,
                           onToggle: () =>
                               ref.read(activePidsProvider.notifier).toggle(pid),
                           // Encoded, not interpolated. `Pid.id` ends in
@@ -288,10 +312,12 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
                           // unvarianted sibling instead of editing the PID the
                           // user had tapped.
                           onEdit: pid.isCustom
-                              ? () => context.push(Uri(
+                              ? () => context.push(
+                                  Uri(
                                     path: PidEditorScreen.path,
                                     queryParameters: {'id': pid.id},
-                                  ).toString())
+                                  ).toString(),
+                                )
                               : null,
                         );
                       },
@@ -372,7 +398,11 @@ class _PidRow extends StatelessWidget {
                     ),
                     if (pid.isCustom) ...[
                       const SizedBox(width: Spacing.sm),
-                      const StatusPill(label: '自訂', tone: StatusTone.accent, dense: true),
+                      const StatusPill(
+                        label: '自訂',
+                        tone: StatusTone.accent,
+                        dense: true,
+                      ),
                     ],
                     if (isUnsupported) ...[
                       const SizedBox(width: Spacing.sm),
@@ -510,8 +540,9 @@ class _ArrangeSheet extends ConsumerWidget {
                           .reorder(oldIndex, newIndex),
                       itemBuilder: (context, index) {
                         final pid = active[index];
-                        final accent =
-                            context.gaugeColors(GaugeHue.forKey(pid.id)).bright;
+                        final accent = context
+                            .gaugeColors(GaugeHue.forKey(pid.id))
+                            .bright;
                         return Padding(
                           key: ValueKey(pid.id),
                           padding: const EdgeInsets.only(bottom: Spacing.sm),
@@ -529,18 +560,22 @@ class _ArrangeSheet extends ConsumerWidget {
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
                                     color: accent.withValues(alpha: 0.14),
-                                    borderRadius: BorderRadius.circular(Radii.sm - 2),
+                                    borderRadius: BorderRadius.circular(
+                                      Radii.sm - 2,
+                                    ),
                                   ),
                                   child: Text(
                                     '${index + 1}',
-                                    style: context.texts.labelMedium
-                                        ?.copyWith(color: accent),
+                                    style: context.texts.labelMedium?.copyWith(
+                                      color: accent,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: Spacing.md),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         pid.name,
@@ -550,7 +585,10 @@ class _ArrangeSheet extends ConsumerWidget {
                                       ),
                                       Text(
                                         pid.modeAndPid,
-                                        style: AppTypography.code(palette, size: 11.5),
+                                        style: AppTypography.code(
+                                          palette,
+                                          size: 11.5,
+                                        ),
                                       ),
                                     ],
                                   ),

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/licenses/powertrain_battery_licenses.dart';
 import '../../../obd/physics/vehicle_profile.dart';
 import '../../../obd/physics/vehicle_evidence.dart';
 import '../../../obd/transport/obd_transport.dart'
@@ -14,6 +15,8 @@ import '../../../obd/transport/obd_transport.dart'
 import '../../../obd/vehicle_catalog/us_vehicle_catalog.dart';
 import '../../../obd/vehicle_catalog/us_vehicle_profile.dart';
 import '../../../state/obd_session.dart';
+import '../../../state/powertrain_battery_experiments.dart';
+import '../../../state/powertrain_battery_profiles.dart';
 import '../../../state/settings.dart';
 import '../../../state/vehicle_catalog.dart';
 import '../../../state/vehicle_identity.dart';
@@ -156,6 +159,101 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await ref.read(vehicleProfileProvider.notifier).update(application.profile);
   }
 
+  Future<void> _setExperimentalBatteryAccess(bool enabled) async {
+    if (!enabled) {
+      ref
+          .read(powertrainExperimentalProbeConsentsProvider.notifier)
+          .revokeAll();
+      try {
+        await ref
+            .read(powertrainBatteryExperimentalAccessProvider.notifier)
+            .setEnabled(false);
+      } on Object {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              '本次執行已關閉大電池實驗功能，但無法儲存設定；'
+              '下次啟動可能再顯示實驗入口，每條查詢仍需重新確認。',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        var evidenceAcknowledged = false;
+        var wireAcknowledged = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('開啟大電池證據實驗室'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '這些是逆向工程來源的候選資料，不是原廠文件，也不是 Telltale 實車支援。'
+                    '即使是唯讀查詢也可能喚醒控制器；解碼後的數字可能看似合理但其實不適用。',
+                  ),
+                  const SizedBox(height: Spacing.md),
+                  CheckboxListTile(
+                    key: const Key('experimental_evidence_ack'),
+                    value: evidenceAcknowledged,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('我知道來源資料與合成測試不能證明我的實車適用'),
+                    onChanged: (value) => setDialogState(
+                      () => evidenceAcknowledged = value ?? false,
+                    ),
+                  ),
+                  CheckboxListTile(
+                    key: const Key('experimental_wire_ack'),
+                    value: wireAcknowledged,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text(
+                      '我知道只會解鎖目錄內固定 Mode 21/22 的單次查詢；'
+                      '不會解鎖掃描、診斷 session、安全存取、寫入或控制',
+                    ),
+                    onChanged: (value) =>
+                        setDialogState(() => wireAcknowledged = value ?? false),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                key: const Key('enable_experimental_battery_access'),
+                onPressed: evidenceAcknowledged && wireAcknowledged
+                    ? () => Navigator.pop(context, true)
+                    : null,
+                child: const Text('只解鎖單次唯讀查詢'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (accepted != true || !mounted) return;
+    try {
+      await ref
+          .read(powertrainBatteryExperimentalAccessProvider.notifier)
+          .setEnabled(true);
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('無法儲存大電池實驗功能設定，功能維持關閉。')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -163,6 +261,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final themeMode = ref.watch(themeModeProvider);
     final connection = ref.watch(obdSessionProvider);
     final identity = ref.watch(vehicleIdentityProvider);
+    final experimentalBatteryAccess = ref.watch(
+      powertrainBatteryExperimentalAccessProvider,
+    );
     final connected = connection.isConnected;
 
     void update(VehicleProfile next) =>
@@ -515,6 +616,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
 
             const SizedBox(height: Spacing.lg),
+            const SectionHeading('實驗功能'),
+            Panel(
+              child: SwitchListTile(
+                key: const Key('experimental_battery_access_switch'),
+                contentPadding: EdgeInsets.zero,
+                value: experimentalBatteryAccess,
+                onChanged: _setExperimentalBatteryAccess,
+                title: const Text('大電池證據實驗室（實驗）'),
+                subtitle: const Text(
+                  '只顯示來源完整、受雜湊約束的單次唯讀查詢。'
+                  '不會自動安裝 PID、輪詢、加入儀表或把研究資料當成支援。',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: Spacing.lg),
             const SectionHeading('外觀'),
             Panel(
               child: SegmentedButton<ThemeMode>(
@@ -533,6 +650,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const _GaugeSkinPicker(),
 
             const SizedBox(height: Spacing.xl),
+            OutlinedButton.icon(
+              key: const Key('open_source_licenses'),
+              onPressed: () {
+                registerPowertrainBatteryLicenses();
+                showLicensePage(
+                  context: context,
+                  applicationName: 'Telltale',
+                  applicationLegalese: 'Powertrain battery sources, transformations, and reuse terms are bundled with this app.',
+                );
+              },
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('開放原始碼與資料授權'),
+            ),
+            const SizedBox(height: Spacing.md),
             Text(
               '本 App 的 OBD2 實作依據 SAE J1979 與 ELM327 datasheet 等公開標準；'
               '每一條影響硬體行為的公式與 AT 指令都經過交叉驗證，'

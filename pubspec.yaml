@@ -113,6 +113,11 @@ flutter:
   uses-material-design: true
 
   assets:
+    - THIRD_PARTY_NOTICES_POWERTRAIN_BATTERY.md
+    - assets/licenses/Apache-2.0.txt
+    - assets/licenses/wican-bridge-MIT.txt
+    - assets/powertrain_battery/powertrain_battery_catalog.json
+    - assets/powertrain_battery/powertrain_battery_catalog.manifest.json
     - assets/vehicle_catalog/us_epa_vehicles.csv
     - assets/vehicle_catalog/us_epa_vehicles.manifest.json
 

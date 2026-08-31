@@ -21,6 +21,8 @@ import '../obd/elm327_client.dart';
 import '../obd/pid/pid.dart';
 import '../obd/freeze_frame.dart';
 import '../obd/polling_engine.dart';
+import '../obd/powertrain_battery/powertrain_battery_catalog.dart';
+import '../obd/powertrain_battery/powertrain_battery_probe.dart';
 import '../obd/session_evidence.dart';
 import '../obd/transcript_store.dart';
 import '../obd/telemetry.dart';
@@ -31,6 +33,8 @@ import '../obd/transport/demo_transport.dart';
 import '../obd/transport/obd_transport.dart';
 import '../obd/transport/wifi_transport.dart';
 import 'pid_registry.dart';
+import 'powertrain_battery_profiles.dart';
+import 'powertrain_battery_experiments.dart';
 import 'settings.dart';
 import 'vehicle_identity.dart';
 
@@ -123,6 +127,24 @@ class ObdConnectionState {
   }
 }
 
+/// Wire-owner token for a consented experimental read.
+///
+/// Unlike the polling engine's integer lifecycle epoch, this also survives an
+/// experimental-access off/on cycle: turning the laboratory off retires every
+/// already-consumed lease even if it is re-enabled before a queued command
+/// reaches the adapter.
+final class _PowertrainProbeWireOwner {
+  const _PowertrainProbeWireOwner({
+    required this.pauseEpoch,
+    required this.connectionGeneration,
+    required this.experimentalAccessEpoch,
+  });
+
+  final int pauseEpoch;
+  final int connectionGeneration;
+  final int experimentalAccessEpoch;
+}
+
 /// Turns an exception thrown while connecting into a sentence for a driver.
 ///
 /// `'$e'` used to reach the screen directly. Measured on a phone, 2026-08-20,
@@ -178,6 +200,17 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // connected: a gauge added from the PID manager shows dashes forever, and
     // one removed keeps consuming bus bandwidth.
     ref.listen(activePidsProvider, (previous, next) => syncActivePids(next));
+    ref.listen(powertrainProfileAuthorizationsProvider, (previous, next) {
+      if (previous != next) syncActivePids(ref.read(activePidsProvider));
+    });
+    ref.listen(powertrainBatteryExperimentalAccessProvider, (previous, next) {
+      if (!next) {
+        _experimentalAccessEpoch++;
+        ref
+            .read(powertrainExperimentalProbeConsentsProvider.notifier)
+            .revokeAll();
+      }
+    });
     // A confirmed profile opens the MAP/MAF inputs used by speed-density and
     // power estimates. Editing it closes that lane again immediately; only
     // the ECU's measured fuel rate and speed remain as supplemental inputs.
@@ -286,8 +319,15 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// the interruption leaves a mark whether or not anyone was looking.
   int _pauseEpoch = 0;
 
+  /// Advances whenever the laboratory is disabled so an already-consumed
+  /// lease cannot become live again after an off/on cycle.
+  int _experimentalAccessEpoch = 0;
+
   /// The value a long operation should capture and re-compare.
   int get pauseEpoch => _pauseEpoch;
+
+  /// Monotonic owner token for session-only experimental consent.
+  int get connectionGeneration => _generation;
 
   void _onAppPaused() {
     // Snapshot first, before anything else this method does.
@@ -303,6 +343,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     unawaited(_saveTranscriptSnapshot());
     _pauseEpoch++;
     _foreground = false;
+    ref.read(powertrainExperimentalProbeConsentsProvider.notifier).revokeAll();
     // Synchronously, and before anything is queued. The freeze can start at
     // any moment after this callback returns, and the watchdog's next tick
     // will be delivered after it against a wall clock that moved on — so the
@@ -1045,6 +1086,12 @@ class ObdSession extends Notifier<ObdConnectionState> {
     await ref
         .read(vehicleProfileProvider.notifier)
         .invalidateForVehicleBoundary();
+    ref
+        .read(powertrainProfileAuthorizationsProvider.notifier)
+        .invalidateForVehicleBoundary();
+    ref
+        .read(powertrainExperimentalProbeConsentsProvider.notifier)
+        .invalidateForVehicleBoundary();
     ref.read(vehicleIdentityProvider.notifier).reset();
     if (_superseded(generation)) {
       await transport.disconnect();
@@ -1166,10 +1213,19 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // Mode 04 clear, which erases fault memory and cannot be taken back. The
     // pause epoch only ever advances, so a lease taken before the pause can
     // never match after it.
-    client.mayTransmit = (owner) =>
-        _foreground &&
-        !_superseded(generation) &&
-        (owner == null || owner == _pauseEpoch);
+    client.mayTransmit = (owner) {
+      if (!_foreground || _superseded(generation)) return false;
+      return switch (owner) {
+        null => true,
+        int epoch => epoch == _pauseEpoch,
+        _PowertrainProbeWireOwner lease =>
+          lease.pauseEpoch == _pauseEpoch &&
+              lease.connectionGeneration == generation &&
+              lease.experimentalAccessEpoch == _experimentalAccessEpoch &&
+              ref.read(powertrainBatteryExperimentalAccessProvider),
+        _ => false,
+      };
+    };
     // And what the *operation* owns, which is a different question. The gate
     // above is a sample of now; this lets a long operation notice that the
     // interruption it slept through happened at all.
@@ -1276,6 +1332,12 @@ class ObdSession extends Notifier<ObdConnectionState> {
     unawaited(
       ref.read(vehicleProfileProvider.notifier).invalidateForVehicleBoundary(),
     );
+    ref
+        .read(powertrainProfileAuthorizationsProvider.notifier)
+        .invalidateForVehicleBoundary();
+    ref
+        .read(powertrainExperimentalProbeConsentsProvider.notifier)
+        .invalidateForVehicleBoundary();
     ref.read(vehicleIdentityProvider.notifier).reset();
     state = state.copyWith(
       phase: ConnectionPhase.failed,
@@ -1286,9 +1348,78 @@ class ObdSession extends Notifier<ObdConnectionState> {
 
   /// Pushes a changed PID selection into the running loop.
   void syncActivePids(List<Pid> pids) => _engine?.setActivePids(
-    pids,
+    filterAuthorizedPowertrainPids(
+      pids,
+      ref.read(powertrainProfileAuthorizationsProvider),
+      connectionGeneration: _generation,
+    ),
     includeProfileDerivedInputs: ref.read(vehicleProfileProvider).isConfirmed,
   );
+
+  /// Performs one consent-bound experimental read outside the polling queue.
+  ///
+  /// The lease is consumed before any bytes are sent. There is no automatic
+  /// retry, no persisted PID, and no result is published after a lifecycle or
+  /// connection boundary.
+  Future<PowertrainBatteryProbeResult> probePowertrainBatteryCommand({
+    required PowertrainBatteryCatalogSnapshot snapshot,
+    required String profileId,
+    required String commandKey,
+    required int vehicleYear,
+  }) async {
+    final client = _client;
+    if (client == null || !state.isConnected || !_foreground) {
+      throw const TransportException('尚未連線，無法執行實驗唯讀查詢');
+    }
+    final generation = _generation;
+    final pauseEpoch = _pauseEpoch;
+    final experimentalAccessEpoch = _experimentalAccessEpoch;
+    final wireOwner = _PowertrainProbeWireOwner(
+      pauseEpoch: pauseEpoch,
+      connectionGeneration: generation,
+      experimentalAccessEpoch: experimentalAccessEpoch,
+    );
+    final consents = ref.read(
+      powertrainExperimentalProbeConsentsProvider.notifier,
+    );
+    final lease = consents.take(
+      snapshot: snapshot,
+      profileId: profileId,
+      commandKey: commandKey,
+      vehicleYear: vehicleYear,
+      connectionGeneration: generation,
+    );
+    if (lease == null) {
+      throw const TransportException('單次授權不存在、已過期、冷卻中或已被隔離');
+    }
+
+    PowertrainBatteryProbeResult? result;
+    try {
+      result = await PowertrainBatteryProbe.run(
+        client: client,
+        snapshot: snapshot,
+        profileId: profileId,
+        commandKey: commandKey,
+        lifecycleOwner: wireOwner,
+        deadline: lease.consent.expiresAt,
+      );
+      if (_generation != generation ||
+          _pauseEpoch != pauseEpoch ||
+          _experimentalAccessEpoch != experimentalAccessEpoch ||
+          !_foreground ||
+          !ref.read(powertrainBatteryExperimentalAccessProvider) ||
+          !identical(_client, client)) {
+        throw const TransportException('連線或前景狀態已改變，已丟棄實驗結果');
+      }
+      return result;
+    } finally {
+      final failure = result?.failure;
+      final quarantine = failure?.requiresConnectionQuarantine ?? false
+          ? result?.detail ?? failure?.name
+          : null;
+      consents.complete(lease, quarantineReason: quarantine);
+    }
+  }
 
   /// Throws when the link is gone rather than answering with an empty list.
   ///
@@ -1420,6 +1551,12 @@ class ObdSession extends Notifier<ObdConnectionState> {
     await _teardown();
     await ref
         .read(vehicleProfileProvider.notifier)
+        .invalidateForVehicleBoundary();
+    ref
+        .read(powertrainProfileAuthorizationsProvider.notifier)
+        .invalidateForVehicleBoundary();
+    ref
+        .read(powertrainExperimentalProbeConsentsProvider.notifier)
         .invalidateForVehicleBoundary();
     ref.read(vehicleIdentityProvider.notifier).reset();
     state = const ObdConnectionState();

@@ -302,7 +302,19 @@ class PollingEngine {
     // reply caches 100 under a key whose only surviving definition says 10.
     // Plausible, and usable for five seconds.
     _definitions++;
-    final merged = <String, Pid>{for (final pid in pids) pid.id: pid};
+    // Catalog/profile PIDs are evidence records, not dashboard definitions.
+    // Even a legacy preference or a forged caller must not turn one into a
+    // periodic proprietary query. Experimental profile reads have their own
+    // one-shot probe path with per-command consent; the poller has no consent
+    // context and therefore rejects every profile-owned PID unconditionally.
+    final rejectedProfiles = <String, Pid>{
+      for (final pid in pids)
+        if (pid.ownerProfileId != null) pid.id: pid,
+    };
+    final merged = <String, Pid>{
+      for (final pid in pids)
+        if (pid.ownerProfileId == null) pid.id: pid,
+    };
 
     // Requests already queued were built from the definitions being replaced.
     // Stamping the generation stopped an *in-flight* reply from writing back,
@@ -334,8 +346,11 @@ class PollingEngine {
     formula.clearCache();
 
     // Drop faults for PIDs no longer polled so re-adding one retries it.
-    final activeIds = merged.keys.toSet();
+    final activeIds = {...merged.keys, ...rejectedProfiles.keys};
     _faults.removeWhere((id, _) => !activeIds.contains(id));
+    for (final pid in rejectedProfiles.values) {
+      _invalidate(pid.id, PidFault.refusedUnsafeService);
+    }
   }
 
   /// Adds the PIDs that the active formulas reference but nobody polls.
@@ -3452,6 +3467,24 @@ class PollingEngine {
   int _definitions = 0;
 
   Future<void> _pollBatch(List<QueuedRequest> batch, [int? epoch]) async {
+    // Absolute sink guard for catalog/profile commands. Filtering the active
+    // set is not sufficient because a caller can inject a scheduler carrying
+    // old or forged queued work. The polling engine never has the one-shot
+    // experiment's command-scoped consent, so one profile-owned member makes
+    // the entire batch non-transmittable. Returning before command assembly is
+    // intentional: a malformed mixed batch must not smuggle profile bytes into
+    // an otherwise ordinary request.
+    final profileOwned = batch.where(
+      (request) => request.pid.ownerProfileId != null,
+    );
+    if (profileOwned.isNotEmpty) {
+      for (final request in profileOwned) {
+        _invalidate(request.pid.id, PidFault.refusedUnsafeService);
+      }
+      _publish(epoch);
+      return;
+    }
+
     // J1979 requests mean nothing on a J1939 bus, and this was the path the
     // J1939 split never reached: the fix was wired into the fault-code and VIN
     // reads and into the tests, and not into the telemetry it was about. On a
@@ -3543,7 +3576,14 @@ class PollingEngine {
     try {
       // Header and query in one chain slot, so nothing else can execute
       // against a header that was selected for this batch.
-      response = await client.sendAddressed(header, command);
+      final expectedResponseId = batch.first.pid.expectedResponseId;
+      response = expectedResponseId == null
+          ? await client.sendAddressed(header, command)
+          : await client.sendGlobal(
+              command,
+              header: header,
+              timeout: client.commandTimeout,
+            );
       if (epoch != null && epoch != _epoch) return;
       // The definitions this request was built from are gone, so its answer
       // describes a question nobody is asking any more. Writing it to the
@@ -3600,11 +3640,20 @@ class PollingEngine {
     // numbers with no fault and no requeue — stale values that look live. Any
     // shortfall means the frame was truncated or mis-aligned, so fastMode goes
     // off and the whole batch is retried one PID at a time.
-    if (slices.length != batch.length && batch.length > 1) {
+    if (slices.length != batch.length &&
+        batch.length > 1 &&
+        !_isProfileResponseBatch(batch)) {
       scheduler.handleCorruptionEvent();
       for (final request in batch) {
         scheduler.enqueueRequest(request);
       }
+      return;
+    }
+    if (slices.length != batch.length && _isProfileResponseBatch(batch)) {
+      for (final request in batch) {
+        _invalidate(request.pid.id, PidFault.busError);
+      }
+      _publish(epoch);
       return;
     }
 
@@ -3628,6 +3677,23 @@ class PollingEngine {
           requester: request.pid,
           now: now,
         );
+        // Catalog profile ranges are part of the reviewed source contract,
+        // not merely gauge display bounds. A correctly attributed frame can
+        // still be the wrong variant, firmware or byte layout; publishing a
+        // numerically valid but source-impossible value would turn that
+        // mismatch into confident telemetry. Fail before either cache can
+        // make the value visible to this PID or a dependent formula.
+        //
+        // Ordinary built-in and user-authored PIDs retain their historical
+        // behavior: their min/max values are presentation bounds and may be
+        // exceeded by a real sensor or a deliberately wider formula.
+        if (request.pid.ownerProfileId != null &&
+            (!value.isFinite ||
+                value < request.pid.minValue ||
+                value > request.pid.maxValue)) {
+          _invalidate(request.pid.id, PidFault.formulaError);
+          continue;
+        }
         formula.cachePidValue(request.pid, value, now);
         // `BARO` is the one formula input with no byte of its own to bind to,
         // so it has to be routed here from the PID that measures it. Without
@@ -3869,6 +3935,65 @@ class PollingEngine {
     return bytes.sublist(1 + identifier.length);
   }
 
+  static bool _isProfileResponseBatch(List<QueuedRequest> batch) {
+    if (batch.isEmpty) return false;
+    final first = batch.first.pid;
+    final profile = first.ownerProfileId;
+    final response = first.expectedResponseId;
+    if (first.isMode01 ||
+        profile == null ||
+        profile.isEmpty ||
+        response == null ||
+        response.isEmpty) {
+      return false;
+    }
+    return batch.every(
+      (request) =>
+          request.pid.ownerProfileId == profile &&
+          request.pid.header == first.header &&
+          request.pid.modeAndPid == first.modeAndPid &&
+          request.pid.expectedResponseId == response &&
+          request.pid.responseDataLengthBytes == first.responseDataLengthBytes,
+    );
+  }
+
+  /// Applies a catalog signal's byte window after the response envelope has
+  /// been removed. Invalid or incomplete source data is never shortened into
+  /// something that still looks formula-compatible.
+  static List<int>? _dataWindow(Pid pid, List<int> data) {
+    final offset = pid.dataOffsetBytes ?? 0;
+    final length = pid.dataLengthBytes;
+    if (offset < 0 || (length != null && length <= 0)) return null;
+    if (offset > data.length) return null;
+    final end = length == null ? data.length : offset + length;
+    if (end > data.length || end <= offset) return null;
+    return data.sublist(offset, end);
+  }
+
+  /// Returns the one envelope-valid response from exactly the controller a
+  /// profile names. Any anonymous, wrong-source or duplicate frame makes the
+  /// exchange unattributable and therefore unusable.
+  static List<int>? _attributedData(ObdResponse response, Pid pid) {
+    final expected = pid.expectedResponseId?.toUpperCase();
+    if (expected == null || expected.isEmpty) return null;
+
+    final matches = <List<int>>[];
+    for (final frame in response.frames) {
+      if (frame.bytes.isEmpty) continue;
+      if (frame.sourceId?.toUpperCase() != expected) return null;
+      final data = _dataForNonMode01(pid.modeAndPid, frame.bytes);
+      final declaredLength = pid.responseDataLengthBytes;
+      if (data == null ||
+          declaredLength == null ||
+          declaredLength <= 0 ||
+          data.length != declaredLength) {
+        return null;
+      }
+      matches.add(data);
+    }
+    return matches.length == 1 ? matches.single : null;
+  }
+
   /// Splits a reply into per-PID data slices, keyed by [Pid.id].
   ///
   /// Adapters differ on batched replies: some repeat the `41` mode byte before
@@ -3888,6 +4013,17 @@ class PollingEngine {
     }
 
     final result = <String, List<int>>{};
+
+    if (_isProfileResponseBatch(batch)) {
+      final data = _attributedData(response, batch.first.pid);
+      if (data == null) return const {};
+      for (final request in batch) {
+        final window = _dataWindow(request.pid, data);
+        if (window == null) return const {};
+        result[request.pid.id] = window;
+      }
+      return result;
+    }
 
     // A single Mode 01 request whose PID has no declared width: everything
     // after `41 <pid>` is that PID's data by construction, however much of it
@@ -3991,6 +4127,12 @@ class PollingEngine {
       // number from whichever controller happened to print first, while the
       // equally valid `0x50` is silently swallowed into its tail.
       final pid = batch.first.pid;
+      if (pid.expectedResponseId != null) {
+        final data = _attributedData(response, pid);
+        if (data == null) return const {};
+        final window = _dataWindow(pid, data);
+        return window == null ? const {} : {pid.id: window};
+      }
       final matches = <List<int>>[];
       for (final frame in response.frames) {
         final data = _dataForNonMode01(pid.modeAndPid, frame.bytes);
@@ -4000,7 +4142,9 @@ class PollingEngine {
       // reached more than one controller, and nothing in the definition says
       // which was meant. Picking one is picking at random.
       if (matches.length != 1) return const {};
-      result[pid.id] = matches.first;
+      final window = _dataWindow(pid, matches.first);
+      if (window == null) return const {};
+      result[pid.id] = window;
       return result;
     }
 

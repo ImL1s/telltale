@@ -22,7 +22,10 @@ void main() {
       expect(PollableServices.isPollable('010C'), isTrue); // current data
       expect(PollableServices.isPollable('020500'), isTrue); // freeze frame
       expect(PollableServices.isPollable('0902'), isTrue); // vehicle info
-      expect(PollableServices.isPollable('221E1C'), isTrue); // ReadDataByIdentifier
+      expect(
+        PollableServices.isPollable('221E1C'),
+        isTrue,
+      ); // ReadDataByIdentifier
     });
 
     test('a request missing part of its envelope is refused', () {
@@ -38,6 +41,8 @@ void main() {
 
       // Mode 22 identifiers are two bytes; one is not a shorter form of it.
       expect(PollableServices.isPollable('2211'), isFalse);
+      expect(PollableServices.isPollable('21'), isFalse);
+      expect(PollableServices.isPollable('210102'), isFalse);
 
       // And the well-formed versions still pass, so this is a shape check
       // rather than a blanket refusal.
@@ -45,15 +50,32 @@ void main() {
       expect(PollableServices.isPollable('221101'), isTrue);
     });
 
+    test('Mode 21 is reserved for the experimental one-shot probe', () {
+      expect(PollableServices.isPollable('2101'), isFalse);
+      expect(PollableServices.rejectionReason('2101'), contains('服務 21'));
+      expect(PollableServices.identifierLength('2101'), isNull);
+      expect(
+        PidDefinition.rejectionReason(
+          name: 'Local battery',
+          modeAndPid: '2101',
+          header: '7E0',
+          minText: '0',
+          maxText: '100',
+          requireBounds: true,
+        ),
+        contains('服務 21'),
+      );
+    });
+
     test('anything that writes, controls or resets is refused', () {
       for (final request in [
         '2F011203', // InputOutputControlByIdentifier — actuates an output
-        '2E1234',   // WriteDataByIdentifier
-        '310112',   // RoutineControl
-        '1101',     // ECUReset
-        '2701',     // SecurityAccess
-        '2801',     // CommunicationControl
-        '1400',     // ClearDiagnosticInformation
+        '2E1234', // WriteDataByIdentifier
+        '310112', // RoutineControl
+        '1101', // ECUReset
+        '2701', // SecurityAccess
+        '2801', // CommunicationControl
+        '1400', // ClearDiagnosticInformation
       ]) {
         expect(
           PollableServices.isPollable(request),
@@ -72,7 +94,8 @@ void main() {
   });
 
   group('CSV import', () {
-    const columns = 'Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,'
+    const columns =
+        'Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,'
         'Units,Header,Priority,Redline,Variant\r\n';
 
     test('refuses a row that would actuate an output', () {
@@ -82,6 +105,14 @@ void main() {
       );
       expect(result.pids, isEmpty);
       expect(result.errors.single, contains('2F'));
+    });
+
+    test('refuses Mode 21 from the ordinary custom PID path', () {
+      final result = PidCsv.parse(
+        '${columns}Local battery,LOCAL,2101,A,0,100,%,7E0\r\n',
+      );
+      expect(result.pids, isEmpty);
+      expect(result.errors.single, contains('服務 21'));
     });
 
     test('still accepts an ordinary ReadDataByIdentifier row', () {
@@ -94,8 +125,7 @@ void main() {
   });
 
   group('the polling engine is the last line of defence', () {
-    test('a definition stored by an older build is never transmitted',
-        () async {
+    test('a definition stored by an older build is never transmitted', () async {
       // The editor and the importer both refuse it now, but a PID persisted
       // before this rule existed would otherwise be scheduled on every cycle.
       const dangerous = Pid(

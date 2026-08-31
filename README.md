@@ -55,6 +55,12 @@ export anything you need first because uninstalling removes local app data.
 - A built-in Demo ECU that needs no adapter or vehicle
 - Live PID dashboards, fault codes, freeze frames, readiness, custom PIDs, and
   user-triggered diagnostic transcript export
+- A searchable, integrity-checked schema-v2 powertrain-battery catalog with
+  205 source-backed PHEV, HEV, BEV, MHEV, REEV, and FCEV profiles: 203
+  metadata-only `researchOnly` entries and two opt-in `experimental` entries.
+  The two experimental profiles contain 15 fixed read-only commands and 20
+  bounded signals; no profile is installable. The powertrain split is BEV 74,
+  FCEV 5, HEV 47, MHEV 7, PHEV 69, and REEV 3
 - An integrity-checked, fully offline U.S. EPA Find-a-Car snapshot with 50,242
   exact configurations across 146 make labels and model years 1984–2027. Only
   source fields whose meaning matches the physics profile are applied; the app
@@ -63,6 +69,26 @@ export anything you need first because uninstalling removes local app data.
   the vehicle answers remains visible, but profile-derived horsepower, torque,
   and fuel estimates stay hidden until the driver reviews and confirms the
   inputs for that connection; reconnecting invalidates the confirmation
+
+The experimental battery laboratory is off by default. Its persistent Settings
+switch only reveals the laboratory; it never trusts a vehicle. For every
+connection and every attempt, the driver must choose one pinned Mode 21 or 22
+command and give a new, short-lived acknowledgement for the selected year,
+known identity evidence, unresolved fields, and a safely parked vehicle. The
+app sends that command once: no identifier scan, batch, automatic retry,
+installation, scheduled polling, persisted telemetry value, or dashboard use.
+It accepts only the pinned responder, positive-response echo, exact payload
+length, finite formula result, and bounded range.
+
+The one-use consent is bound to the verified catalog hash, source revision,
+profile, command, year, and connection generation. It expires after two
+minutes; a five-second cooldown, three-attempt-per-command connection limit,
+single-flight gate, structural-mismatch quarantine, and lifecycle/link boundary
+invalidation keep it fail closed. The normal diagnostic transcript still
+records the command and response as evidence; a synthetic rig or phone transport
+test does not prove that a real vehicle exposes or correctly decodes that PID.
+See [powertrain battery profiles](docs/powertrain-battery-profiles.md) for the
+full counts, source limits, consent rules, licence, and validation boundary.
 
 Android is the primary physically tested platform for device, UI, and BLE-rig
 paths. iOS and macOS currently have compile gates, not equivalent physical-
@@ -144,6 +170,7 @@ and identified commercial test layers.
 | [Field guide](docs/field-guide.zh-TW.md) | Safe real-car workflow and troubleshooting (zh-TW) |
 | [Protocol deviations](docs/protocol-deviations.zh-TW.md) | Standards and hardware-behaviour notes (zh-TW) |
 | [Vehicle data sources](docs/vehicle-data-sources.md) | Official snapshots, field semantics, hashes, and market limits |
+| [Powertrain battery profiles](docs/powertrain-battery-profiles.md) | Catalog counts, install gates, evidence, provenance, and real-vehicle limits |
 | [Changelog](CHANGELOG.md) | User-visible changes by version |
 | [Contributing](CONTRIBUTING.md) | Development and pull-request requirements |
 
@@ -166,5 +193,8 @@ Contributions are welcome under the [contributor guide](CONTRIBUTING.md).
 Telltale is licensed under [GPL-3.0](LICENSE). It is not affiliated with Ian
 Hawkins' Torque or Torque Pro and is neither an official nor derivative version
 of either product. The bundled official vehicle-data snapshots keep their own
-[source and reuse notices](assets/vehicle_catalog/NOTICE.md). Use the app at your
-own risk; no diagnostic result guarantees that a vehicle is safe to operate.
+[source and reuse notices](assets/vehicle_catalog/NOTICE.md). Powertrain-battery
+sources retain separate
+[third-party notices](THIRD_PARTY_NOTICES_POWERTRAIN_BATTERY.md). Use the app at
+your own risk; no diagnostic result guarantees that a vehicle is safe to
+operate.

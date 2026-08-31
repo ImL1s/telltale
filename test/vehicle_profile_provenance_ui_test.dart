@@ -172,6 +172,22 @@ Future<void> _pumpSettings(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('settings exposes the packaged licence surface', (tester) async {
+    await _pumpSettings(tester);
+
+    final button = find.byKey(const Key('open_source_licenses'));
+    await tester.scrollUntilVisible(
+      button,
+      600,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LicensePage), findsOneWidget);
+    expect(find.text('Telltale'), findsWidgets);
+  });
+
   testWidgets('generic profile values are never presented as verified data', (
     tester,
   ) async {

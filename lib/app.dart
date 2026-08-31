@@ -8,6 +8,7 @@ import 'ui/screens/connect/connect_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
 import 'ui/screens/dtc/dtc_screen.dart';
 import 'ui/screens/performance/performance_screen.dart';
+import 'ui/screens/pids/powertrain_battery_catalog_screen.dart';
 import 'ui/screens/pids/pid_editor_screen.dart';
 import 'ui/screens/pids/pid_manager_screen.dart';
 import 'ui/screens/settings/settings_screen.dart';
@@ -74,7 +75,13 @@ final _router = GoRouter(
     GoRoute(
       path: PidEditorScreen.path,
       parentNavigatorKey: _rootKey,
-      builder: (context, state) => PidEditorScreen(pidId: state.uri.queryParameters['id']),
+      builder: (context, state) =>
+          PidEditorScreen(pidId: state.uri.queryParameters['id']),
+    ),
+    GoRoute(
+      path: PowertrainBatteryCatalogScreen.path,
+      parentNavigatorKey: _rootKey,
+      builder: (context, state) => const PowertrainBatteryCatalogScreen(),
     ),
   ],
 );

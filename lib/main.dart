@@ -5,10 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/field_evidence/platform_metadata.dart';
+import 'core/licenses/powertrain_battery_licenses.dart';
 import 'state/pid_registry.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerPowertrainBatteryLicenses();
 
   // Preferences are loaded before the first frame so every provider that
   // depends on them can be synchronous — otherwise the dashboard flashes its

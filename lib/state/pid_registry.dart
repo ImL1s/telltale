@@ -10,14 +10,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../obd/pid/pid.dart';
 import '../obd/pid/pid_library.dart';
+import '../obd/powertrain_battery/powertrain_battery_profile.dart';
+import '../obd/powertrain_battery/profile_pid_installer.dart';
 
 const _kCustomPidsKey = 'custom_pids_v1';
 const _kActivePidIdsKey = 'active_pid_ids_v1';
+const _kPowertrainProfilePidsKey = 'powertrain_profile_pids_v1';
 
 /// Injected at startup in `main()` so the rest of the app can read preferences
 /// synchronously instead of every screen awaiting the same future.
 final sharedPreferencesProvider = Provider<SharedPreferences>(
-  (ref) => throw UnimplementedError('sharedPreferencesProvider must be overridden'),
+  (ref) =>
+      throw UnimplementedError('sharedPreferencesProvider must be overridden'),
 );
 
 class PidRegistry extends Notifier<List<Pid>> {
@@ -67,10 +71,24 @@ class PidRegistry extends Notifier<List<Pid>> {
     for (final pid in custom) {
       byCanonicalId[Pid.canonicalId(pid.id)] = pid;
     }
+    // No catalog profile is installable in this release. Ignore and erase any
+    // value injected under the former experimental persistence key rather
+    // than rehydrating it into the production PID registry.
+    if (prefs.containsKey(_kPowertrainProfilePidsKey)) {
+      unawaited(prefs.remove(_kPowertrainProfilePidsKey));
+    }
     return [...PidLibrary.all, ...byCanonicalId.values];
   }
 
   List<Pid> get customPids => state.where((p) => p.isCustom).toList();
+
+  List<Pid> get profilePids => state
+      .where((pid) => !pid.isCustom && pid.ownerProfileId != null)
+      .toList(growable: false);
+
+  Set<String> get installedPowertrainProfileIds => {
+    for (final pid in profilePids) pid.ownerProfileId!,
+  };
 
   Pid? byId(String id) {
     for (final pid in state) {
@@ -114,7 +132,9 @@ class PidRegistry extends Notifier<List<Pid>> {
       // finds the first of a pair that a map literal downstream resolves to
       // the second.
       final index = next.indexWhere(
-          (p) => p.isCustom && Pid.canonicalId(p.id) == Pid.canonicalId(custom.id));
+        (p) =>
+            p.isCustom && Pid.canonicalId(p.id) == Pid.canonicalId(custom.id),
+      );
       if (index >= 0) {
         next[index] = custom;
         replaced++;
@@ -155,6 +175,26 @@ class PidRegistry extends Notifier<List<Pid>> {
     // here leaves the grid on the rebuild this assignment already triggers. A
     // stale id left in storage never resolves again and is rewritten by the
     // next toggle.
+  }
+
+  /// Installs or replaces every signal owned by [profile] in one persisted
+  /// operation. Installation only makes definitions available; it does not
+  /// add them to the dashboard or authorize vehicle traffic.
+  Future<void> installPowertrainProfile(
+    PowertrainBatteryProfile profile,
+  ) async {
+    PowertrainProfilePidInstaller.build(profile);
+  }
+
+  Future<void> uninstallPowertrainProfile(String profileId) async {
+    final next = [
+      for (final pid in state)
+        if (pid.ownerProfileId != profileId) pid,
+    ];
+    state = next;
+    await ref
+        .read(sharedPreferencesProvider)
+        .remove(_kPowertrainProfilePidsKey);
   }
 
   Future<void> _persist() async {
@@ -205,8 +245,9 @@ class PidImportOutcome {
   }
 }
 
-final pidRegistryProvider =
-    NotifierProvider<PidRegistry, List<Pid>>(PidRegistry.new);
+final pidRegistryProvider = NotifierProvider<PidRegistry, List<Pid>>(
+  PidRegistry.new,
+);
 
 /// The PIDs currently on the dashboard, in display order.
 class ActivePids extends Notifier<List<Pid>> {
@@ -240,8 +281,10 @@ class ActivePids extends Notifier<List<Pid>> {
     // without a word, while the other ids kept resolving and suppressed the
     // "nothing resolved" fallback that would have made it visible.
     final byId = {for (final pid in registry) Pid.canonicalId(pid.id): pid};
-    final resolved =
-        storedIds.map((id) => byId[Pid.canonicalId(id)]).nonNulls.toList();
+    final resolved = storedIds
+        .map((id) => byId[Pid.canonicalId(id)])
+        .nonNulls
+        .toList();
     // Stored, non-empty, and nothing resolved: every id has since been
     // deleted. That is a broken layout rather than a chosen one, so fall back
     // rather than showing a blank dashboard with no way to recover.
@@ -355,8 +398,13 @@ class ActivePids extends Notifier<List<Pid>> {
 
   Future<void> _persist() async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setStringList(_kActivePidIdsKey, state.map((p) => p.id).toList());
+    await prefs.setStringList(
+      _kActivePidIdsKey,
+      state.map((p) => p.id).toList(),
+    );
   }
 }
 
-final activePidsProvider = NotifierProvider<ActivePids, List<Pid>>(ActivePids.new);
+final activePidsProvider = NotifierProvider<ActivePids, List<Pid>>(
+  ActivePids.new,
+);

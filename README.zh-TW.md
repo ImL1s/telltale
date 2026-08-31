@@ -49,12 +49,31 @@ GitHub APK 使用社群簽章，無法更新 Google Play 版，也無法由 Play
 - 不需轉接器或車輛的內建 Demo ECU
 - 即時 PID 儀表、故障碼、凍結幀、排放就緒、自訂 PID，以及由使用者主動匯出
   的診斷紀錄
+- 可搜尋且經完整性檢查的 schema v2 大電池目錄，收錄 205 筆有來源的 PHEV、
+  HEV、BEV、MHEV、REEV 與 FCEV 車型設定：203 筆是只有 metadata、完全沒有
+  指令的 `researchOnly`，兩筆是必須主動開啟的 `experimental`。兩筆實驗設定
+  合計 15 條固定唯讀指令、20 個有邊界的訊號；目前可安裝數量為 0。動力分布為
+  BEV 74、FCEV 5、HEV 47、MHEV 7、PHEV 69、REEV 3
 - 內建經完整性檢查、完全離線的美國 EPA Find-a-Car 快照：50,242 筆精確配置、
   146 個 make／廠牌（製造商部門）標籤、年式 1984–2027。只套用語意能與公式設定逐欄對上的官方資料，
   不推測車重、扭力、風阻、VE 或傳動效率
 - 每組車輛設定都套用安全確認流程：未確認車重、VE、風阻與驅動方式前，
   車輛有回覆的 OBD 實測值仍可顯示，但不會用通用預設值冒充實車的馬力、扭力或油耗；
   每次重新連線都會自動失效，避免把上一台車的設定套到下一台
+
+大電池證據實驗室預設關閉。Settings 的持久開關只會顯示實驗入口，不代表信任
+任何車輛。每次連線、每條指令、每次嘗試都必須重新選一條目錄內固定的 Mode 21
+或 22 指令，並短效確認所選年式、已知身份證據、未證實欄位與車輛已安全停妥。
+App 只送一次：不掃描 identifier、不批次、不自動重試、不安裝、不排程輪詢、不把
+解碼值持久化，也不放入 dashboard。回覆必須逐項通過固定 responder、positive
+response echo、exact payload length、有限公式結果與數值範圍檢查。
+
+一次性同意會綁定已驗證的目錄雜湊、來源 revision、profile、指令、年式與連線
+世代，兩分鐘後失效；另有五秒 cooldown、每條指令每次連線最多三次、single-flight、
+結構錯誤隔離，以及背景／連線邊界失效。一般診斷紀錄仍會保存該次指令與回覆作為
+證據；合成馬具或手機 transport 測試不等於實車 PID 或解碼正確性證明。完整數量、
+來源限制、同意規則、授權與驗證邊界見
+[大電池車型設定說明](docs/powertrain-battery-profiles.md)。
 
 Android 是裝置、UI 與 BLE rig 路徑的主要實體測試平台。iOS 與 macOS 目前只有
 編譯閘門，不能視為具備同等的實體轉接器或實車證據。Bluetooth Classic 實務上
@@ -129,6 +148,7 @@ Samsung 實體手機到 Mac 的 BLE GATT 無線路徑，已搭配模擬 ELM327 p
 | [實車指南](docs/field-guide.zh-TW.md) | 安全的實車流程與故障排除 |
 | [協定差異](docs/protocol-deviations.zh-TW.md) | 標準查證與硬體行為註記 |
 | [車輛資料來源](docs/vehicle-data-sources.md) | 官方快照、欄位語意、雜湊與市場邊界 |
+| [大電池車型設定](docs/powertrain-battery-profiles.md) | 目錄數量、安裝閘門、證據、來源與實車限制 |
 | [版本紀錄](CHANGELOG.md) | 各版本可見變更 |
 | [貢獻指南](CONTRIBUTING.md) | 開發與 pull request 要求 |
 
@@ -148,5 +168,6 @@ Telltale 不會主動上傳資料。本機診斷匯出可能含 VIN、裝置、�
 歡迎依[貢獻指南](CONTRIBUTING.md)參與。Telltale 採
 [GPL-3.0](LICENSE) 授權，與 Ian Hawkins 的 Torque / Torque Pro 無關，也不是其
 官方或衍生版本。隨 App 提供的官方車輛資料快照另有
-[來源與重用聲明](assets/vehicle_catalog/NOTICE.md)。請自行承擔使用風險；任何診斷
-結果都不保證車輛可安全行駛。
+[來源與重用聲明](assets/vehicle_catalog/NOTICE.md)，大電池資料另有
+[第三方來源聲明](THIRD_PARTY_NOTICES_POWERTRAIN_BATTERY.md)。請自行承擔使用風險；
+任何診斷結果都不保證車輛可安全行駛。
