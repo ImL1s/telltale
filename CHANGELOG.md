@@ -8,6 +8,32 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## Unreleased
 
+## 1.0.7+8 — 2026-08-31
+
+### Added
+
+- Added an evidence-gated, offline powertrain-battery catalog with 205
+  source-backed PHEV, HEV, BEV, MHEV, REEV, and FCEV profiles. The 203
+  research-only entries are non-executable indexes; two opt-in experimental
+  entries provide bounded, read-only one-shot queries and none can be installed
+  into normal polling.
+- Added a disabled-by-default experimental battery laboratory with explicit
+  evidence and wire-access consent, single-flight execution, bounded
+  per-connection attempts, structural-mismatch quarantine, fail-closed response
+  validation, and no persistence into dashboard telemetry.
+- Added bundled source manifests, checksums, third-party notices, and in-app
+  license access for auditing the catalog independently.
+
+### Documentation
+
+- Clarified that equivalent-version paid Google Play, self-built, and community
+  editions have the same app feature set and no paid-only unlocks; Play rollout
+  may lag. The purchase pays for Play-managed installation and updates and
+  supports ongoing development.
+- Documented the catalog's evidence levels and limitations. Source-backed data,
+  synthetic rigs, and phone tests do not claim validation on a physical vehicle,
+  battery ECU, CAN bus, or adapter.
+
 ## 1.0.6+7 — 2026-08-29
 
 ### Added
