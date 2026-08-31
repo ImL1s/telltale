@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:torque_obd/obd/pid/pid.dart';
 import 'package:torque_obd/obd/pid/pid_library.dart';
+import 'package:torque_obd/obd/session_boundary.dart';
 import 'package:torque_obd/obd/telemetry.dart';
 import 'package:torque_obd/state/obd_session.dart';
 import 'package:torque_obd/state/pid_registry.dart';
@@ -204,6 +205,162 @@ void main() {
     expect(lane.currentValue, isNull);
     expect(lane.currentStatus, TelemetryStatus.stale);
   });
+
+  test(
+    'session boundary reset clears prior vehicle samples without changing selection',
+    () {
+      final controller = TelemetryTrendsController(
+        activePids: [PidLibrary.engineRpm, PidLibrary.vehicleSpeed],
+        storedIds: [PidLibrary.engineRpm.id, PidLibrary.vehicleSpeed.id],
+      );
+      final vehicleA = DateTime.utc(2026, 8, 30, 10);
+      controller.ingest(
+        TelemetrySnapshot(
+          readings: {
+            PidLibrary.engineRpm.id: Reading(
+              pid: PidLibrary.engineRpm,
+              value: 800,
+              rawBytes: const [0],
+              timestamp: vehicleA,
+            ),
+            PidLibrary.vehicleSpeed.id: Reading(
+              pid: PidLibrary.vehicleSpeed,
+              value: 40,
+              rawBytes: const [0],
+              timestamp: vehicleA,
+            ),
+          },
+          capturedAt: vehicleA,
+        ),
+        observedAtUtc: vehicleA,
+        elapsedUs: 1,
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.currentValue,
+        800,
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.primitives
+            .whereType<TimelineValue>(),
+        hasLength(1),
+      );
+
+      // Disconnect/reconnect within the 60s window must not keep vehicle A.
+      controller.resetForSessionBoundary();
+      expect(
+        controller.state.selectedIds,
+        [PidLibrary.engineRpm.id, PidLibrary.vehicleSpeed.id],
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.primitives,
+        isEmpty,
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.currentValue,
+        isNull,
+      );
+
+      final vehicleB = vehicleA.add(const Duration(seconds: 15));
+      controller.ingest(
+        _snapshot(PidLibrary.engineRpm, 3200, vehicleB),
+        observedAtUtc: vehicleB,
+        elapsedUs: 3,
+      );
+      final lane = controller.state.lanes[PidLibrary.engineRpm.id]!;
+      final values = lane.primitives.whereType<TimelineValue>().toList();
+      expect(values, hasLength(1));
+      expect(values.single.value, 3200);
+      expect(lane.currentValue, 3200);
+    },
+  );
+
+  test(
+    'OBD session boundary stream resets live trend histories',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final snapshots = StreamController<TelemetrySnapshot>.broadcast(
+        sync: true,
+      );
+      final boundaries = StreamController<ObdSessionBoundary>.broadcast(
+        sync: true,
+      );
+      var elapsedUs = 0;
+      var nowUtc = DateTime.utc(2026, 8, 30);
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          activePidsProvider.overrideWith(
+            () => _FixedActivePids(const [PidLibrary.engineRpm]),
+          ),
+          telemetryProvider.overrideWith((ref) => snapshots.stream),
+          telemetryTrendsBoundaryStreamProvider.overrideWithValue(
+            boundaries.stream,
+          ),
+          telemetryTrendsClockProvider.overrideWithValue(
+            TelemetryTrendsClock(
+              nowUtc: () => nowUtc,
+              elapsedUs: () => ++elapsedUs,
+            ),
+          ),
+        ],
+      );
+      addTearDown(() async {
+        container.dispose();
+        await snapshots.close();
+        await boundaries.close();
+      });
+      final subscription = container.listen(
+        telemetryTrendsProvider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+
+      nowUtc = DateTime.utc(2026, 8, 30);
+      snapshots.add(_snapshot(PidLibrary.engineRpm, 1500, nowUtc));
+      await container.pump();
+      expect(
+        container
+            .read(telemetryTrendsProvider)
+            .lanes[PidLibrary.engineRpm.id]!
+            .currentValue,
+        1500,
+      );
+
+      nowUtc = nowUtc.add(const Duration(seconds: 1));
+      boundaries.add(
+        ObdSessionBoundary(
+          generation: 1,
+          observedAtUtc: nowUtc,
+          reason: ObdSessionBoundaryReason.userDisconnect,
+        ),
+      );
+      await container.pump();
+
+      final afterBoundary = container
+          .read(telemetryTrendsProvider)
+          .lanes[PidLibrary.engineRpm.id]!;
+      expect(afterBoundary.primitives, isEmpty);
+      expect(afterBoundary.currentValue, isNull);
+      expect(
+        container.read(telemetryTrendsProvider).selectedIds,
+        [PidLibrary.engineRpm.id],
+      );
+
+      nowUtc = nowUtc.add(const Duration(seconds: 1));
+      snapshots.add(_snapshot(PidLibrary.engineRpm, 4100, nowUtc));
+      await container.pump();
+      final values = container
+          .read(telemetryTrendsProvider)
+          .lanes[PidLibrary.engineRpm.id]!
+          .primitives
+          .whereType<TimelineValue>()
+          .toList();
+      expect(values, hasLength(1));
+      expect(values.single.value, 4100);
+    },
+  );
 
   test('prunes to 60 seconds and bounds every lane to 1200 primitives', () {
     final controller = TelemetryTrendsController(

@@ -7,6 +7,7 @@ import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../obd/pid/pid.dart';
+import '../obd/session_boundary.dart';
 import '../obd/telemetry.dart';
 import '../telemetry/session/telemetry_session.dart';
 import '../telemetry/session/timeline_downsampler.dart';
@@ -150,6 +151,20 @@ final class TelemetryTrendsController {
         elapsedUs: _windowEndElapsedUs,
       );
       lane.pruneAndBound(windowStart);
+    }
+  }
+
+  /// Clears plotted history while preserving the user's lane selection.
+  ///
+  /// Disconnect/reconnect within the 60s window must not leave the previous
+  /// vehicle's samples beside the new session's values for shared PID IDs.
+  void resetForSessionBoundary() {
+    final byId = <String, Pid>{for (final pid in _active) pid.id: pid};
+    for (final id in _selectedIds) {
+      final pid = byId[id];
+      if (pid != null) {
+        _lanes[id] = _MutableTrendLane(pid);
+      }
     }
   }
 
@@ -304,8 +319,16 @@ bool _sameIds(List<String> left, List<String> right) {
   return true;
 }
 
+/// Override seam so tests can inject session boundaries without a live OBD
+/// session. Production wires [ObdSession.sessionBoundaries].
+final telemetryTrendsBoundaryStreamProvider =
+    Provider<Stream<ObdSessionBoundary>>(
+      (ref) => ref.read(obdSessionProvider.notifier).sessionBoundaries,
+    );
+
 class TelemetryTrendsNotifier extends Notifier<TelemetryTrendsState> {
   late final TelemetryTrendsController _controller;
+  StreamSubscription<ObdSessionBoundary>? _boundaries;
 
   void _ingest(AsyncValue<TelemetrySnapshot> telemetry) {
     final clock = ref.read(telemetryTrendsClockProvider);
@@ -337,6 +360,14 @@ class TelemetryTrendsNotifier extends Notifier<TelemetryTrendsState> {
     ref.listen<AsyncValue<TelemetrySnapshot>>(telemetryProvider, (_, next) {
       _ingest(next);
       state = _controller.state;
+    });
+    _boundaries = ref.read(telemetryTrendsBoundaryStreamProvider).listen((_) {
+      _controller.resetForSessionBoundary();
+      state = _controller.state;
+    });
+    ref.onDispose(() {
+      unawaited(_boundaries?.cancel());
+      _boundaries = null;
     });
     _ingest(ref.read(telemetryProvider));
     return _controller.state;
