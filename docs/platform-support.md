@@ -146,12 +146,12 @@ unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
 - Android attached: `R5CX10VFFBA` (S24 Ultra), `RFCNC0WNT9H`, `emulator-5554`.
 - S24 Ultra bonded list includes **`OBDBLE` / `OBDII` (SPP)** — dual-mode
   adapter historically proven over BLE on 2026-08-27 (see recovered transcript
-  above). Re-check `20260831T223755Z`: phone BT **ON**, ACL BR/EDR and LE both
+  above). Re-check `20260831T232922Z`: phone BT **ON**, ACL BR/EDR and LE both
   still **N** (`ConnectionState` disconnected); evidence:
-  `docs/verification/obdble-acl-recheck-20260831T223755Z.txt`. Treat as
+  `docs/verification/obdble-acl-recheck-20260831T232922Z.txt`. Treat as
   **bonded but unpowered / out of range** — no fresh connect→PID→record this
-  session. Prior same-day checks `20260831T222101Z` / `20260831T212448Z`
-  reached the same verdict.
+  session. Prior same-day checks `20260831T223755Z` / `20260831T222101Z` /
+  `20260831T212448Z` reached the same verdict.
 - macOS paired set is phones/keyboards/earbuds/gamepads only (no ELM327).
   Classic UI is enabled via IOBluetooth RFCOMM; field proof still needs a
   powered adapter paired to this Mac.

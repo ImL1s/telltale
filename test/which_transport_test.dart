@@ -180,4 +180,33 @@ void main() {
       }
     }
   });
+
+  test('Classic SPP hosts do not claim headphones appear in the port list', () {
+    final windowsEmpty = classicDeviceListEmptyHint(
+      serialHost: true,
+      linuxHost: false,
+    );
+    final linuxEmpty = classicDeviceListEmptyHint(
+      serialHost: true,
+      linuxHost: true,
+    );
+    final bondedEmpty = classicDeviceListEmptyHint(serialHost: false);
+    expect(windowsEmpty, contains('COMx'));
+    expect(linuxEmpty, contains('rfcomm'));
+    expect(bondedEmpty, contains('配對'));
+    expect(windowsEmpty, isNot(contains('耳機')));
+    expect(linuxEmpty, isNot(contains('耳機')));
+
+    final windowsHint = classicDeviceListHint(
+      serialHost: true,
+      linuxHost: false,
+    );
+    final linuxHint = classicDeviceListHint(serialHost: true, linuxHost: true);
+    final bondedHint = classicDeviceListHint(serialHost: false);
+    expect(windowsHint, contains('COM'));
+    expect(linuxHint, contains('rfcomm'));
+    expect(bondedHint, contains('耳機'));
+    expect(windowsHint, isNot(contains('耳機')));
+    expect(linuxHint, isNot(contains('耳機')));
+  });
 }

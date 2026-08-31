@@ -225,12 +225,17 @@ final class TelemetryReplayResult {
 final class TelemetrySessionLibraryService {
   TelemetrySessionLibraryService({
     Future<Directory> Function()? documentsDirectory,
+    Future<TelemetrySessionLibrary> Function()? loader,
   }) : _documentsDirectory =
-           documentsDirectory ?? getApplicationDocumentsDirectory;
+           documentsDirectory ?? getApplicationDocumentsDirectory,
+       _loader = loader;
 
   final Future<Directory> Function() _documentsDirectory;
+  final Future<TelemetrySessionLibrary> Function()? _loader;
 
   Future<TelemetrySessionLibrary> load() async {
+    final override = _loader;
+    if (override != null) return override();
     final documents = await _documentsDirectory();
     final raw = await Isolate.run(() => _scanLibraryWorker(documents.path));
     return _decodeLibrary(raw);
@@ -531,17 +536,35 @@ final telemetrySessionLibraryServiceProvider =
       (ref) => TelemetrySessionLibraryService(),
     );
 
+bool telemetryRecorderPhaseBlocksLibraryReload(
+  TelemetryRecorderPhase phase,
+) =>
+    phase == TelemetryRecorderPhase.preparing ||
+    phase == TelemetryRecorderPhase.recording ||
+    phase == TelemetryRecorderPhase.finalizing;
+
 final telemetrySessionLibraryProvider = FutureProvider<TelemetrySessionLibrary>(
   (ref) {
-    // The Dashboard history entry reads this provider before a recording can
-    // finish. Key the projection to lifecycle/session identity so a completed
-    // install cannot leave that earlier empty Future cached on the root
-    // History route. Counts are intentionally excluded: accepted events must
-    // not rescan the filesystem while recording.
-    ref.watch(
-      telemetryRecorderProgressProvider.select(
-        (progress) => (progress.state.phase, progress.sessionId),
-      ),
+    // History must refresh after a recording settles so Connect/Dashboard do
+    // not keep a stale empty projection. Do **not** key the Future on
+    // preparing → recording → finalizing: that used to launch
+    // `_scanLibraryWorker` (full library validate + re-read) while the writer
+    // was opening/appending. Explicit invalidations (delete, recovery,
+    // pull-to-refresh) still apply.
+    ref.listen<TelemetryRecorderProgress>(
+      telemetryRecorderProgressProvider,
+      (previous, next) {
+        if (previous == null) return;
+        final wasActive = telemetryRecorderPhaseBlocksLibraryReload(
+          previous.state.phase,
+        );
+        final nowSettled = !telemetryRecorderPhaseBlocksLibraryReload(
+          next.state.phase,
+        );
+        if (wasActive && nowSettled) {
+          ref.invalidateSelf();
+        }
+      },
     );
     return ref.watch(telemetrySessionLibraryServiceProvider).load();
   },

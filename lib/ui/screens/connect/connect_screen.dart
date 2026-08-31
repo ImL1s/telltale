@@ -219,18 +219,11 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     try {
       // Windows/Linux Classic is Bluetooth SPP serial (COM / rfcomm).
       // Android / macOS list bonded Classic devices via ClassicTransport.
+      // Empty enumeration is an emptyHint (not _scanError): showing both used
+      // to stack two paragraphs that said the same thing in different words.
       if (sppSerialHostSupported) {
         final devices = await SerialTransport.bluetoothSppDevices();
         if (!mounted) return;
-        if (devices.isEmpty) {
-          setState(
-            () => _scanError = Platform.isLinux
-                ? '找不到藍牙序列埠（/dev/rfcomm*）。請先以 BlueZ 配對 ELM327，'
-                    '再用 rfcomm bind（或等效）建立 RFCOMM TTY 後重試。'
-                : '找不到藍牙序列埠（COMx）。請先在 Windows 藍牙設定配對 ELM327，'
-                    '確認裝置管理員出現「Standard Serial over Bluetooth link」。',
-          );
-        }
         setState(() => _devices = _likelyAdaptersFirst(devices));
         return;
       }
@@ -503,19 +496,14 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         devices: _devices,
         scanning: _scanning,
         error: _scanError,
-        emptyHint: '找不到已配對的轉接器。請先到系統藍牙設定完成配對（多數 ELM327 的配對碼為 1234 或 0000）。',
-        // The last sentence used to read 選錯裝置要等約半分鐘才會失敗, which
-        // was true and is the wrong thing to tell somebody. It described the
-        // wait as unavoidable, so the only advice it gave was to sit through
-        // it — and while they did, every other device in this list was
-        // untappable. Cancelling stops the attempt at the end of the step
-        // it is on, and the next tap works immediately after; saying so is
-        // the difference between a wrong tap costing ten seconds and
-        // costing half a minute of believing the app is broken.
-        listHint:
-            '這裡列出系統上所有已配對的裝置 — 耳機、喇叭也會在內，'
-            '看起來像轉接器的排在前面。選錯了就按「取消」，'
-            '不必等它自己失敗，取消後可以馬上改選別的。',
+        emptyHint: classicDeviceListEmptyHint(
+          serialHost: sppSerialHostSupported,
+        ),
+        // Bonded-device hosts (Android/macOS): cancel-early copy matters
+        // because a wrong headphone row burns connection cascade time.
+        // SPP serial hosts (Windows/Linux): the list is COM/rfcomm nodes —
+        // never claim headphones appear here.
+        listHint: classicDeviceListHint(serialHost: sppSerialHostSupported),
         showSettingsAction: _permissionPermanentlyDenied,
         onRefresh: _loadPairedDevices,
         onSelect: (device) => _connect(() {
@@ -1724,6 +1712,52 @@ String bleEmptyScanGuidance({bool? classicAvailable}) {
       '多數 OBD 插座要電門轉到 ON 才供電；再來是距離，先坐進車裡再搜尋；'
       '$classicOrWifi'
       'BLE 轉接器不需要、也不應該在系統設定裡配對，那條路走不通。';
+}
+
+/// Empty-state copy for the Classic device list.
+///
+/// Bonded-device hosts (Android / macOS) talk about system pairing. SPP serial
+/// hosts (Windows / Linux) talk about COM / rfcomm nodes — headphones never
+/// appear in that enumeration, so the bonded-device paragraph must not.
+String classicDeviceListEmptyHint({
+  required bool serialHost,
+  @visibleForTesting bool? linuxHost,
+}) {
+  if (!serialHost) {
+    return '找不到已配對的轉接器。請先到系統藍牙設定完成配對'
+        '（多數 ELM327 的配對碼為 1234 或 0000）。';
+  }
+  final linux = linuxHost ?? Platform.isLinux;
+  if (linux) {
+    return '找不到藍牙序列埠（/dev/rfcomm*）。請先以 BlueZ 配對 ELM327，'
+        '再用 rfcomm bind（或等效）建立 RFCOMM TTY 後重試。';
+  }
+  return '找不到藍牙序列埠（COMx）。請先在 Windows 藍牙設定配對 ELM327，'
+      '確認裝置管理員出現「Standard Serial over Bluetooth link」。';
+}
+
+/// Non-empty list explanation for Classic.
+///
+/// The cancel-early sentence on bonded hosts exists because a wrong headphone
+/// row used to burn ~30s of cascade before failing. Serial hosts do not list
+/// headphones; inventing that warning there would make COM/rfcomm look broken.
+String classicDeviceListHint({
+  required bool serialHost,
+  @visibleForTesting bool? linuxHost,
+}) {
+  if (!serialHost) {
+    return '這裡列出系統上所有已配對的裝置 — 耳機、喇叭也會在內，'
+        '看起來像轉接器的排在前面。選錯了就按「取消」，'
+        '不必等它自己失敗，取消後可以馬上改選別的。';
+  }
+  final linux = linuxHost ?? Platform.isLinux;
+  if (linux) {
+    return '這裡列出 BlueZ 已綁定的藍牙序列埠（/dev/rfcomm* 或等效）。'
+        '空清單代表系統尚未建立 RFCOMM 節點，不是 App 壞掉。';
+  }
+  return '這裡列出與藍牙關聯的 COM 埠'
+      '（「Standard Serial over Bluetooth link」）。'
+      '空清單代表系統尚未建立虛擬序列埠，不是 App 壞掉。';
 }
 
 class _WhichTransportCard extends ConsumerStatefulWidget {
