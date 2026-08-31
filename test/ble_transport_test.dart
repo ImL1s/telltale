@@ -532,15 +532,47 @@ void main() {
       expect(stopwatch.elapsedMilliseconds, greaterThanOrEqualTo(70));
     });
 
-    test('a radio that never powers on ends the scan with an error', () async {
+    test('a radio that is powered off fails immediately with clear copy',
+        () async {
       fake.availability = AvailabilityState.poweredOff;
 
       await expectLater(
         BleTransport.scanEntries(timeout: const Duration(milliseconds: 50))
             .toList(),
-        throwsA(isA<TimeoutException>()),
+        throwsA(
+          isA<BleRadioUnavailableException>().having(
+            (e) => e.message,
+            'message',
+            contains('藍牙未開啟'),
+          ),
+        ),
       );
       expect(fake.startScanCalled, isFalse);
+    });
+
+    test('unauthorized radio maps to permission guidance', () async {
+      fake.availability = AvailabilityState.unauthorized;
+
+      await expectLater(
+        BleTransport.scanEntries(timeout: const Duration(milliseconds: 50))
+            .toList(),
+        throwsA(
+          isA<BleRadioUnavailableException>().having(
+            (e) => e.message,
+            'message',
+            contains('藍牙權限'),
+          ),
+        ),
+      );
+    });
+
+    test('BlueZ/D-Bus failures map to service guidance', () {
+      expect(
+        BleTransport.userFacingScanFailure(
+          Exception('org.bluez.Error.Failed: Failed to connect to socket'),
+        ),
+        contains('BlueZ'),
+      );
     });
   });
 

@@ -105,6 +105,66 @@ void main() {
     },
   );
 
+  test(
+    'clock skew does not reopen an unavailable trend lane without a new value',
+    () {
+      final controller = TelemetryTrendsController(
+        activePids: [PidLibrary.engineRpm],
+        storedIds: [PidLibrary.engineRpm.id],
+      );
+      final source = DateTime.utc(2026, 8, 30);
+      controller.ingest(
+        _snapshot(PidLibrary.engineRpm, 900, source),
+        observedAtUtc: source,
+        elapsedUs: 1,
+      );
+      controller.ingest(
+        const TelemetrySnapshot(),
+        observedAtUtc: source.add(const Duration(seconds: 3)),
+        elapsedUs: 2,
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.primitives
+            .whereType<TimelineGap>(),
+        hasLength(1),
+      );
+
+      // Wall clock jumps backward so the old sample looks fresh again.
+      controller.ingest(
+        _snapshot(PidLibrary.engineRpm, 900, source),
+        observedAtUtc: source.add(const Duration(milliseconds: 100)),
+        elapsedUs: 3,
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.primitives
+            .whereType<TimelineValue>(),
+        hasLength(1),
+        reason: 'same source timestamp must not invent a recovery value',
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.currentValue,
+        isNull,
+        reason: 'lane must stay unavailable until a new source timestamp',
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.currentStatus,
+        TelemetryStatus.stale,
+      );
+
+      controller.ingest(
+        const TelemetrySnapshot(),
+        observedAtUtc: source.add(const Duration(seconds: 4)),
+        elapsedUs: 4,
+      );
+      expect(
+        controller.state.lanes[PidLibrary.engineRpm.id]!.primitives
+            .whereType<TimelineGap>(),
+        hasLength(1),
+        reason: 'reopening without a value would invent a second gap',
+      );
+    },
+  );
+
   test('prunes to 60 seconds and bounds every lane to 1200 primitives', () {
     final controller = TelemetryTrendsController(
       activePids: [PidLibrary.engineRpm],

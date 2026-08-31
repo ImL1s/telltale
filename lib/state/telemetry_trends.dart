@@ -217,14 +217,21 @@ final class _MutableTrendLane {
         !reading.timestamp.toUtc().isAfter(observedAtUtc) &&
         !reading.isStaleAt(observedAtUtc);
     if (fresh) {
+      final timestampUs = reading.timestamp.toUtc().microsecondsSinceEpoch;
+      // Same source timestamp after an unavailable interval is usually wall-
+      // clock skew making an old sample look fresh again. Reopening without a
+      // new TimelineValue invents a second gap when it ages out again.
+      if (lastSourceTimestampUs == timestampUs) {
+        if (available) {
+          currentValue = reading.value;
+          currentStatus = null;
+          lastStatus = null;
+        }
+        return;
+      }
       currentValue = reading.value;
       currentStatus = null;
       lastStatus = null;
-      final timestampUs = reading.timestamp.toUtc().microsecondsSinceEpoch;
-      if (lastSourceTimestampUs == timestampUs) {
-        available = true;
-        return;
-      }
       final breakBefore = !available && lastSourceTimestampUs != null;
       if (breakBefore) segment++;
       primitives.add(

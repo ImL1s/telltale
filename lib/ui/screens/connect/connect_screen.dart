@@ -1019,7 +1019,9 @@ class _BleBodyState extends State<_BleBody> {
           });
         },
         onError: (Object e) {
-          if (mounted) setState(() => _error = '$e');
+          if (mounted) {
+            setState(() => _error = BleTransport.userFacingScanFailure(e));
+          }
         },
         onDone: () {
           if (mounted) {
@@ -1033,7 +1035,7 @@ class _BleBodyState extends State<_BleBody> {
     } on Object catch (e) {
       if (mounted) {
         setState(() {
-          _error = '$e';
+          _error = BleTransport.userFacingScanFailure(e);
           _scanning = false;
           _scanned = true;
         });
@@ -1566,9 +1568,14 @@ typedef TransportQuestion = ({
 /// Two different reasons collapse to the same gate:
 /// - **iOS:** permanent OS/API host limit — third-party apps cannot open
 ///   generic RFCOMM/SPP without the External Accessory / MFi path.
-/// - **Desktop (macOS/Windows/Linux):** plugins exist in the dependency tree,
-///   but the ELM327 SPP path is only verified on Android. Shipping an untested
-///   Classic card would recreate "enabled in UI, broken in practice".
+/// - **Desktop (macOS/Windows/Linux):** `flutter_classic_bluetooth` ships
+///   IOBluetooth / Winsock `AF_BTH` / BlueZ RFCOMM clients, but the ELM327
+///   cascade's critical third tier is `connect(channel:)` — the fork's Dart
+///   API documents that parameter as **Android only** and throws on other
+///   hosts. Without that tier, cheap clones that listen on channel 1 and
+///   advertise no SPP record remain unconnectable. Shipping the card before
+///   field-proving a desktop-safe cascade would recreate "enabled in UI,
+///   broken in practice".
 ///
 /// Fail closed everywhere that is not Android. That is not a CI failure.
 bool get classicTransportAvailable => Platform.isAndroid;

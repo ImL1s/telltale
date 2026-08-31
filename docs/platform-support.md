@@ -44,9 +44,9 @@ points at Classic when the host gate is closed.
 
 | Host | Status | Why |
 |---|---|---|
-| Android | Supported | Verified ELM327 RFCOMM/SPP |
+| Android | Supported | Verified ELM327 RFCOMM/SPP (three-tier cascade incl. `connect(channel:)`) |
 | iOS | **Permanent OS/API host gate** | No generic third-party SPP |
-| macOS / Windows / Linux | Product verification gate | Plugins exist; ELM327 SPP not field-verified — card stays grey |
+| macOS / Windows / Linux | Product verification gate | Plugin ships IOBluetooth / Winsock `AF_BTH` / BlueZ RFCOMM, but fork Dart API marks `connect(channel:)` **Android-only** (throws elsewhere). That tier is what salvages ELM327 clones with no SPP SDP record — card stays grey until a desktop-safe cascade is field-proven |
 
 Linux CI still needs `libbluetooth-dev` because `flutter_classic_bluetooth`'s
 Linux CMake requires BlueZ headers at configure time.
@@ -61,10 +61,33 @@ Linux CMake requires BlueZ headers at configure time.
   an adapter. Field evidence with a real ELM327 BLE dongle on Linux is still
   required before calling Linux BLE “mature”.
 
-Automated coverage stays at transport-gate / reconnect UX level unless a
-device or simulator is attached; do not treat green CI as a field BLE pass.
-This machine currently has **no ELM327-named BLE adapter** paired — leave
-BLE/Classic field rows as blocked-by-hardware.
+Scan preflight checks `getBluetoothAvailabilityState()` and maps powered-off /
+unauthorized / BlueZ-D-Bus failures to actionable Chinese copy
+(`BleRadioUnavailableException` / `BleTransport.userFacingScanFailure`).
+Automated coverage: `test/ble_transport_test.dart` (poweredOff, unauthorized,
+BlueZ string mapping) plus empty-scan guidance tests. Do not treat green CI as
+a field BLE pass.
+
+### When an adapter arrives (field verify)
+
+Power the dongle (ignition ON), then on the preferred host:
+
+```bash
+# macOS inventory
+system_profiler SPBluetoothDataType | rg -i 'OBD|ELM|V-?LINK|Vgate'
+
+# Android bonded + live scan via the field APK Connect → Bluetooth LE
+ADB=~/Library/Android/sdk/platform-tools/adb
+$ADB -s R5CX10VFFBA shell dumpsys bluetooth_manager | strings | rg -i 'OBD|ELM'
+
+# App journey (best host with radio + powered adapter)
+cd app && ~/fvm/versions/3.47.0/bin/flutter run --flavor field -d <device>
+# Connect → BLE scan → select adapter → live PIDs → record → History export
+```
+
+Historical Android field transcript on this workstation (adapter presently
+unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
+`OBDBLE` over BLE (`FFF0`/`FFF1`), `ELM327 v1.5`, ISO 15765-4 CAN 11/500.
 
 ## Desktop / Apple runnable notes
 
@@ -90,7 +113,11 @@ BLE/Classic field rows as blocked-by-hardware.
   dead-end. When the interactive sheet cannot open, UX reports staged-but-
   handoff-failed instead of pretending the picker confirmed. Packaging:
   `tool/packaging/windows_zip.sh` / `linux_tarball.sh` (MSIX / AppImage /
-  Flatpak stubs documented beside them).
+  Flatpak stubs documented beside them). Single-instance: Windows named mutex
+  `Local\\com.cbstudio.telltale.single_instance`; Linux uses
+  `G_APPLICATION_FLAGS_NONE` (unique GTK application id) so a second
+  process cannot corrupt live `.ndjson.part` / share leases via startup
+  recovery.
 - **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for
   `permission_handler_windows` (plural `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS`,
   matching MSVC STL1011’s own suppress token).
@@ -111,9 +138,12 @@ BLE/Classic field rows as blocked-by-hardware.
 ## Hardware inventory (this workstation, 2026-09-01)
 
 - Android attached: `R5CX10VFFBA` (S24 Ultra), `RFCNC0WNT9H`, `emulator-5554`.
-- Bluetooth controller on; paired accessories are phones/keyboards/earbuds —
-  **no ELM327-named BLE/Classic adapter**. BLE/Classic field rows stay
-  hardware-blocked.
+- S24 Ultra bonded list includes **`OBDBLE` / `OBDII` (SPP)** — dual-mode
+  adapter historically proven over BLE on 2026-08-27 (see recovered transcript
+  above). Re-check today: ACL BR/EDR and LE both **not connected**; macOS
+  `system_profiler` shows no OBD/ELM name. Treat as **bonded but unpowered /
+  out of range** — cannot claim a fresh connect→PID→record pass this session.
+- macOS paired set is phones/keyboards/earbuds/gamepads only.
 - iOS Simulator Demo + LAN Wi‑Fi oracle already evidenced on this branch
   (host `en0` = `192.168.1.135` at time of proof).
 
@@ -122,8 +152,11 @@ BLE/Classic field rows as blocked-by-hardware.
 - Store packaging (signed MSIX / Flathub Flatpak / notarized DMG) — unsigned
   zip/tarball/DMG recipes exist under `tool/packaging/` and CI uploads debug
   archives
-- Classic desktop enablement with device evidence
-- Linux / desktop BLE field verification against a real adapter
+- Classic desktop enablement after a desktop-safe RFCOMM cascade (or
+  field proof that macOS/Win/Linux SDP→channel-1 fallback alone covers the
+  target ELM327 clones) — blocked today by Android-only `connect(channel:)`
+- Linux / desktop BLE field verification against a **powered** adapter
 - Human confirmation of every desktop share-sheet target (macOS staging +
   channel handoff is proven; picker selection is not automated)
 - Keyboard/mouse shell density polish
+- Notarized / store-signed packages (unsigned archives only)
