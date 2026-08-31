@@ -253,6 +253,19 @@ void main() {
       expect(File('${telemetry.path}/$id.ndjson').existsSync(), isFalse);
     },
   );
+
+  test('honors asynchronous mutationAllowed Future.value(true)', () async {
+    final id = 'a' * 32;
+    final bytes = <int>[..._headerLine(id), ..._valueLine(1)];
+    File('${telemetry.path}/$id.ndjson.part').writeAsBytesSync(bytes);
+
+    final result = await store.recover(
+      mutationAllowed: () async => true,
+    );
+
+    expect(result.byId[id], isNot(TelemetryRecoveryOutcome.mutationBlocked));
+    expect(File('${telemetry.path}/$id.ndjson').existsSync(), isTrue);
+  });
 }
 
 final class _FirstWriteThenNeverSink implements TelemetryAppendSink {

@@ -8,6 +8,7 @@
 #include <flutter/standard_method_codec.h>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "spp_serial_channel.h"
 
 namespace {
 
@@ -102,6 +103,9 @@ bool FlutterWindow::OnCreate() {
             static_cast<int64_t>(available.QuadPart)));
       });
 
+  spp_serial_channel_ = std::make_unique<SppSerialChannel>(
+      flutter_controller_->engine()->messenger());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -117,6 +121,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  spp_serial_channel_.reset();
   capacity_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

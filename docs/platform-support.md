@@ -26,7 +26,7 @@ proven to the full smoothness bar.
 | `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus` + iPad `sharePositionOrigin` on all export entry points) | **pass** (native capacity + staged immutable file + `app_share` channel; picker target still human) | **wired** (capacity + staging; `shareHandoffFailed` when sheet unavailable — not silent success) | **wired** (capacity + staging; `shareHandoffFailed` when sheet unavailable — not silent success) |
 | Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **pass** (`tool/ios_wifi_oracle/run.sh`: Simulator → host `en0` Ircama on `:35000`, live PIDs, `TransportKind.wifi`) | **pass** (`WifiTransport` → Ircama on `127.0.0.1:35000` via `emulator_integration_test` / `tool/desktop_wifi_oracle/run.sh`) | **pass** (same Dart `WifiTransport` oracle path; Windows-host oracle thin) | **pass** (telltale CI Ircama oracle + same suite) |
 | BLE scan/connect | **pass** (field) | **wired** CoreBluetooth | **wired** entitlements | **wired** WinRT plugin | **wired** Dart BlueZ/D-Bus (needs BlueZ at runtime) |
-| Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | product-gated | product-gated |
+| Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | **wired** (Bluetooth SPP COM serial) | product-gated |
 | Transcript export / share | **pass** (via `app_share*`) | **wired** (popover origin threaded) | **pass** (native macOS path through staging; failed handoff is explicit) | **wired** (staged file + explicit handoff failure copy) | **wired** (staged file + explicit handoff failure copy) |
 | PID CSV pick/share | **pass** | **wired** (popover origin threaded) | **wired** sandbox | **wired** | **wired** |
 | SharedPreferences boot | **pass** | **pass** | **pass** | **pass** | **pass** |
@@ -35,18 +35,20 @@ proven to the full smoothness bar.
 
 ## Bluetooth Classic (SPP)
 
-UI predicate: `classicTransportAvailable` → **Android only**. Guidance,
+UI predicate: `classicTransportAvailable` → **Android or Windows**. Guidance,
 transport cards, and remembered-adapter reconnect all fail closed together.
 Automated coverage: `which_transport_test`, `remembered_adapter_navigation_test`,
-and reconnect host-gate tests. **Classic-on-iOS is not a bug** — the card stays
-grey with an explicit OS reason. BLE empty-scan / “which transport” copy never
-points at Classic when the host gate is closed.
+`serial_transport_test`, and reconnect host-gate tests. **Classic-on-iOS is not
+a bug** — the card stays grey with an explicit OS reason. BLE empty-scan /
+“which transport” copy never points at Classic when the host gate is closed.
 
 | Host | Status | Why |
 |---|---|---|
 | Android | Supported | Verified ELM327 RFCOMM/SPP (three-tier cascade incl. `connect(channel:)`) |
 | iOS | **Permanent OS/API host gate** | No generic third-party SPP |
-| macOS / Windows / Linux | Product verification gate | Plugin ships IOBluetooth / Winsock `AF_BTH` / BlueZ RFCOMM, but fork Dart API marks `connect(channel:)` **Android-only** (throws elsewhere). That tier is what salvages ELM327 clones with no SPP SDP record — card stays grey until a desktop-safe cascade is field-proven |
+| Windows | **Wired — Bluetooth SPP COM** | Pairing creates `Standard Serial over Bluetooth link (COMx)`. App enumerates Bluetooth-associated COM ports via SetupAPI (`BTHENUM` / friendly “Bluetooth”) and opens them at 38400 8N1 through `SerialTransport` + `com.cbstudio.telltale/spp_serial`. Winsock `AF_BTH` with `port=0` still needs SDP and does **not** replace `connect(channel:)`. Field connect→PID still needs a powered adapter on a Windows box |
+| macOS | Product verification gate | IOBluetooth RFCOMM exists and native UUID connect already falls back to channel 1 on SDP miss, but no field ELM327 proof yet — card stays grey (no fake success) |
+| Linux | Product verification gate | BlueZ RFCOMM client exists in the plugin; explicit channel + field proof missing — card stays grey |
 
 Linux CI still needs `libbluetooth-dev` because `flutter_classic_bluetooth`'s
 Linux CMake requires BlueZ headers at configure time.
@@ -140,9 +142,11 @@ unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
 - Android attached: `R5CX10VFFBA` (S24 Ultra), `RFCNC0WNT9H`, `emulator-5554`.
 - S24 Ultra bonded list includes **`OBDBLE` / `OBDII` (SPP)** — dual-mode
   adapter historically proven over BLE on 2026-08-27 (see recovered transcript
-  above). Re-check today: ACL BR/EDR and LE both **not connected**; macOS
-  `system_profiler` shows no OBD/ELM name. Treat as **bonded but unpowered /
-  out of range** — cannot claim a fresh connect→PID→record pass this session.
+  above). Re-check `20260831T212448Z`: ACL BR/EDR and LE both **still N**;
+  evidence:
+  `docs/verification/obdble-acl-recheck-20260831T212448Z.txt`. Treat as
+  **bonded but unpowered / out of range** — cannot claim a fresh
+  connect→PID→record pass this session.
 - macOS paired set is phones/keyboards/earbuds/gamepads only.
 - iOS Simulator Demo + LAN Wi‑Fi oracle already evidenced on this branch
   (host `en0` = `192.168.1.135` at time of proof).
@@ -152,9 +156,11 @@ unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
 - Store packaging (signed MSIX / Flathub Flatpak / notarized DMG) — unsigned
   zip/tarball/DMG recipes exist under `tool/packaging/` and CI uploads debug
   archives
-- Classic desktop enablement after a desktop-safe RFCOMM cascade (or
-  field proof that macOS/Win/Linux SDP→channel-1 fallback alone covers the
-  target ELM327 clones) — blocked today by Android-only `connect(channel:)`
+- Windows Classic **field** proof (powered ELM327 → COM enumerate → PID →
+  record → export on a real Windows host). Software path is wired; evidence
+  is not.
+- macOS / Linux Classic enablement after field-proven RFCOMM (or serial)
+  without relying on Android-only `connect(channel:)`
 - Linux / desktop BLE field verification against a **powered** adapter
 - Human confirmation of every desktop share-sheet target (macOS staging +
   channel handoff is proven; picker selection is not automated)

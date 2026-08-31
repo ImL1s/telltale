@@ -33,7 +33,9 @@ import '../obd/transport/ble_transport.dart';
 import '../obd/transport/classic_transport.dart';
 import '../obd/transport/demo_transport.dart';
 import '../obd/transport/obd_transport.dart';
+import '../obd/transport/serial_transport.dart';
 import '../obd/transport/wifi_transport.dart';
+import '../core/serial/spp_serial_platform.dart';
 import 'pid_registry.dart';
 import 'powertrain_battery_profiles.dart';
 import 'powertrain_battery_experiments.dart';
@@ -848,6 +850,18 @@ class ObdSession extends Notifier<ObdConnectionState> {
   );
 
   Future<bool> connectClassic(DiscoveredDevice device) {
+    // Windows Classic is SPP COM serial — not the Android RFCOMM cascade.
+    // Using ClassicTransport here would call connect(channel:) / paired MAC
+    // APIs that are wrong for COMx identifiers and can mislead as "supported".
+    if (windowsSppSerialHostSupported) {
+      return _connect(
+        SerialTransport(
+          portName: device.id,
+          displayLabel: device.name,
+        ),
+        TransportKind.bluetoothClassic,
+      );
+    }
     // Self-referencing, so the callback can ask whether the transport it
     // belongs to is still the one being connected.
     //

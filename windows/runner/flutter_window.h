@@ -8,6 +8,7 @@
 
 #include <memory>
 
+#include "spp_serial_channel.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -35,6 +36,9 @@ class FlutterWindow : public Win32Window {
   // free space on the volume that owns the Dart-supplied share-cache path.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       capacity_channel_;
+
+  // Windows Classic ELM327 path: Bluetooth SPP COM enumerate + byte stream.
+  std::unique_ptr<SppSerialChannel> spp_serial_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

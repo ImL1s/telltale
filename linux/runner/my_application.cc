@@ -78,6 +78,17 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+
+  // Unique app: a second launch is forwarded here. Reuse the existing window
+  // instead of spawning another FlView/engine — a second ProviderScope would
+  // run startup recovery against the same documents/cache while the first
+  // process still holds live .ndjson.part / share leases.
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
+  if (windows != nullptr) {
+    gtk_window_present(GTK_WINDOW(windows->data));
+    return;
+  }
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 

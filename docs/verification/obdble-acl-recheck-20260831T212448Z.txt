@@ -1,0 +1,14 @@
+timestamp_utc=20260831T212448Z
+device=R5CX10VFFBA
+--- OBDBLE bonded line ---
+434:    XX:XX:XX:XX:22:33(Public ) => XX:XX:XX:XX:22:33(Public ) [ DUAL ] [0x010000] [ACL BR/EDR:N LE:N] [ Encryption status(BR/EDR): null LE: null] OBDBLE
+460:    XX:XX:XX:XX:22:33 | OBDII | 2 | 3 | 65536 | 576 | null | SPP | 41 | 1787807596028 | 1787807596028 | null | 0 | 0 | 0
+887:    08-27 13:13:05.048 (uid/pid=1002/5270) XX:XX:XX:XX:22:33 SemMetadata created
+888:    08-27 13:13:09.949 (uid/pid=1002/5270) XX:XX:XX:XX:22:33 SemMetadata deleted
+889:    08-27 13:13:10.880 (uid/pid=1002/5270) XX:XX:XX:XX:22:33 SemMetadata created
+901:    XX:XX:XX:XX:22:33 {ASM(-1),Feat(),Data(),ADT(1)}
+binary file matches (found "\0" byte around offset 78233)
+--- any ACL Y? ---
+--- verdict ---
+obdble_line=    XX:XX:XX:XX:22:33(Public ) => XX:XX:XX:XX:22:33(Public ) [ DUAL ] [0x010000] [ACL BR/EDR:N LE:N] [ Encryption status(BR/EDR): null LE: null] OBDBLE
+VERDICT=BONDED_BUT_UNPOWERED_OR_OUT_OF_RANGE

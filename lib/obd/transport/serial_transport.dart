@@ -1,0 +1,132 @@
+/// Byte-stream transport over a serial port (Windows Bluetooth SPP COM).
+///
+/// ELM327 Classic adapters on Windows appear as Bluetooth COM ports after
+/// pairing. This transport opens that port at the conventional 38400 8N1 and
+/// feeds the same `Elm327Client` path used by Wi-Fi / RFCOMM / BLE.
+library;
+
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
+import '../../core/serial/spp_serial_platform.dart';
+import 'obd_transport.dart';
+
+typedef SppSerialSessionFactory = SppSerialSession Function();
+
+class SerialTransport extends BaseObdTransport {
+  SerialTransport({
+    required this.portName,
+    this.displayLabel,
+    this.baudRate = defaultBaudRate,
+    SppSerialSession? session,
+    SppSerialSessionFactory? sessionFactory,
+  }) : _session =
+           session ??
+           (sessionFactory ?? _defaultSessionFactory)();
+
+  /// Conventional ELM327 UART / Bluetooth SPP bitrate.
+  static const int defaultBaudRate = 38400;
+
+  final String portName;
+  final String? displayLabel;
+  final int baudRate;
+
+  final SppSerialSession _session;
+  StreamSubscription<List<int>>? _inboundSub;
+  var _aborted = false;
+
+  @visibleForTesting
+  static SppSerialSessionFactory defaultSessionFactoryForTest =
+      _defaultSessionFactory;
+
+  static SppSerialSession _defaultSessionFactory() =>
+      MethodChannelSppSerialSession();
+
+  @override
+  TransportKind get kind => TransportKind.bluetoothClassic;
+
+  @override
+  String get displayName {
+    final label = displayLabel?.trim();
+    if (label != null && label.isNotEmpty) return label;
+    return portName;
+  }
+
+  @override
+  Map<String, Object> get diagnosticMetadata => Map.unmodifiable({
+        'deviceIdentifier': portName,
+        'deviceName': displayName,
+        'baudRate': baudRate,
+        'link': 'windows_spp_com',
+      });
+
+  /// Lists Bluetooth-associated COM ports for the Classic wizard on Windows.
+  static Future<List<DiscoveredDevice>> bluetoothSppDevices({
+    SppSerialSession? session,
+  }) async {
+    final ports =
+        await (session ?? MethodChannelSppSerialSession())
+            .listBluetoothSppPorts();
+    return ports
+        .map(
+          (p) => DiscoveredDevice(
+            id: p.portName,
+            name: p.friendlyName,
+            kind: TransportKind.bluetoothClassic,
+            isPaired: true,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> connect() async {
+    if (_aborted) throw const TransportException('連線已取消。');
+    try {
+      await _session.open(portName: portName, baudRate: baudRate);
+    } on Object catch (e) {
+      throw TransportException(
+        '無法開啟 $displayName（$portName）。'
+        '請確認 Windows 已為該藍牙轉接器建立序列埠，且電門已開啟。',
+        e,
+      );
+    }
+    if (_aborted) {
+      await _session.close();
+      throw const TransportException('連線已取消。');
+    }
+    _inboundSub = _session.inbound.listen(
+      emitBytes,
+      onError: (Object _) => setConnected(false),
+      onDone: () => setConnected(false),
+      cancelOnError: false,
+    );
+    setConnected(true);
+  }
+
+  @override
+  Future<void> disconnect() async {
+    _aborted = true;
+    await _inboundSub?.cancel();
+    _inboundSub = null;
+    try {
+      await _session.close();
+    } on Object {
+      // Already closed.
+    }
+    setConnected(false);
+  }
+
+  @override
+  Future<void> write(List<int> data) async {
+    if (!isConnected) {
+      throw const WriteRefusedException('序列埠連線尚未建立。');
+    }
+    try {
+      await _session.write(data);
+    } on Object catch (e) {
+      throw TransportException('寫入 $displayName 失敗。', e);
+    }
+  }
+}

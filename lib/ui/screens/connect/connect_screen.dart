@@ -17,6 +17,7 @@ import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart'
     show FlutterClassicBluetooth;
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/serial/spp_serial_platform.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../obd/elm327_client.dart';
@@ -24,6 +25,7 @@ import '../../../state/pid_registry.dart' show sharedPreferencesProvider;
 import '../../../obd/transport/ble_transport.dart';
 import '../../../obd/transport/classic_transport.dart';
 import '../../../obd/transport/obd_transport.dart';
+import '../../../obd/transport/serial_transport.dart';
 import '../../../obd/transport/wifi_transport.dart';
 import '../../../state/obd_session.dart';
 import '../../../state/settings.dart';
@@ -215,6 +217,20 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       _scanError = null;
     });
     try {
+      // Windows Classic is Bluetooth SPP COM ports, not Android RFCOMM bonds.
+      if (windowsSppSerialHostSupported) {
+        final devices = await SerialTransport.bluetoothSppDevices();
+        if (!mounted) return;
+        if (devices.isEmpty) {
+          setState(
+            () => _scanError =
+                '找不到藍牙序列埠（COMx）。請先在 Windows 藍牙設定配對 ELM327，'
+                '確認裝置管理員出現「Standard Serial over Bluetooth link」。',
+          );
+        }
+        setState(() => _devices = _likelyAdaptersFirst(devices));
+        return;
+      }
       // Each of these awaits can outlive the screen — the permission dialog in
       // particular sits in front of the app for as long as the user ignores it.
       // Listing bonded devices is not a scan, and must not ask as if it were.
@@ -1568,26 +1584,40 @@ typedef TransportQuestion = ({
 /// Two different reasons collapse to the same gate:
 /// - **iOS:** permanent OS/API host limit — third-party apps cannot open
 ///   generic RFCOMM/SPP without the External Accessory / MFi path.
-/// - **Desktop (macOS/Windows/Linux):** `flutter_classic_bluetooth` ships
-///   IOBluetooth / Winsock `AF_BTH` / BlueZ RFCOMM clients, but the ELM327
-///   cascade's critical third tier is `connect(channel:)` — the fork's Dart
-///   API documents that parameter as **Android only** and throws on other
-///   hosts. Without that tier, cheap clones that listen on channel 1 and
-///   advertise no SPP record remain unconnectable. Shipping the card before
-///   field-proving a desktop-safe cascade would recreate "enabled in UI,
-///   broken in practice".
+/// - **macOS / Linux:** product verification gate — `flutter_classic_bluetooth`
+///   ships IOBluetooth / BlueZ RFCOMM, and macOS native already falls back to
+///   RFCOMM channel 1 when SDP misses, but the Dart cascade's critical
+///   `connect(channel:)` tier is Android-only and neither desktop host has a
+///   field-proven ELM327 Classic path yet. Shipping the card early would
+///   recreate "enabled in UI, broken in practice".
+/// - **Windows:** product path is **Bluetooth SPP COM ports** (38400 8N1),
+///   not the Android RFCOMM channel cascade. Pairing creates
+///   `Standard Serial over Bluetooth link (COMx)`; we enumerate those and
+///   open them via `SerialTransport`. Winsock `AF_BTH` with `port=0` still
+///   needs SDP and does not salvage channel-1 clones.
 ///
-/// Fail closed everywhere that is not Android. That is not a CI failure.
-bool get classicTransportAvailable => Platform.isAndroid;
+/// Fail closed on iOS / macOS / Linux. Android uses RFCOMM cascade; Windows
+/// uses SPP COM serial.
+bool get classicTransportAvailable =>
+    Platform.isAndroid || windowsSppSerialHostSupported;
 
-/// Why the Classic transport card is greyed out on non-Android hosts.
+/// Why the Classic transport card is greyed out on hosts without a path.
 ///
 /// The old copy always said "iOS", which was true for iPhone and false for
 /// every other platform that already builds this app. Desktop and iOS share
 /// the same gate (`classicTransportAvailable`) but not the same reason.
-String get classicUnavailableReason => Platform.isIOS
-    ? 'iOS 不開放第三方 App 使用藍牙 SPP'
-    : 'Bluetooth Classic（SPP）目前僅在 Android 驗證過';
+String get classicUnavailableReason {
+  if (Platform.isIOS) {
+    return 'iOS 不開放第三方 App 使用藍牙 SPP';
+  }
+  if (Platform.isMacOS) {
+    return 'macOS Classic（IOBluetooth RFCOMM）尚未場測，暫不開放以免假成功';
+  }
+  if (Platform.isLinux) {
+    return 'Linux Classic（BlueZ RFCOMM）尚未場測，暫不開放以免假成功';
+  }
+  return 'Bluetooth Classic（SPP）目前僅在 Android 與 Windows（COM）可用';
+}
 
 /// Whether Bluetooth LE scanning/connect is usable on this host.
 ///

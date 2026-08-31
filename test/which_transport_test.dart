@@ -122,7 +122,10 @@ void main() {
     if (!classicTransportAvailable) {
       expect(
         classicUnavailableReason.contains('iOS') ||
-            classicUnavailableReason.contains('Android'),
+            classicUnavailableReason.contains('Android') ||
+            classicUnavailableReason.contains('macOS') ||
+            classicUnavailableReason.contains('Linux') ||
+            classicUnavailableReason.contains('Windows'),
         isTrue,
       );
     }

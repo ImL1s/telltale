@@ -729,12 +729,16 @@ final class TelemetrySessionStore {
     var permitted = true;
     if (mutationAllowed != null) {
       final first = mutationAllowed();
-      if (first is Future<bool>) {
-        await first;
-        permitted = false;
-      } else {
-        permitted = first;
-        if (permitted) {
+      final permitWasAsync = first is Future<bool>;
+      // Future.value(true) must grant — do not discard the awaited bool.
+      permitted = permitWasAsync ? await first : first;
+      if (permitted) {
+        // Sync re-checks during commit stay for sync authorities. An async
+        // permit cannot be re-polled on the sync checkpoint path without
+        // treating every Future as a revocation (which made Future.value(true)
+        // permanently mutationBlocked). The initial await is the grant for
+        // this recover() call.
+        if (!permitWasAsync) {
           checkpoint = (_) {
             final next = mutationAllowed();
             if (next is Future<bool> || !next) {

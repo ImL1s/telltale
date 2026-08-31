@@ -20,9 +20,10 @@ enum TransportKind {
   final String label;
   final String description;
 
-  /// Bluetooth Classic SPP is Android-only in practice: iOS does not expose
-  /// RFCOMM to third-party apps outside MFi.
-  bool get isAndroidOnly => this == TransportKind.bluetoothClassic;
+  /// Bluetooth Classic SPP: Android RFCOMM cascade, or Windows Bluetooth COM.
+  /// iOS has no third-party SPP; macOS/Linux remain product-gated.
+  bool get isClassicHostLimited =>
+      this == TransportKind.bluetoothClassic;
 }
 
 /// A link the user can pick in the connection wizard.
