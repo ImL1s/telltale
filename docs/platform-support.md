@@ -17,6 +17,9 @@ Bluetooth Classic remains **Android-only in the UI** (`classicTransportAvailable
 even though the dependency tree registers Classic plugins on other hosts. The
 ELM327 SPP path is verified on Android; enabling an untested Classic card on
 desktop would recreate the “enabled in UI, broken in practice” failure mode.
+Linux CI / local builds still need `libbluetooth-dev` because
+`flutter_classic_bluetooth`'s Linux CMake hard-requires BlueZ headers at
+configure time.
 
 ## First enablement vs later work
 
