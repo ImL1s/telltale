@@ -9,7 +9,9 @@ import '../../../obd/powertrain_battery/powertrain_battery_profile.dart';
 import '../../../obd/powertrain_battery/powertrain_battery_catalog.dart';
 import '../../../obd/powertrain_battery/powertrain_battery_probe.dart';
 import '../../../obd/powertrain_battery/profile_catalog_validator.dart';
+import '../../../obd/powertrain_battery/profile_pid_installer.dart';
 import '../../../state/obd_session.dart';
+import '../../../state/pid_registry.dart';
 import '../../../state/powertrain_battery_profiles.dart';
 import '../../../state/powertrain_battery_experiments.dart';
 import '../../widgets/panel.dart';
@@ -48,10 +50,14 @@ class _PowertrainBatteryCatalogScreenState
   }
 
   void _load() {
-    _catalog = ref.read(powertrainBatteryCatalogLoaderProvider)();
+    // The shared provider, not a private loader call: the restore path, the
+    // dashboard banner and this screen must all see the same verified
+    // snapshot (and the same failure), not three separate loads.
+    _catalog = ref.read(powertrainBatteryCatalogSnapshotProvider.future);
   }
 
   void _retry() {
+    ref.invalidate(powertrainBatteryCatalogSnapshotProvider);
     setState(_load);
   }
 
@@ -118,6 +124,175 @@ class _PowertrainBatteryCatalogScreenState
       if (mounted) setState(() => _probingCommandKey = null);
     }
   }
+
+  Future<void> _installProfile(
+    PowertrainBatteryCatalogSnapshot snapshot,
+    PowertrainBatteryProfile profile,
+  ) async {
+    // Captured before the dialog opens. The install dialog doubles as this
+    // connection's vehicle confirmation, and that statement is about the
+    // vehicle on the wire *now* — if the connection changes while the
+    // dialog sits open, the acceptance must not authorize whatever
+    // connected next; the dashboard banner will ask for it instead.
+    final session = ref.read(obdSessionProvider.notifier);
+    final wasConnected = ref.read(obdSessionProvider).isConnected;
+    final generationAtPrompt = session.connectionGeneration;
+
+    final year = await _confirmInstall(profile);
+    if (year == null || !mounted) return;
+
+    // Serialize with the startup restore: installing before it finishes
+    // would persist a reference list that misses whatever restore was about
+    // to rebuild. An integrity failure means the catalog itself is not
+    // usable; any other failure is retryable, so re-arm the provider and
+    // say so instead of locking installation behind a misleading message
+    // until the next app start.
+    try {
+      await ref.read(installedPowertrainProfilesRestoreProvider.future);
+    } on PowertrainBatteryCatalogAssetException {
+      _snack('目錄尚未通過驗證，無法安裝。');
+      return;
+    } on Object {
+      ref.invalidate(installedPowertrainProfilesRestoreProvider);
+      _snack('還原先前安裝時發生儲存錯誤，已重新排程，請再試一次。');
+      return;
+    }
+    if (!mounted) return;
+
+    try {
+      await ref
+          .read(pidRegistryProvider.notifier)
+          .installPowertrainProfile(snapshot, profile.id, vehicleYear: year);
+    } on PowertrainProfileInstallException catch (error) {
+      _snack('無法安裝：${error.message}');
+      return;
+    }
+
+    // A live connection can be confirmed in the same gesture — but only the
+    // connection the dialog was opened against.
+    if (wasConnected &&
+        ref.read(obdSessionProvider).isConnected &&
+        session.connectionGeneration == generationAtPrompt) {
+      ref
+          .read(powertrainProfileAuthorizationsProvider.notifier)
+          .authorize(
+            snapshot: snapshot,
+            profileId: profile.id,
+            vehicleYear: year,
+            connectionGeneration: generationAtPrompt,
+          );
+    }
+    final signals = profile.commands.fold<int>(
+      0,
+      (total, command) => total + command.signals.length,
+    );
+    _snack('已安裝 $signals 個訊號。到 PID 頁面加入儀表板；每次連線需確認車輛。');
+    setState(() {});
+  }
+
+  Future<void> _uninstallProfile(PowertrainBatteryProfile profile) async {
+    await ref
+        .read(pidRegistryProvider.notifier)
+        .uninstallPowertrainProfile(profile.id);
+    ref
+        .read(powertrainProfileAuthorizationsProvider.notifier)
+        .revoke(profile.id);
+    _snack('已移除 ${profile.displayName} 的已安裝訊號。');
+    setState(() {});
+  }
+
+  Future<int?> _confirmInstall(PowertrainBatteryProfile profile) =>
+      showDialog<int>(
+        context: context,
+        builder: (context) {
+          var year = profile.yearFrom;
+          var identityAcknowledged = false;
+          final years = [
+            for (var value = profile.yearFrom;
+                value <= profile.yearTo;
+                value++)
+              value,
+          ];
+          return StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('安裝車型電池訊號'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${profile.market} · ${profile.make} ${profile.model}\n'
+                      '${profile.variant} · ${profile.powertrain}',
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    Text(
+                      '主要來源：${profile.source.name}（${profile.source.license}）',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    for (final source in profile.secondarySources)
+                      Text(
+                        '獨立佐證：${source.name}（${source.license}）',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    const SizedBox(height: Spacing.sm),
+                    Text(
+                      '安裝只是把唯讀電池 PID 加進 PID 管理。開始讀取前，'
+                      '每次連線都要在儀表板確認「這台車就是這個車型」。'
+                      '資料來自社群來源並經獨立比對，仍非原廠保證。',
+                      key: const Key('powertrain_install_disclosure'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: Spacing.md),
+                    if (years.length > 1)
+                      DropdownButtonFormField<int>(
+                        key: const Key('powertrain_install_year'),
+                        initialValue: year,
+                        decoration: const InputDecoration(labelText: '車輛年式'),
+                        items: [
+                          for (final value in years)
+                            DropdownMenuItem(
+                              value: value,
+                              child: Text('$value'),
+                            ),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) setDialogState(() => year = value);
+                        },
+                      )
+                    else
+                      Text('車輛年式：$year'),
+                    const SizedBox(height: Spacing.sm),
+                    CheckboxListTile(
+                      key: const Key('powertrain_install_identity_ack'),
+                      value: identityAcknowledged,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text('我的車輛符合上述市場、車型與年式'),
+                      onChanged: (value) => setDialogState(
+                        () => identityAcknowledged = value ?? false,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  key: const Key('powertrain_confirm_install'),
+                  onPressed: identityAcknowledged
+                      ? () => Navigator.pop(context, year)
+                      : null,
+                  child: const Text('安裝'),
+                ),
+              ],
+            ),
+          );
+        },
+      );
 
   Future<PowertrainBatteryCommand?> _chooseExperimentalCommand(
     PowertrainBatteryProfile profile,
@@ -381,6 +556,10 @@ class _PowertrainBatteryCatalogScreenState
     final experimentalAccess = ref.watch(
       powertrainBatteryExperimentalAccessProvider,
     );
+    final installedIds = {
+      for (final pid in ref.watch(pidRegistryProvider))
+        if (!pid.isCustom && pid.ownerProfileId != null) pid.ownerProfileId!,
+    };
     final query = _query.trim().toLowerCase();
     final visible =
         catalog.profiles
@@ -487,6 +666,7 @@ class _PowertrainBatteryCatalogScreenState
                         profile: profile,
                         connected: connected,
                         experimentalAccess: experimentalAccess,
+                        installed: installedIds.contains(profile.id),
                         quarantined:
                             ref
                                 .read(
@@ -497,6 +677,8 @@ class _PowertrainBatteryCatalogScreenState
                             null,
                         probing: _probingCommandKey != null,
                         onProbe: () => _probeExperimental(snapshot, profile),
+                        onInstall: () => _installProfile(snapshot, profile),
+                        onUninstall: () => _uninstallProfile(profile),
                       );
                     },
                   ),
@@ -519,23 +701,30 @@ class _ProfileCard extends StatelessWidget {
     required this.profile,
     required this.connected,
     required this.experimentalAccess,
+    required this.installed,
     required this.quarantined,
     required this.probing,
     required this.onProbe,
+    required this.onInstall,
+    required this.onUninstall,
   });
 
   final PowertrainBatteryProfile profile;
   final bool connected;
   final bool experimentalAccess;
+  final bool installed;
   final bool quarantined;
   final bool probing;
   final VoidCallback onProbe;
+  final VoidCallback onInstall;
+  final VoidCallback onUninstall;
 
   @override
   Widget build(BuildContext context) {
-    final probeable = const PowertrainBatteryProfileCatalogValidator()
-        .validateProfile(profile)
-        .canProbe;
+    final validation = const PowertrainBatteryProfileCatalogValidator()
+        .validateProfile(profile);
+    final probeable = validation.canProbe;
+    final installable = validation.canInstall;
     final years = profile.yearFrom == profile.yearTo
         ? '${profile.yearFrom}'
         : '${profile.yearFrom}–${profile.yearTo}';
@@ -547,7 +736,7 @@ class _ProfileCard extends StatelessWidget {
     };
     final evidence = switch (profile.evidence) {
       PowertrainProfileEvidence.sourceBacked => '來源資料',
-      PowertrainProfileEvidence.syntheticRig => '合成馬具',
+      PowertrainProfileEvidence.syntheticRig => '合成測試台',
       PowertrainProfileEvidence.physicalVehicle => '專案實車',
     };
     final signalCount = profile.commands.fold<int>(
@@ -609,38 +798,85 @@ class _ProfileCard extends StatelessWidget {
             style: context.texts.labelSmall,
           ),
           const SizedBox(height: Spacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  key: Key('powertrain_probe_${profile.id}'),
-                  onPressed: probeable
-                      ? experimentalAccess &&
-                                connected &&
-                                !quarantined &&
-                                !probing
+          if (installable) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: installed
+                      ? OutlinedButton(
+                          key: Key('powertrain_uninstall_${profile.id}'),
+                          onPressed: onUninstall,
+                          child: const Text('已安裝 · 移除訊號'),
+                        )
+                      : FilledButton(
+                          key: Key('powertrain_install_${profile.id}'),
+                          onPressed: onInstall,
+                          child: const Text('安裝電池訊號'),
+                        ),
+                ),
+              ],
+            ),
+            // Try-before-install: the same consented one-shot read the
+            // experimental tier uses, available while the lab is open.
+            if (probeable && experimentalAccess)
+              Padding(
+                padding: const EdgeInsets.only(top: Spacing.xs),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        key: Key('powertrain_probe_${profile.id}'),
+                        onPressed: connected && !quarantined && !probing
                             ? onProbe
-                            : null
-                      : null,
-                  child: Text(
-                    probeable
-                        ? quarantined
+                            : null,
+                        child: Text(
+                          quarantined
                               ? '重新連線後再試'
-                              : !experimentalAccess
-                              ? '先在設定開啟實驗室'
                               : !connected
-                              ? '連線後單次唯讀'
+                              ? '連線後可先單次試讀'
                               : probing
                               ? '單次查詢中…'
-                              : '選一條，唯讀一次'
-                        : profile.status == PowertrainProfileStatus.researchOnly
-                        ? '僅研究，不會查詢'
-                        : '此版本不可安裝',
-                  ),
+                              : '先試讀一次',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+          ] else
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    key: Key('powertrain_probe_${profile.id}'),
+                    onPressed: probeable
+                        ? experimentalAccess &&
+                                  connected &&
+                                  !quarantined &&
+                                  !probing
+                              ? onProbe
+                              : null
+                        : null,
+                    child: Text(
+                      probeable
+                          ? quarantined
+                                ? '重新連線後再試'
+                                : !experimentalAccess
+                                ? '先在設定開啟實驗室'
+                                : !connected
+                                ? '連線後單次唯讀'
+                                : probing
+                                ? '單次查詢中…'
+                                : '選一條，唯讀一次'
+                          : profile.status ==
+                                PowertrainProfileStatus.researchOnly
+                          ? '僅研究，不會查詢'
+                          : '此版本不可安裝',
+                    ),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );

@@ -65,8 +65,78 @@ final class PowertrainBatteryProfileCatalogValidator {
         );
       }
     }
+    // The string check above rejects "unspecified"-shaped spellings; for a
+    // community variant that is still the floor. A generation-scoped variant
+    // label such as "Mk1 (2019–2022)" passes it, and the evidence-level gate
+    // below decides whether that scoping is honest.
     if (reviewedStatus) {
-      _validateReviewedIdentityEvidence(profile.identityEvidence, issue);
+      _validateReviewedIdentityEvidence(
+        profile.identityEvidence,
+        profile.status,
+        issue,
+      );
+      // Both reviewed tiers require independent corroboration and a pinned
+      // primary artifact. `ready` is a superset of `community` — physical
+      // vehicle evidence on top of everything below — so it must never have
+      // a *lower* bar than the tier beneath it. A single hobbyist CSV that
+      // nobody else agrees with stays experimental no matter how plausible
+      // it looks.
+      if (!isPowertrainCatalogSha256(profile.source.artifactSha256)) {
+        issue(
+          'missing_source_artifact_hash',
+          'source.artifact_sha256',
+          'a ${profile.status.name} profile must pin the exact source '
+              'artifact SHA-256',
+        );
+      }
+      if (profile.secondarySources.isEmpty) {
+        issue(
+          'missing_secondary_source',
+          'secondary_sources',
+          'a ${profile.status.name} profile requires at least one '
+              'independent corroborating source',
+        );
+      }
+      // Structural distinctness is what a validator can enforce; whether two
+      // repositories are *editorially* independent (not the same author, not
+      // a derivation) is a review-time judgement the docs own. But a
+      // secondary that points at the primary's own bytes — same artifact
+      // hash, or the same repository revision and path under a new name — is
+      // provably not a second source, and renaming it must not open the
+      // install gate.
+      final seenArtifacts = {profile.source.artifactSha256.trim()};
+      final seenLocations = {_sourceLocation(profile.source)};
+      for (
+        var sourceIndex = 0;
+        sourceIndex < profile.secondarySources.length;
+        sourceIndex++
+      ) {
+        final secondary = profile.secondarySources[sourceIndex];
+        final prefix = 'secondary_sources[$sourceIndex].';
+        _validateSource(secondary, issue, pathPrefix: prefix);
+        if (!isPowertrainCatalogSha256(secondary.artifactSha256)) {
+          issue(
+            'missing_source_artifact_hash',
+            '${prefix}source.artifact_sha256',
+            'a corroborating source must pin its exact artifact SHA-256',
+          );
+        } else if (!seenArtifacts.add(secondary.artifactSha256.trim())) {
+          issue(
+            'duplicate_corroborating_source',
+            '${prefix}source.artifact_sha256',
+            'a corroborating source must not share an artifact with the '
+                'primary or another secondary',
+          );
+        }
+        if (!seenLocations.add(_sourceLocation(secondary))) {
+          issue(
+            'duplicate_corroborating_source',
+            '${prefix}source',
+            'a corroborating source must not point at the same repository '
+                'revision and path as the primary or another secondary',
+          );
+        }
+      }
     }
     if (profile.yearFrom < 1886 ||
         profile.yearTo > 2100 ||
@@ -141,6 +211,19 @@ final class PowertrainBatteryProfileCatalogValidator {
       final command = profile.commands[commandIndex];
       final path = 'commands[$commandIndex]';
       _validateCommand(command, path, issue);
+      // The polling allowlist ([PollableServices]) deliberately reserves
+      // Mode 21 for the one-shot probe, so an installable tier must not
+      // carry it: the profile would install and authorize, then every poll
+      // would be refused at the wire sink — a dark gauge blamed on an
+      // "unsafe service" the catalog itself shipped.
+      if (reviewedStatus && command.mode != '22') {
+        issue(
+          'unpollable_service',
+          '$path.mode',
+          'installable profiles may only carry Mode 22 commands; '
+              'Mode ${command.mode} is probe-only',
+        );
+      }
 
       final commandId = [
         command.requestHeader,
@@ -253,16 +336,21 @@ final class PowertrainBatteryProfileCatalogValidator {
 
   void _validateSource(
     PowertrainBatterySource source,
-    void Function(String code, String path, String message) issue,
-  ) {
+    void Function(String code, String path, String message) issue, {
+    String pathPrefix = '',
+  }) {
     if (source.name.trim().isEmpty) {
-      issue('missing_source', 'source.name', 'source name is required');
+      issue(
+        'missing_source',
+        '${pathPrefix}source.name',
+        'source name is required',
+      );
     }
     final uri = Uri.tryParse(source.url);
     if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
       issue(
         'invalid_source_url',
-        'source.url',
+        '${pathPrefix}source.url',
         'source URL must be an absolute HTTPS URL',
       );
     }
@@ -270,28 +358,37 @@ final class PowertrainBatteryProfileCatalogValidator {
     if (!isImmutablePowertrainRevision(revision)) {
       issue(
         'mutable_source',
-        'source.revision',
+        '${pathPrefix}source.revision',
         'source revision must be a full commit or content hash',
       );
     }
     if (source.license.trim().isEmpty) {
       issue(
         'missing_license',
-        'source.license',
+        '${pathPrefix}source.license',
         'an explicit source license is required',
       );
     }
     if (source.path.trim().isEmpty || source.locator.trim().isEmpty) {
       issue(
         'missing_source_locator',
-        'source.path/source.locator',
+        '${pathPrefix}source.path/source.locator',
         'source path and locator are required',
       );
     }
   }
 
+  /// Identity evidence gates by review tier.
+  ///
+  /// `ready` keeps the original bar: every field exact. `community` requires
+  /// exact market, year and model, but accepts [sourcePartial] variant
+  /// evidence — a BMS wire contract is a property of the battery system, and
+  /// battery systems are shared across trims within a generation. What makes
+  /// that scoping honest is the independent-corroboration requirement checked
+  /// alongside this gate, not a relabelled evidence level.
   void _validateReviewedIdentityEvidence(
     PowertrainBatteryIdentityEvidence? identity,
+    PowertrainProfileStatus status,
     void Function(String code, String path, String message) issue,
   ) {
     if (identity == null) {
@@ -310,13 +407,20 @@ final class PowertrainBatteryProfileCatalogValidator {
       'variant': identity.variant,
     };
     for (final entry in fields.entries) {
-      if (entry.value != PowertrainIdentityEvidenceLevel.exact) {
-        issue(
-          'insufficient_identity_evidence',
-          'identity_evidence.${entry.key}',
-          'ready/community source metadata requires exact ${entry.key} evidence',
-        );
-      }
+      if (entry.value == PowertrainIdentityEvidenceLevel.exact) continue;
+      final variantMayBePartial =
+          status == PowertrainProfileStatus.community &&
+          entry.key == 'variant' &&
+          entry.value == PowertrainIdentityEvidenceLevel.sourcePartial;
+      if (variantMayBePartial) continue;
+      issue(
+        'insufficient_identity_evidence',
+        'identity_evidence.${entry.key}',
+        status == PowertrainProfileStatus.community
+            ? 'community source metadata requires exact ${entry.key} evidence '
+                  '(variant may be sourcePartial when generation-scoped)'
+            : 'ready source metadata requires exact ${entry.key} evidence',
+      );
     }
   }
 
@@ -372,6 +476,13 @@ final class PowertrainBatteryProfileCatalogValidator {
     }
   }
 
+  /// One normalized "where the bytes came from" key for distinctness checks.
+  static String _sourceLocation(PowertrainBatterySource source) => [
+    source.url.trim().toLowerCase().replaceAll(RegExp(r'/+$'), ''),
+    source.revision.trim().toLowerCase(),
+    source.path.trim().toLowerCase(),
+  ].join('\u0000');
+
   bool _isInexactIdentity(String value) {
     final normalized = value
         .trim()
@@ -424,20 +535,31 @@ final class PowertrainBatteryProfileValidation {
   final PowertrainBatteryProfile profile;
   final List<PowertrainBatteryProfileIssue> issues;
 
-  /// Profile installation is intentionally unavailable in this release.
+  /// Whether this profile may be installed as dashboard PID definitions.
   ///
-  /// `ready` and `community` describe source-review maturity only. They are
-  /// not a runtime trust grant, and the bundled catalog currently has no
-  /// installable profile. Keeping this closed here means an injected catalog
-  /// entry cannot turn status text into persistent or periodic vehicle I/O.
-  bool get canInstall => false;
+  /// Open only for a profile that passed every gate of a reviewed tier:
+  /// `ready` (all identity evidence exact) or `community` (exact identity
+  /// plus at least one independent corroborating source and a pinned source
+  /// artifact hash). An injected catalog entry cannot reach here without
+  /// first passing the bundle's SHA-256 manifest verification, and a profile
+  /// that merely labels itself `ready`/`community` still fails on the
+  /// evidence issues collected above.
+  bool get canInstall =>
+      issues.isEmpty &&
+      (profile.status == PowertrainProfileStatus.ready ||
+          profile.status == PowertrainProfileStatus.community) &&
+      profile.commands.isNotEmpty;
 
-  /// Experimental entries may only be used by the one-shot probe flow.
+  /// Whether the one-shot probe flow may read this profile's commands.
   ///
-  /// This deliberately does not make them installable dashboard PIDs.
+  /// Experimental entries have no other read path. Community entries are
+  /// also probe-eligible — a consented single read is strictly less exposure
+  /// than the periodic polling they already qualify for, and it lets a
+  /// driver try one value before installing. Probing never installs.
   bool get canProbe =>
       issues.isEmpty &&
-      profile.status == PowertrainProfileStatus.experimental &&
+      (profile.status == PowertrainProfileStatus.experimental ||
+          profile.status == PowertrainProfileStatus.community) &&
       profile.commands.isNotEmpty;
 }
 

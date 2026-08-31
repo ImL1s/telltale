@@ -2,7 +2,7 @@
 
 Telltale bundles a searchable, integrity-checked catalog of vehicle-specific
 powertrain-battery research. The catalog is deliberately broader than the set
-of profiles that may send one experimental query, and broader still than the
+of profiles that may send an experimental query, and broader still than the
 set that can be installed. A vehicle appearing in search means that Telltale
 can show a traceable source and its known gaps; it does **not** mean that
 Telltale supports that vehicle or has verified its battery-management system
@@ -10,34 +10,32 @@ Telltale supports that vehicle or has verified its battery-management system
 
 ## Current catalog snapshot
 
-The bundled **schema v2** snapshot contains **205 source-backed profiles**:
+The bundled **schema v3** snapshot contains **210 source-backed profiles**:
 
-| Powertrain | Profiles | Research-only | Experimental | Installable |
+| Powertrain | Profiles | Research-only | Experimental | Installable (community) |
 | --- | ---: | ---: | ---: | ---: |
-| BEV | 74 | 73 | 1 | 0 |
+| BEV | 78 | 73 | 0 | 5 |
 | FCEV | 5 | 5 | 0 | 0 |
-| HEV | 47 | 46 | 1 | 0 |
+| HEV | 48 | 46 | 2 | 0 |
 | MHEV | 7 | 7 | 0 | 0 |
 | PHEV | 69 | 69 | 0 | 0 |
 | REEV | 3 | 3 | 0 | 0 |
-| **Total** | **205** | **203** | **2** | **0** |
+| **Total** | **210** | **203** | **2** | **5** |
 
 The **203 `researchOnly` profiles are metadata indexes with no commands**.
-They cover identity and discovery evidence, including all 69 PHEV entries, but
-cannot query a vehicle. The two `experimental` profiles contain **15 pinned
-read-only commands and 20 bounded signals**:
+They cover identity and discovery evidence but cannot query a vehicle.
 
-- MG ZS EV, Australian 2021 source vehicle: 11 Mode 22 commands and 13 signals.
-- Lexus RX450hL 2020 Premium source vehicle: 4 Mode 21 commands and 7 signals.
+The **5 `community` profiles are installable**: MG ZS EV Mk1, Hyundai
+Ioniq 5 (E-GMP), Kia EV6 (E-GMP), Hyundai Kona Electric (OS), and Kia Niro
+EV / e-Niro (DE). Community is the cross-corroborated tier — every installed
+byte window and formula agrees across at least two mutually independent,
+license-pinned implementations, and the runtime still requires a
+per-connection vehicle confirmation before a single request is sent.
 
-No profile is `ready` or `community`, so **nothing in this snapshot is
-installable**. Experimental commands cannot be installed, enabled for polling,
-or added to the dashboard.
-
-The breadth includes **119 exact U.S. EPA configurations**, plus pinned
-open-source discovery entries. EPA rows establish vehicle identity and
-powertrain classification only; they provide no BMS PID, CAN responder, payload,
-or formula evidence.
+The **2 `experimental` profiles** (Lexus RX450hL 2020 source vehicle, Toyota
+Prius TNGA) carry pinned read-only commands usable only through the opt-in
+one-shot laboratory. Experimental commands cannot be installed, enabled for
+polling, or added to the dashboard.
 
 ## Status and evidence are separate
 
@@ -45,8 +43,8 @@ or formula evidence.
 
 | Status | Meaning |
 | --- | --- |
-| `ready` | Reserved for a profile that completed the project's installable acceptance process. The current snapshot contains none. |
-| `community` | Reserved for a source-backed, read-only mapping that passes every installable gate, including exact vehicle identity. The current snapshot contains none. |
+| `ready` | Reserved for a profile that completed the project's installable acceptance process with a physical-vehicle run. The current snapshot contains none. |
+| `community` | A source-backed read-only mapping whose every formula and byte window is confirmed by at least one source independent of the primary, with pinned artifact hashes. Installable after an install-time identity acknowledgement and a fresh per-connection vehicle confirmation; also eligible for one-shot lab reads. The current snapshot contains five. |
 | `experimental` | A pinned, bounded candidate eligible only for the opt-in one-shot laboratory. It cannot be installed, polled, persisted as telemetry, or shown on the dashboard. The current snapshot contains two. |
 | `researchOnly` | A source or identity index with no executable commands. It cannot be installed or query a vehicle. The current snapshot contains 203. |
 
@@ -59,135 +57,182 @@ status gate:
 | `syntheticRig` | A project-owned deterministic simulator exercised the mapping or transport path. This does not establish real ECU or BMS behaviour. |
 | `physicalVehicle` | A retained physical-vehicle run supports the stated scope. It still applies only to the recorded market, generation, variant, adapter, ECU software, and test conditions. |
 
-All 205 current entries are `sourceBacked`. Running a synthetic ELM327 rig
-through a phone can validate the app, parser, UI, and transport path, but it does
-not turn a profile into `physicalVehicle` evidence and does not prove a real PID
-or formula.
+All 210 current entries are `sourceBacked`. Running a synthetic ELM327 rig
+through a phone can validate the app, parser, UI, and transport path, but it
+does not turn a profile into `physicalVehicle` evidence and does not prove a
+real PID or formula.
+
+## The community tier: cross-corroboration instead of trust
+
+A single hobbyist CSV that nobody else agrees with stays experimental no
+matter how plausible it looks. Promotion to `community` requires all of:
+
+- at least one corroborating source that is **mutually independent** of the
+  primary (not the same author, not derived from the primary), pinned to a
+  full commit hash with an explicit redistribution-compatible license;
+- agreement on **both the formula and the byte positions** of every shipped
+  signal between the sources counted as its corroboration. Where the counted
+  sources disagree, the signal is **excluded, not averaged** — the E-GMP
+  battery inlet temperature and the MG range DID are recorded exclusions.
+  Where one source disagrees but two others still agree in full, that source
+  simply stops counting as corroboration for that signal and the
+  disagreement is recorded: the Kona-family pack current ships on OVMS and
+  OBDb positions with OVMS signedness, with WiCAN's inverted sign noted and
+  not counted;
+- a pinned SHA-256 of the exact primary source artifact;
+- exact market, year and model identity evidence; the variant may be
+  generation-scoped (`sourcePartial`) because a BMS wire contract is a
+  property of the battery system, which is shared across trims within a
+  generation.
+
+Where real response captures exist (the Hyundai/Kia profiles), the shipped
+contracts were additionally verified to decode those captures to physically
+plausible values before inclusion.
+
+## Installation and the per-connection gate
+
+Installation is deliberately split from trust in the vehicle at the other end
+of the adapter:
+
+1. In the catalog, the driver picks a community profile, confirms the exact
+   model year and acknowledges the identity scope. This installs read-only
+   PID definitions into the PID manager — nothing more.
+2. Installed definitions persist only as `{profile_id, vehicle_year}`
+   references. On every app start they are rebuilt from the SHA-256-verified
+   catalog, so mutable storage can never smuggle a modified formula past the
+   integrity check, and a catalog that later withdraws a profile uninstalls
+   it cleanly.
+3. On every connection, the dashboard asks the driver to confirm that the
+   connected vehicle is that exact vehicle. The grant binds the connection
+   generation, the vehicle year and the source revision, lives only in
+   memory, and dies at every vehicle boundary — plugging into a different
+   car never inherits it.
+4. Only then does the polling engine transmit the profile's commands, and it
+   accepts a reply only from the pinned responder, with the exact declared
+   payload length, sliced to each signal's byte window, decoded by the
+   reviewed formula, inside the source-bounded range. Anything else is a
+   visible fault, never a number.
 
 ## Experimental one-shot laboratory
 
-The laboratory is deliberately separate from profile installation and normal
-polling.
-
-1. In Settings, the driver enables **Powertrain battery evidence laboratory**
-   only after acknowledging the evidence and wire-safety limits. This preference
-   persists, but it only reveals the laboratory; it is not vehicle trust or
-   command authorization.
-2. With a live foreground connection, the driver selects one command from one
-   experimental profile. The app never discovers, increments, or scans an
-   identifier.
-3. For that exact attempt, the driver selects the model year and acknowledges
-   the source's known identity, its unresolved identity fields, and that the
-   vehicle is safely parked.
-4. The app creates a one-use in-memory consent bound to the verified catalog
-   SHA-256, source revision, profile, command wire key, selected year, and
-   connection generation. Consent expires after **two minutes** and is consumed
-   before bytes are sent.
-5. The app sends exactly one pinned Mode 21 or Mode 22 request. It does not
-   batch, automatically retry, change diagnostic session, request security
-   access, write, control an actuator, install a PID, schedule polling, or mix a
-   decoded value into telemetry or the dashboard.
-
-Each new attempt requires a fresh acknowledgement. A **five-second cooldown**
-applies to the same profile and command, with at most **three attempts per
-command per connection**. Only one experimental request may be in flight across
-the laboratory. A structural response failure quarantines that profile for the
-rest of the connection. Starting another connection, disconnecting, losing the
-link, putting the app in the background, or disabling the Settings opt-in
-invalidates outstanding consent. A late result after any boundary is discarded.
-
-Transport failure or `NO DATA` publishes no value and triggers no automatic
-retry. It does not by itself prove that the profile is wrong; another attempt
-still requires fresh consent, the cooldown, and the connection attempt limit.
-The normal diagnostic transcript records the exact command, response, catalog
-hash, and source revision for evidence and user-controlled export, but the
-laboratory does not persist the decoded reading as an installed PID or dashboard
-value.
+The laboratory is unchanged in spirit: opt-in in Settings, one pinned
+Mode 21/22 read per consent, two-minute expiry, five-second cooldown, at most
+three attempts per command per connection, quarantine on structural failure,
+and nothing persisted into telemetry. Community profiles are also
+probe-eligible — a consented single read is strictly less exposure than the
+polling they already qualify for, and it lets a driver try one value before
+installing.
 
 ## Exact response contract
 
-A candidate is eligible for the one-shot laboratory only when the schema and
-validator accept its pinned wire contract. The runtime then requires all of the
-following before showing a decoded value:
+A candidate is eligible for installation or the one-shot laboratory only when
+the schema and validator accept its pinned wire contract. The runtime then
+requires all of the following before showing a decoded value:
 
 - the profile and command still exist in the verified catalog snapshot;
 - the resolved CAN bus width accepts the exact request and response identifiers;
-- response headers are present and there is exactly one complete response frame;
-- the responder equals the pinned responder;
+- response headers are present and the reply reassembles to exactly one
+  complete response from the pinned responder;
 - the positive-response service and identifier echo the request;
 - the payload length equals the profile's exact length;
 - every signal byte window is inside that payload; and
 - every formula returns a finite value inside the source-bounded range.
 
 An anonymous, wrong-responder, ambiguous, wrong-envelope, wrong-length,
-formula-error, or out-of-range response is rejected and quarantines the profile
-for the current connection. Session control, security access, writes, actuator
-commands, guessed commands, scans, passive CAN, and TP2.0 are outside this
-mechanism. An unavailable value is safer than a plausible but unattributed one.
+formula-error, or out-of-range response is rejected. Session control,
+security access, writes, actuator commands, guessed commands, scans, passive
+CAN, and TP2.0 are outside this mechanism. An unavailable value is safer than
+a plausible but unattributed one.
 
 ## Source-specific evidence limits
 
-### MG ZS EV — Australian 2021 source vehicle
+### MG ZS EV Mk1 — community
 
-The executable subset is derived from the pinned
+Primary: the pinned
 [`MG ZS EV.csv`](https://github.com/peternixon/MG-EV-OBD-PID/blob/2f485fcbffa2259d9e1db92d14483c1bef55dcca/extendedpids/MG%20ZS%20EV.csv)
-and its [source README](https://github.com/peternixon/MG-EV-OBD-PID/blob/2f485fcbffa2259d9e1db92d14483c1bef55dcca/README.md).
-The source reports one Australian 2021 vehicle but does not identify the trim,
-battery firmware, or ECU firmware. Request header `781`, Mode 22 identifiers,
-formulas, and stated ranges come from the pinned CSV. Expected responder `789`
-is Telltale's physical-address inference from `781`, not a published raw-frame
-observation. Exact payload lengths are derived from the formula byte windows
-because the source publishes no raw capture. The profile therefore remains
-experimental and must not be extrapolated to another market, trim, model year,
-or firmware.
+(one Australian 2021 source vehicle). Corroboration: the OVMS `vehicle_mgev`
+component independently implements byte-identical decodes for every shipped
+DID and pins the Mk1 BMS addressing (781/789), and WiCAN confirms the
+SoC/SoH/voltage scales. The mapping is DID-invariant across the SAIC MG EV
+BMS family but **addressing-pinned to Mk1 (2019–2021)** — the 2022+ facelift
+moved its BMS to 7E5/7ED and is not covered. Range DID B0CE is excluded
+(OVMS ships its decode disabled), and the temperature DIDs carry a recorded
+MG5 disagreement.
 
-### Lexus RX450hL — exact 2020 Premium source vehicle
+### Hyundai / Kia BMS family — community
+
+Four profiles share the 7E4/7EC `220101`/`220105` contract with exact 59- and
+43-byte payloads: Ioniq 5 and EV6 (E-GMP), Kona Electric (OS), Niro EV (DE).
+Corroborated across OVMS, WiCAN and OBDb. The Ioniq 5, EV6 and Kona
+contracts additionally decode pinned real-vehicle response captures to the
+independently-agreed values — the Ioniq 5 capture is wired through the full
+production path as a repo test (`powertrain_capture_regression_test.dart`).
+No Niro-specific raw capture exists at the pinned revisions: its exact
+payload lengths are inherited from the byte-identical Kona OS layout, and
+its entry says so. Recorded exclusions: E-GMP battery inlet
+temperature (decode conflict), E-GMP cell deterioration (decodes to
+non-physical values), bit-packed status flags and operating time (numeric
+gauges only), and the WiCAN Kona-family current-sign inversion (the shipped
+sign follows OVMS/OBDb: positive discharging, negative charging). Responses
+are multi-frame ISO 15765-2; an adapter that mishandles flow control times
+out rather than corrupting values. Hyundai Ioniq Electric was researched but
+ships nothing — no licensed source provides exact payload-length evidence for
+its Mode 21 block.
+
+### Lexus RX450hL — experimental
 
 The executable subset is limited to the pinned
-[2020 RX450hL profile](https://github.com/NathanNam/obd2-logger/blob/f93d7a0afb1cfb8aff9681a7db33db46d55804a2/src/profiles/builtin/lexus-rx450hl-2020.json),
-the project's [source-vehicle evidence note](https://github.com/NathanNam/obd2-logger/blob/f93d7a0afb1cfb8aff9681a7db33db46d55804a2/examples/README.md),
-and its [published sample artifact](https://github.com/NathanNam/obd2-logger/blob/f93d7a0afb1cfb8aff9681a7db33db46d55804a2/examples/2026-05-03T07-55-45Z__2z6wg3dj.csv).
-They support one **2020 Lexus RX450hL Premium** source vehicle. Its market and
-ECU firmware remain unknown. The pinned profile directly declares `7E2` to
-`7EA`, Mode 21 identifiers `61`, `62`, `63`, and `95`, formulas, and ranges.
-Published artifacts support the selected byte slices; the complete exact
-payload length is a conservative Telltale contract rather than independent raw
-frame proof. RX450h, other RX450hL trims, model years 2021–2022, and unresolved
-PID `98` pack-voltage decoding are excluded.
+[2020 RX450hL profile](https://github.com/NathanNam/obd2-logger/blob/f93d7a0afb1cfb8aff9681a7db33db46d55804a2/src/profiles/builtin/lexus-rx450hl-2020.json)
+and supports one 2020 Lexus RX450hL Premium source vehicle. The 2026-09
+cross-source review found **no independent confirmation of its byte
+windows** — the Ircama Toyota-hybrid oracle documents different semantics at
+the same identifiers — so the profile stays experimental and probe-only.
+
+### Toyota Prius (TNGA) — experimental
+
+Capture-verified candidates from the hybrid control ECU (7D2/7DA Mode 22):
+SoC, pack voltage, signed pack current, and block SoC. Every formula decodes
+OBDb's pinned real-car captures (Prius MY2022/2024/2025; Corolla Hybrid
+confirms 1F5B for 2023–2025), but all licensed evidence is a single
+organization, so the entry is experimental until an independent source
+appears. The forum-circulated 7E2 Mode 21 tables exist only in unlicensed
+sources and are not shipped.
+
+### Nissan Leaf and Mitsubishi Outlander PHEV — researched, not shipped
+
+Both have corroborated read contracts in licensed sources, but every source
+drives them with custom ELM327 flow control (`ATFCSM1`) and raw app-side
+ISO-TP reassembly, which Telltale does not implement. Their entries record
+this; nothing is shipped rather than shipped broken.
 
 ### Chevrolet Bolt — metadata only
 
-The pinned `iternio/ev-obd-pids` Bolt material remains a discovery entry only.
-Its chain points to the separate All EV Info mapping, while the available
-licensing/provenance chain, raw response evidence, and exact responder proof are
-not sufficient for Telltale's executable gates. Bolt command definitions are
-therefore absent from the schema-v2 catalog. A Bolt search result is metadata,
-not an available experimental query or support claim.
+Unchanged: the pinned `iternio/ev-obd-pids` Bolt material remains a discovery
+entry only; the provenance chain and responder proof do not pass the
+executable gates.
 
-## Future installation path
+## Promotion path
 
-A future `ready` or `community` profile must pass a separate installable gate.
-Installation would persist PID definitions only; it would not automatically add
-them to the dashboard or start polling. The driver would still have to confirm
-an exact market, make, model, variant, year, and powertrain match for every live
-connection, then explicitly enable the wanted signals. Connecting,
-disconnecting, or losing the link invalidates that authorization.
-
-Promotion also requires evidence beyond a successful synthetic response: a
-retained and privacy-reviewed physical-vehicle run for the exact identity,
-independent confirmation of request and responder attribution, exact raw payload
-shape, formula semantics and sign, stable ranges, adapter/transport conditions,
-and source licensing suitable for redistribution. One plausible value is not
-acceptance evidence.
+`researchOnly` → `experimental` requires a pinned wire contract with exact
+identity scope and a pinned artifact hash. `experimental` → `community`
+requires independent cross-source corroboration of every shipped signal.
+`community` → `ready` still requires a separately retained, privacy-reviewed
+physical-vehicle run for the exact identity, independent confirmation of
+request and responder attribution, exact raw payload shape, formula semantics
+and sign, stable ranges, adapter/transport conditions, and source licensing
+suitable for redistribution. One plausible value is not acceptance evidence.
 
 ## Provenance and licensing
 
 The bundled catalog and manifest record schema version, SHA-256, byte size,
-profile count, signal count, and powertrain counts. Every profile retains a
-source name, URL, immutable revision or content hash, licence, path, locator,
-applicability, and limitations. Executable experimental sources also retain the
-pinned source-artifact SHA-256. A catalog integrity, count, or schema failure
-makes the whole catalog unavailable rather than loading a partial snapshot.
+profile count, signal count, and powertrain counts —
+`tool/update_powertrain_battery_manifest.py` regenerates the manifest and
+`--check` detects drift. Every profile retains a source name, URL, immutable
+revision or content hash, licence, path, locator, applicability, and
+limitations; executable sources also retain the pinned source-artifact
+SHA-256, and community profiles additionally record their corroborating
+secondary sources. A catalog integrity, count, or schema failure makes the
+whole catalog unavailable rather than loading a partial snapshot.
 
 See [Powertrain battery catalog third-party notices](../THIRD_PARTY_NOTICES_POWERTRAIN_BATTERY.md)
 for source-specific attribution, transformation notes, reuse terms, and the
@@ -195,18 +240,19 @@ non-endorsement boundary.
 
 ## Verification boundary
 
-Unit, parser, widget, integration, phone, and synthetic-rig tests can establish
-that the catalog loads, status gates remain closed, consent expires, lifecycle
-boundaries revoke access, one request is framed, a deterministic response is
-attributed, and invalid fixtures fail closed. They do **not** prove:
+Unit, parser, widget, integration, phone, and synthetic-rig tests can
+establish that the catalog loads, status gates hold, consent expires,
+lifecycle boundaries revoke access, requests are framed and attributed,
+multi-frame payloads reassemble and slice correctly, and invalid fixtures
+fail closed. They do **not** prove:
 
 - that a listed vehicle exposes the same ECU, responder, payload, scale, or
   current sign in every market or model year;
 - that a generic ELM327 adapter handles the required timing and framing;
-- that state of charge, voltage, current, temperature, torque, range, resistance,
-  or health is accurate on a real BMS; or
+- that state of charge, voltage, current, temperature, torque, range,
+  resistance, or health is accurate on a real BMS; or
 - that a research-only or experimental vehicle is supported.
 
 Those claims require a separately retained, privacy-reviewed physical-vehicle
-run for the exact vehicle and test configuration. No S24U, other phone, or
-synthetic-rig transport result substitutes for that real-vehicle PID evidence.
+run for the exact vehicle and test configuration. No phone or synthetic-rig
+transport result substitutes for that real-vehicle PID evidence.

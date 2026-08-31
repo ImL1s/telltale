@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme/app_theme.dart';
+import 'state/powertrain_battery_profiles.dart';
 import 'state/settings.dart';
 import 'ui/screens/connect/connect_screen.dart';
 import 'ui/screens/dashboard/dashboard_screen.dart';
@@ -19,6 +20,10 @@ class TorqueApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Rehydrates installed battery-profile PIDs from the verified catalog.
+    // Watched at the root so it runs once per app start regardless of which
+    // screen the user lands on; failure means those PIDs simply stay absent.
+    ref.watch(installedPowertrainProfilesRestoreProvider);
     final themeMode = ref.watch(themeModeProvider);
     // Both themes get the same skin. A skin is what kind of instrument this
     // is; light and dark are the light you are reading it in, and a skin that

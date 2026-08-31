@@ -21,17 +21,22 @@ void main() {
     snapshot = await PowertrainBatteryCatalogAsset.load();
   });
 
-  test('only two source-scoped entries are eligible for one-shot probing', () {
+  test('only source-scoped executable entries are eligible for one-shot probing', () {
     const validator = PowertrainBatteryProfileCatalogValidator();
     final probeable = snapshot.catalog.profiles
         .where((profile) => validator.validateProfile(profile).canProbe)
         .map((profile) => profile.id)
         .toSet();
 
-    expect(snapshot.profileCount, 205);
+    expect(snapshot.profileCount, 210);
     expect(probeable, {
       'mg-zs-ev-au-2021',
       'lexus-rx450hl-2020-source-vehicle',
+      'toyota-prius-tnga-2016-2026',
+      'hyundai-ioniq5-egmp-2021-2024-community',
+      'kia-ev6-egmp-2022-2024-community',
+      'hyundai-kona-electric-os-2019-2023-community',
+      'kia-niro-ev-de-2019-2022-community',
     });
     expect(
       snapshot.catalog.profiles
@@ -41,11 +46,19 @@ void main() {
       reason: 'the lab switch must never turn metadata into wire commands',
     );
     expect(
-      snapshot.catalog.profiles.where(
-        (profile) => validator.validateProfile(profile).canInstall,
-      ),
-      isEmpty,
-      reason: 'experimental entries remain outside installer/dashboard',
+      snapshot.catalog.profiles
+          .where((profile) => validator.validateProfile(profile).canInstall)
+          .map((profile) => profile.id),
+      [
+        'mg-zs-ev-au-2021',
+        'hyundai-ioniq5-egmp-2021-2024-community',
+        'kia-ev6-egmp-2022-2024-community',
+        'hyundai-kona-electric-os-2019-2023-community',
+        'kia-niro-ev-de-2019-2022-community',
+      ],
+      reason:
+          'only the cross-corroborated community entry may reach the '
+          'installer; the experimental entry stays probe-only',
     );
   });
 

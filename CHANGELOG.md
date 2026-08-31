@@ -8,6 +8,42 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## Unreleased
 
+### Added
+
+- Opened a gated installation path for reviewed battery profiles: `community`
+  is a new cross-corroborated tier whose every formula and byte window must
+  agree across at least two mutually independent, license-pinned sources
+  (disagreements are excluded, not averaged). Installation adds read-only
+  BMS PIDs to the PID manager after an identity acknowledgement, and polling
+  still requires a fresh per-connection vehicle confirmation bound to the
+  connection generation and source revision.
+- Promoted MG ZS EV Mk1 (2019–2021) to installable community status, with
+  OVMS `vehicle_mgev` and WiCAN as recorded corroborating sources and the
+  weakly corroborated range DID removed.
+- Added installable community BMS profiles for Hyundai Ioniq 5 (E-GMP),
+  Kia EV6 (E-GMP), Hyundai Kona Electric (OS), and Kia Niro EV / e-Niro (DE),
+  verified against pinned real-vehicle response captures (exact 59/43-byte
+  payload contracts on 7E4/7EC).
+- Added a Toyota Prius (TNGA) experimental profile — capture-verified SoC,
+  pack voltage/current, and block SoC from the hybrid control ECU — kept at
+  the one-shot tier because all licensed evidence is a single organization.
+- Community profiles are also probe-eligible in the laboratory, so a driver
+  can try one consented read before installing.
+- Installed profiles persist as references only and are rebuilt from the
+  SHA-256-verified catalog on every start; a catalog that withdraws a
+  profile uninstalls it cleanly.
+
+### Documentation
+
+- Recorded why researched vehicles ship nothing: Nissan Leaf and Mitsubishi
+  Outlander PHEV need custom ELM327 flow control the app does not implement;
+  Hyundai Ioniq Electric lacks exact payload-length evidence; the Lexus
+  RX450hL byte windows found no independent confirmation and stay
+  experimental.
+- Registered OVMS (MIT) and GPL-3.0 licence texts with the in-app licence
+  page and extended the third-party notices for the new corroborating
+  sources.
+
 ## 1.0.7+8 — 2026-08-31
 
 ### Added
