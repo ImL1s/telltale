@@ -225,10 +225,9 @@ final class TelemetryReplayResult {
 final class TelemetrySessionLibraryService {
   TelemetrySessionLibraryService({
     Future<Directory> Function()? documentsDirectory,
-    Future<TelemetrySessionLibrary> Function()? loader,
+    this._loader,
   }) : _documentsDirectory =
-           documentsDirectory ?? getApplicationDocumentsDirectory,
-       _loader = loader;
+           documentsDirectory ?? getApplicationDocumentsDirectory;
 
   final Future<Directory> Function() _documentsDirectory;
   final Future<TelemetrySessionLibrary> Function()? _loader;
