@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
+import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/core/share/app_share_platform_bridge.dart';
@@ -168,6 +169,59 @@ void main() {
       expect(nativeSites, ['lib/core/share/app_share_platform_bridge.dart']);
     },
   );
+
+  test('raw recovered and PID exports forward sharePositionOrigin', () async {
+    final documents = Directory.systemTemp.createTempSync('share-entry-origin-docs');
+    final roots = Directory.systemTemp.createTempSync('share-entry-origin-roots');
+    addTearDown(() {
+      if (documents.existsSync()) documents.deleteSync(recursive: true);
+      if (roots.existsSync()) roots.deleteSync(recursive: true);
+    });
+    const origin = Rect.fromLTWH(12, 34, 56, 78);
+
+    final raw = await _invoke(
+      roots,
+      61,
+      (controller) => controller.shareRawTranscript(
+        transcript: ObdTranscript(),
+        header: 'Header\n',
+        withHex: false,
+        subjectAt: DateTime.utc(2026, 9, 1, 12),
+        sharePositionOrigin: origin,
+      ),
+    );
+    expect(raw.request.sharePositionOrigin, origin);
+
+    final store = TranscriptStore(directory: () async => documents);
+    final saved = ObdTranscript()
+      ..recordRead([0x34, 0x31, 0x0d], DateTime.utc(2026));
+    expect(
+      await store.save(saved, 'Recovered\n', fromRealHardware: true),
+      isTrue,
+    );
+    final displayed = await store.load();
+    expect(displayed, isNotNull);
+    final recovered = await _invoke(
+      roots,
+      62,
+      (controller) => controller.shareRecoveredTranscript(
+        store: store,
+        expected: displayed!,
+        sharePositionOrigin: origin,
+      ),
+    );
+    expect(recovered.request.sharePositionOrigin, origin);
+
+    final pid = await _invoke(
+      roots,
+      63,
+      (controller) => controller.sharePidCsv(
+        pids: [PidLibrary.all.first],
+        sharePositionOrigin: origin,
+      ),
+    );
+    expect(pid.request.sharePositionOrigin, origin);
+  });
 
   test('telemetry facade rejects non-opaque IDs before admission', () async {
     final root = Directory.systemTemp.createTempSync('share-entry-invalid');

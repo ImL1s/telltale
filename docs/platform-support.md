@@ -23,12 +23,12 @@ proven to the full smoothness bar.
 |---|---|---|---|---|---|
 | Demo connect → live telemetry UI | **pass** (device + `demo_connect_journey_test`) | **pass** (`integration_test/ios_field_demo_journey_test` on iPhone 17 Pro sim, field flavor) | **pass** (journey + local `Telltale.app` / macOS field share journey) | **pass** (journey test; device thin) | **pass** (journey test; device thin) |
 | Session telemetry record / replay / export | **pass** (unit + rigs; field thin) | **pass** (iOS sim Demo record → durable `.ndjson`; export UI thin) | **pass** (`telemetry_demo_journey` + macOS field share journey staged CSV) | **pass** (automated path; sheet soft-fail OK) | **pass** (automated path; sheet soft-fail OK) |
-| `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus` + iPad `sharePositionOrigin`) | **pass** (native capacity + staged immutable file + `app_share` channel; `NSSharingServicePicker` still needs a human target) | **wired** (native `app_storage_capacity` + `share_plus`; soft-fail OK if file staged) | **wired** (native `app_storage_capacity` + `share_plus`; soft-fail OK if file staged) |
-| Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP |
+| `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus` + iPad `sharePositionOrigin` on all export entry points) | **pass** (native capacity + staged immutable file + `app_share` channel; picker target still human) | **wired** (capacity + staging; `shareHandoffFailed` when sheet unavailable — not silent success) | **wired** (capacity + staging; `shareHandoffFailed` when sheet unavailable — not silent success) |
+| Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **wired** plain TCP | **pass** (`WifiTransport` → Ircama on `127.0.0.1:35000` via `emulator_integration_test` / `tool/desktop_wifi_oracle/run.sh`) | **pass** (same Dart `WifiTransport` oracle path; Windows-host oracle thin) | **pass** (telltale CI Ircama oracle + same suite) |
 | BLE scan/connect | **pass** (field) | **wired** CoreBluetooth | **wired** entitlements | **wired** WinRT plugin | **wired** Dart BlueZ/D-Bus (needs BlueZ at runtime) |
 | Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | product-gated | product-gated |
-| Transcript export / share | **pass** (via `app_share*`) | **wired** | **pass** (native macOS path through staging) | **wired** | **wired** (sheet failure is non-fatal) |
-| PID CSV pick/share | **pass** | **wired** | **wired** sandbox | **wired** | **wired** |
+| Transcript export / share | **pass** (via `app_share*`) | **wired** (popover origin threaded) | **pass** (native macOS path through staging; failed handoff is explicit) | **wired** (staged file + explicit handoff failure copy) | **wired** (staged file + explicit handoff failure copy) |
+| PID CSV pick/share | **pass** | **wired** (popover origin threaded) | **wired** sandbox | **wired** | **wired** |
 | SharedPreferences boot | **pass** | **pass** | **pass** | **pass** | **pass** |
 | Wakelock while connected | **pass** | **pass** | **pass** | **wired** | no-op (no plugin; intentional) |
 | CI beyond `flutter build` | analyze + full `flutter test` + APKs | build + functional smoke suite | build + functional smoke suite | build + functional smoke suite | build + functional smoke suite |
@@ -74,23 +74,40 @@ BLE/Classic field rows as blocked-by-hardware.
   `app_storage_capacity`. Field debug share journey
   (`integration_test/macos_field_share_journey_test.dart`) proves capacity →
   Demo record → immutable staged CSV handoff; the OS picker itself is still a
-  human step. `default-flavor: field` requires matching Xcode scheme + configs
+  human step. Failed/unavailable handoffs return `shareHandoffFailed` with
+  clear copy (file staged, sheet did not open) — never a silent success.
+  Desktop Wi‑Fi functional evidence: `tool/desktop_wifi_oracle/run.sh` starts
+  Ircama with `-d` (required on macOS background shells) and runs
+  `emulator_integration_test.dart` (`ELM_ORACLE_REQUIRED`) proving handshake,
+  VIN, live RPM/speed polling, record, and export over `WifiTransport`.
+  `default-flavor: field` requires matching Xcode scheme + configs
   (`field.xcscheme`, `Debug-field`/`Release-field`/`Profile-field`);
   Android-only `rig` stays out of Apple schemes.
 - **Windows / Linux:** runners now register
   `com.cbstudio.telltale/app_storage_capacity` (`GetDiskFreeSpaceExW` /
   `statvfs`) so share preflight is no longer a permanent `shareSpaceUnknown`
-  dead-end. Interactive sheet confirmation remains thin.
+  dead-end. When the interactive sheet cannot open, UX reports staged-but-
+  handoff-failed instead of pretending the picker confirmed.
 - **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for
   `permission_handler_windows` (plural `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS`,
   matching MSVC STL1011’s own suppress token).
 - **Linux:** wakelock no-op; Demo / Wi‑Fi / BLE (BlueZ) do not depend on it.
+  Public telltale CI runs the Ircama Wi‑Fi oracle on Linux runners.
 - **iOS:** Classic permanently unavailable; Demo / Wi‑Fi / BLE are the core
   path. Field Simulator evidence:
   `integration_test/ios_field_demo_journey_test.dart` (Demo → live PIDs →
   record → durable session file). Wi‑Fi / guidance copy stays phone-centric
   on iOS/Android only. Same `field` scheme requirement as macOS for
-  `default-flavor`.
+  `default-flavor`. All share entry points (telemetry, raw/recovered
+  transcript, PID CSV) accept `sharePositionOrigin` for iPad popovers.
+
+## Hardware inventory (this workstation, 2026-09-01)
+
+- Android attached: `R5CX10VFFBA` (S24 Ultra), `RFCNC0WNT9H`, `emulator-5554`.
+- Bluetooth controller on; paired accessories are phones/keyboards/earbuds —
+  **no ELM327-named BLE/Classic adapter**. BLE/Classic field rows stay
+  hardware-blocked.
+- iOS Simulator Demo journey already evidenced on this branch.
 
 ## Still deferred (does **not** meet the full functional bar alone)
 
@@ -100,3 +117,4 @@ BLE/Classic field rows as blocked-by-hardware.
 - Human confirmation of every desktop share-sheet target (macOS staging +
   channel handoff is proven; picker selection is not automated)
 - Keyboard/mouse shell density polish
+- iOS Wi‑Fi TCP against Ircama (plain TCP wired; simulator network path thin)

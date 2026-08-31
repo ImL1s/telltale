@@ -78,6 +78,7 @@ final class AppShareEntryController {
     required String header,
     required bool withHex,
     required DateTime subjectAt,
+    Rect? sharePositionOrigin,
   }) {
     final frozen = transcript.frozenCopy();
     final at = subjectAt.toLocal();
@@ -89,6 +90,7 @@ final class AppShareEntryController {
       AppShareRequest(
         sourceKind: ShareSourceKind.rawTranscript,
         subject: 'Telltale 傳輸紀錄 $stamp',
+        sharePositionOrigin: sharePositionOrigin,
         streamFactory: () =>
             frozen.streamEncoded(header: header, withHex: withHex),
       ),
@@ -98,10 +100,12 @@ final class AppShareEntryController {
   Future<AppShareOutcome> shareRecoveredTranscript({
     required TranscriptStore store,
     required StoredTranscript expected,
+    Rect? sharePositionOrigin,
   }) => _coordinator.share(
     AppShareRequest.lazy(
       sourceKind: ShareSourceKind.recoveredTranscript,
       subject: 'Telltale 傳輸紀錄（上一次連線）',
+      sharePositionOrigin: sharePositionOrigin,
       prepareSource: () async {
         final descriptor = await store.openStreaming(expected: expected);
         if (descriptor == null) return null;
@@ -114,12 +118,16 @@ final class AppShareEntryController {
     ),
   );
 
-  Future<AppShareOutcome> sharePidCsv({required Iterable<Pid> pids}) {
+  Future<AppShareOutcome> sharePidCsv({
+    required Iterable<Pid> pids,
+    Rect? sharePositionOrigin,
+  }) {
     final frozen = List<Pid>.unmodifiable(pids);
     return _coordinator.share(
       AppShareRequest(
         sourceKind: ShareSourceKind.pidCsv,
         subject: 'Telltale 自訂 PID 定義',
+        sharePositionOrigin: sharePositionOrigin,
         streamFactory: () => PidCsv.stream(frozen),
       ),
     );

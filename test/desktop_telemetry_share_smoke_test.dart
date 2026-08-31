@@ -103,16 +103,21 @@ void main() {
       readRecorderPhase: () => recorder.progress.state.phase,
     );
 
+    // Soft-fail share: staging must succeed; the missing sheet must not look
+    // like a completed handoff (no fake picker confirmation).
+    final csvExport = await actions.export(sessionId, TelemetryExportFormat.csv);
+    expect(csvExport.isSuccess, isFalse);
     expect(
-      (await actions.export(sessionId, TelemetryExportFormat.csv)).isSuccess,
-      isTrue,
+      csvExport.message,
+      '檔案已準備完成，但系統分享介面無法開啟。',
     );
+    final jsonExport =
+        await actions.export(sessionId, TelemetryExportFormat.json);
+    expect(jsonExport.isSuccess, isFalse);
     expect(
-      (await actions.export(sessionId, TelemetryExportFormat.json)).isSuccess,
-      isTrue,
+      jsonExport.message,
+      '檔案已準備完成，但系統分享介面無法開啟。',
     );
-
-    // Soft-fail share is allowed on desktop hosts without a sheet target.
     expect(platform.calls, 2);
     expect(platform.paths, hasLength(2));
     for (final path in platform.paths) {

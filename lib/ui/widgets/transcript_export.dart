@@ -35,7 +35,11 @@ String formatTranscriptSize(int bytes) =>
 /// A file rather than a text share: these run to hundreds of kilobytes and
 /// every messaging app truncates a long string. The name carries the timestamp
 /// so two exports from one afternoon do not overwrite each other.
-Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
+Future<String?> exportTranscript(
+  WidgetRef ref, {
+  required bool withHex,
+  Rect? sharePositionOrigin,
+}) async {
   final session = ref.read(obdSessionProvider.notifier);
   // One read, so the heading and the bytes are from the same session.
   //
@@ -52,6 +56,7 @@ Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
           header: record.header,
           withHex: withHex,
           subjectAt: DateTime.now(),
+          sharePositionOrigin: sharePositionOrigin,
         );
     return outcome.userFacingError;
   } on Object catch (e) {
@@ -77,7 +82,15 @@ class TranscriptExportButtons extends ConsumerWidget {
     final available = ref.read(obdSessionProvider.notifier).hasTranscript;
 
     Future<void> run(bool withHex) async {
-      final error = await exportTranscript(ref, withHex: withHex);
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size;
+      final error = await exportTranscript(
+        ref,
+        withHex: withHex,
+        sharePositionOrigin: origin,
+      );
       if (error == null || !context.mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error)));
@@ -140,13 +153,18 @@ final recoveredTranscriptProvider = FutureProvider<StoredTranscript?>((ref) {
 /// cannot be shared under the previous-connection label.
 Future<String?> exportRecoveredTranscript(
   WidgetRef ref,
-  StoredTranscript displayed,
-) async {
+  StoredTranscript displayed, {
+  Rect? sharePositionOrigin,
+}) async {
   try {
     final store = ref.read(managedTranscriptStoreProvider);
     final outcome = await ref
         .read(appShareEntryControllerProvider)
-        .shareRecoveredTranscript(store: store, expected: displayed);
+        .shareRecoveredTranscript(
+          store: store,
+          expected: displayed,
+          sharePositionOrigin: sharePositionOrigin,
+        );
     if (outcome.error == ShareError.storageFailure) {
       // openStreaming returned null because the file changed or vanished.
       ref.invalidate(recoveredTranscriptProvider);
@@ -194,7 +212,15 @@ class RecoveredTranscriptPanel extends ConsumerWidget {
               children: [
                 OutlinedButton.icon(
                   onPressed: () async {
-                    final error = await exportRecoveredTranscript(ref, stored);
+                    final box = context.findRenderObject() as RenderBox?;
+                    final origin = box == null
+                        ? null
+                        : box.localToGlobal(Offset.zero) & box.size;
+                    final error = await exportRecoveredTranscript(
+                      ref,
+                      stored,
+                      sharePositionOrigin: origin,
+                    );
                     if (error != null && context.mounted) {
                       ScaffoldMessenger.of(context)
                           .showSnackBar(SnackBar(content: Text(error)));

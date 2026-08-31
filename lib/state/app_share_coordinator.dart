@@ -135,6 +135,8 @@ enum ShareError {
   shareCleanupRequired,
   shareSpaceUnknown,
   shareNoSpace,
+  /// Immutable staged file exists, but the OS share sheet/handoff did not open.
+  shareHandoffFailed,
   storageFailure,
 }
 
@@ -166,6 +168,8 @@ extension AppShareOutcomeMessage on AppShareOutcome {
     ShareError.shareCleanupRequired => '分享暫存區需要在重新啟動後檢查。',
     ShareError.shareSpaceUnknown => '無法確認分享檔所需的可用空間。',
     ShareError.shareNoSpace => '儲存空間不足，無法準備分享檔。',
+    ShareError.shareHandoffFailed =>
+      '檔案已準備完成，但系統分享介面無法開啟。',
     ShareError.storageFailure => '準備或記錄分享結果時發生儲存錯誤。',
   };
 }
@@ -521,7 +525,19 @@ class AppShareCoordinator {
         } on Object {
           return const AppShareOutcome(error: ShareError.storageFailure);
         }
-        return AppShareOutcome(result: result);
+        // Staging already succeeded. selected/dismissed keep a null error
+        // (dismissed is cancellation after the sheet opened). failed and
+        // unavailable must surface so callers do not treat a missing sheet as
+        // a completed export.
+        return switch (result) {
+          AppShareResult.selected || AppShareResult.dismissed =>
+            AppShareOutcome(result: result),
+          AppShareResult.failed || AppShareResult.unavailable =>
+            AppShareOutcome(
+              result: result,
+              error: ShareError.shareHandoffFailed,
+            ),
+        };
       })();
     } on ShareResourceUncontainedException {
       releaseOwnership = false;

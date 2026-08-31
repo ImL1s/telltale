@@ -2,8 +2,9 @@
 ///
 /// The production path goes through [AppShareEntryController] /
 /// [AppShareCoordinator]. A platform that returns [AppShareResult.failed]
-/// (Linux xdg/`url_launcher`, missing share target, etc.) must not throw, and
-/// the staged source file must exist before the platform is invoked.
+/// (Linux xdg/`url_launcher`, missing share target, etc.) must not throw; the
+/// staged source file must exist; and callers must see [ShareError.shareHandoffFailed]
+/// so the UI does not pretend the picker confirmed.
 library;
 
 import 'dart:io';
@@ -57,9 +58,12 @@ void main() {
       subjectAt: DateTime.utc(2026, 9, 1, 12),
     );
 
-    expect(outcome.error, isNull);
+    expect(outcome.error, ShareError.shareHandoffFailed);
     expect(outcome.result, AppShareResult.failed);
-    expect(outcome.userFacingError, isNull);
+    expect(
+      outcome.userFacingError,
+      '檔案已準備完成，但系統分享介面無法開啟。',
+    );
     expect(platform.calls, 1);
     expect(platform.lastPath, isNotNull);
     expect(File(platform.lastPath!).existsSync(), isTrue);
@@ -105,6 +109,7 @@ void main() {
     );
 
     expect(outcome.result, AppShareResult.failed);
+    expect(outcome.error, ShareError.shareHandoffFailed);
     expect(platform.calls, 1);
     expect(File(platform.lastPath!).readAsStringSync(), contains('Header'));
   });

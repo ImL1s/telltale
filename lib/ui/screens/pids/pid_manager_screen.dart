@@ -261,9 +261,13 @@ class _PidManagerScreenState extends ConsumerState<PidManagerScreen> {
     }
 
     try {
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size;
       final outcome = await ref
           .read(appShareEntryControllerProvider)
-          .sharePidCsv(pids: custom);
+          .sharePidCsv(pids: custom, sharePositionOrigin: origin);
       final error = outcome.userFacingError;
       if (error != null) _snack(error);
     } on Exception catch (e) {
