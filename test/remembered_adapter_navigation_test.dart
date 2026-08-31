@@ -113,6 +113,12 @@ Future<_ReconnectSession> _pumpShortcut(
   return session;
 }
 
+bool _reconnectAllowedFor(TransportKind kind) => switch (kind) {
+      TransportKind.bluetoothClassic => classicTransportAvailable,
+      TransportKind.bluetoothLe => bleTransportAvailable,
+      TransportKind.wifi || TransportKind.demo => true,
+    };
+
 void main() {
   const reconnectable = <LastAdapter>[
     LastAdapter(
@@ -142,6 +148,18 @@ void main() {
         adapter: adapter,
         succeeds: true,
       );
+
+      if (!_reconnectAllowedFor(adapter.kind)) {
+        // Same host gates as the transport cards: a remembered Classic/BLE
+        // adapter on an unsupported host must not call into connect*.
+        final button = tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, '直接連線'),
+        );
+        expect(button.onPressed, isNull);
+        expect(session.attemptedKind, isNull);
+        expect(find.text('dashboard reached'), findsNothing);
+        return;
+      }
 
       await tester.tap(find.text('直接連線'));
       // One frame with the attempt in flight: the wizard hides the shortcut
