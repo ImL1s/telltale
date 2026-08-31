@@ -115,7 +115,7 @@ unpowered): `/sdcard/Download/torque-obd-20260827-133618-recovered.txt` —
   `tool/packaging/windows_zip.sh` / `linux_tarball.sh` (MSIX / AppImage /
   Flatpak stubs documented beside them). Single-instance: Windows named mutex
   `Local\\com.cbstudio.telltale.single_instance`; Linux uses
-  `G_APPLICATION_FLAGS_NONE` (unique GTK application id) so a second
+  `G_APPLICATION_DEFAULT_FLAGS` (unique GTK application id) so a second
   process cannot corrupt live `.ndjson.part` / share leases via startup
   recovery.
 - **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for

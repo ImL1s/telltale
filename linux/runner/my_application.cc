@@ -208,12 +208,12 @@ MyApplication* my_application_new() {
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
 
-  // Default flags keep the GTK application unique. NON_UNIQUE let a second
-  // process reopen the same documents/cache while the first was recording or
-  // staging a share; startup recovery then treated live .ndjson.part files as
-  // interrupted sessions. FLAGS_NONE is the portable unique-app default
-  // (DEFAULT_FLAGS is only an alias from GLib 2.74+).
+  // Unique GTK application (default flags). NON_UNIQUE let a second process
+  // reopen the same documents/cache while the first was recording or staging
+  // a share; startup recovery then treated live .ndjson.part files as
+  // interrupted sessions. Prefer DEFAULT_FLAGS: FLAGS_NONE is deprecated on
+  // current GLib and fails Linux CI under -Werror=deprecated-declarations.
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_FLAGS_NONE, nullptr));
+                                     G_APPLICATION_DEFAULT_FLAGS, nullptr));
 }
