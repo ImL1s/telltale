@@ -7,11 +7,12 @@
 /// BlueZ SDP with an explicit RFCOMM channel — and the fork's
 /// `connect(channel:)` remains Android-only.
 ///
-/// This channel is the honest desktop Classic path: enumerate Bluetooth-
-/// associated serial nodes, then stream bytes. macOS stays gated off at the
-/// product UI — it has IOBluetooth RFCOMM, but does **not** reliably expose
-/// Bluetooth SPP as a POSIX TTY the way Windows COM / Linux rfcomm do, and
-/// there is no field-proven ELM327 Classic path yet.
+/// This channel is the honest Classic path on Windows/Linux: enumerate
+/// Bluetooth-associated serial nodes, then stream bytes. macOS Classic uses
+/// IOBluetooth RFCOMM through `flutter_classic_bluetooth` / [ClassicTransport]
+/// instead — Apple does not create per-paired-SPP `cu.*` nodes comparable to
+/// Windows COM / Linux rfcomm (only the host incoming serial profile and
+/// some profile-specific cu.* names appear).
 library;
 
 import 'dart:async';

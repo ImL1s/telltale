@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,10 +63,18 @@ void main() {
   });
 
   group('classicTransportAvailable', () {
-    test('stays closed when neither Android nor SPP serial host', () {
+    test('stays closed when host override forces SPP serial off on non-Apple',
+        () {
       sppSerialHostOverride = false;
-      // This macOS CI host is not Android; override forces desktop SPP off.
-      expect(classicTransportAvailable, isFalse);
+      // On this macOS CI host Classic is available via IOBluetooth, not SPP
+      // serial — so the gate stays open even with sppSerialHostOverride=false.
+      if (Platform.isMacOS) {
+        expect(classicTransportAvailable, isTrue);
+      } else if (Platform.isAndroid) {
+        expect(classicTransportAvailable, isTrue);
+      } else {
+        expect(classicTransportAvailable, isFalse);
+      }
       expect(classicUnavailableReason, isNot(contains('僅在 Android 驗證過')));
     });
 
@@ -74,12 +83,23 @@ void main() {
       expect(classicTransportAvailable, isTrue);
     });
 
-    test('unavailable copy names macOS honestly when gated', () {
+    test('macOS Classic is enabled via IOBluetooth, not SPP serial', () {
+      sppSerialHostOverride = false;
+      expect(classicTransportAvailable, Platform.isMacOS || Platform.isAndroid);
+      expect(sppSerialHostSupported, isFalse);
+      expect(classicUnavailableReason, isNot(contains('尚未場測')));
+      expect(classicUnavailableReason, isNot(contains('暫不開放')));
+    });
+
+    test('unavailable copy names host constraint without blaming Linux Classic',
+        () {
       sppSerialHostOverride = false;
       expect(
         classicUnavailableReason.contains('iOS') ||
             classicUnavailableReason.contains('macOS') ||
-            classicUnavailableReason.contains('Android'),
+            classicUnavailableReason.contains('Android') ||
+            classicUnavailableReason.contains('Windows') ||
+            classicUnavailableReason.contains('Linux'),
         isTrue,
       );
       expect(classicUnavailableReason, isNot(contains('Linux Classic')));
