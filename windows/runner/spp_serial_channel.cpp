@@ -386,9 +386,8 @@ class SppSerialChannel::Impl {
           std::lock_guard<std::mutex> lock(mutex_);
           reading_ = false;
           if (sink_ != nullptr) {
-            sink_->Error(
-                "read_failed", "ReadFile failed",
-                &flutter::EncodableValue(static_cast<int64_t>(err)));
+            flutter::EncodableValue details(static_cast<int64_t>(err));
+            sink_->Error("read_failed", "ReadFile failed", &details);
           }
         }
         break;
