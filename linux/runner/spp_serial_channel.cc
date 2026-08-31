@@ -169,11 +169,10 @@ void* ReadLoop(void* arg) {
       break;
     }
     if (n == 0) {
-      // Peer closed / hangup.
-      self->reading.store(false);
-      auto* payload = new IdleError{self, EIO};
-      g_idle_add(SendErrorIdle, payload);
-      break;
+      // With VMIN=0 and VTIME=2, a zero-length read is a termios inter-byte
+      // timeout (no data for ~200 ms), not EOF / hangup. Treat it like an
+      // idle poll so a quiet ELM327 does not tear the Classic link down.
+      continue;
     }
 
     auto* payload = new IdleBytes{
