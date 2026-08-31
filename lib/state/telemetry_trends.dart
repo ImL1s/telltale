@@ -161,6 +161,11 @@ final class TelemetryTrendsController {
       if (valid.length == maximumTelemetryTrendLanes) break;
     }
     if (valid.isNotEmpty || _active.isEmpty) return List.unmodifiable(valid);
+    // An explicitly persisted empty list must survive restart. Only a missing
+    // preference (`null`) receives the first-run direct-PID default.
+    if (requested != null && requested.isEmpty) {
+      return const <String>[];
+    }
     final direct = _active.where(
       (pid) =>
           !pid.isCustom &&

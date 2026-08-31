@@ -49,6 +49,24 @@ void main() {
     expect(active, [PidLibrary.engineRpm, PidLibrary.vehicleSpeed]);
   });
 
+  test('explicit empty stored selection survives restart instead of defaulting', () {
+    final active = [PidLibrary.engineRpm, PidLibrary.vehicleSpeed];
+    final controller = TelemetryTrendsController(
+      activePids: active,
+      storedIds: const <String>[],
+    );
+
+    expect(
+      controller.state.selectedIds,
+      isEmpty,
+      reason: 'persisted [] must not be treated like a missing preference',
+    );
+    expect(
+      controller.setSelectedIds(const <String>[]),
+      TelemetryTrendSelectionOutcome.noChange,
+    );
+  });
+
   test(
     'deduplicates source timestamps and never carries a value over a gap',
     () {
