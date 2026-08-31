@@ -16,26 +16,30 @@ archive-synced; telltale `.github/` is publish-only.
 
 Legend: **pass** = exercised by automated test and/or local run evidence on
 this branch · **wired** = code path present, field/device evidence still thin ·
-**OS-blocked** = host cannot provide the capability · **deferred** = not on
-this branch / not yet proven.
+**OS-blocked** = host cannot provide the capability · **deferred** = not yet
+proven to the full smoothness bar.
 
 | Feature | Android | iOS | macOS | Windows | Linux |
 |---|---|---|---|---|---|
 | Demo connect → live telemetry UI | **pass** (device + `demo_connect_journey_test`) | **pass** (journey test; sim/device thin) | **pass** (journey + local `Telltale.app` smoke) | **pass** (journey test; device thin) | **pass** (journey test; device thin) |
+| Session telemetry record / replay / export | **pass** (unit + rigs; field thin) | **wired** (same Dart stack; device thin) | **wired** (same Dart stack; local thin) | **wired** (unit path; device thin) | **wired** (unit path; device thin) |
+| `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus`) | **pass** (native `MethodChannel` + unit) | **wired** (`share_plus`) | **wired** (`share_plus` / weaker UX) |
 | Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP |
 | BLE scan/connect | **pass** (field) | **wired** CoreBluetooth | **wired** entitlements | **wired** WinRT plugin | **wired** Dart BlueZ/D-Bus (needs BlueZ at runtime) |
 | Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | product-gated | product-gated |
-| Transcript export / share | **pass** | **wired** share_plus | **wired** share_plus | **wired** share_plus | **wired** (Dart share + url_launcher; weaker UX) |
+| Transcript export / share | **pass** (via `app_share*`) | **wired** | **wired** / native macOS path | **wired** | **wired** (sheet failure is non-fatal) |
 | PID CSV pick/share | **pass** | **wired** | **wired** sandbox | **wired** | **wired** |
 | SharedPreferences boot | **pass** | **pass** | **pass** | **pass** | **pass** |
 | Wakelock while connected | **pass** | **pass** | **pass** | **wired** | no-op (no plugin; intentional) |
-| Session telemetry / `app_share*` stack | on `master` checkout, **deferred on this branch** | — | — | — | — |
 | CI beyond `flutter build` | analyze + full `flutter test` + APKs | build + functional smoke suite | build + functional smoke suite | build + functional smoke suite | build + functional smoke suite |
 
 ## Bluetooth Classic (SPP)
 
 UI predicate: `classicTransportAvailable` → **Android only**. Guidance,
 transport cards, and remembered-adapter reconnect all fail closed together.
+Automated coverage: `which_transport_test`, `remembered_adapter_navigation_test`,
+and reconnect host-gate tests. **Classic-on-iOS is not a bug** — the card stays
+grey with an explicit OS reason.
 
 | Host | Status | Why |
 |---|---|---|
@@ -56,12 +60,16 @@ Linux CMake requires BlueZ headers at configure time.
   an adapter. Field evidence with a real ELM327 BLE dongle on Linux is still
   required before calling Linux BLE “mature”.
 
+Automated coverage stays at transport-gate / reconnect UX level unless a
+device or simulator is attached; do not treat green CI as a field BLE pass.
+
 ## Desktop / Apple runnable notes
 
 - **macOS:** network client + Bluetooth entitlements; Demo smoke-launched
   locally as `Telltale.app`. SystemChrome orientation skipped on desktop.
+  Share uses the native `com.cbstudio.telltale/app_share` channel.
 - **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for
-  `permission_handler_windows`.
+  `permission_handler_windows` (singular `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNING`).
 - **Linux:** wakelock no-op; Demo / Wi‑Fi / BLE (BlueZ) do not depend on it.
 - **iOS:** Classic permanently unavailable; Demo / Wi‑Fi / BLE are the core
   path. Wi‑Fi / guidance copy stays phone-centric on iOS/Android only.
@@ -71,5 +79,6 @@ Linux CMake requires BlueZ headers at configure time.
 - Store packaging (MSIX / Flatpak / notarized DMG)
 - Classic desktop enablement with device evidence
 - Linux / desktop BLE field verification against a real adapter
-- Bringing `master`’s session telemetry / `app_share*` stack onto this branch
+- End-to-end Demo → record → export/share on every desktop host with a human
+  share-sheet target present
 - Keyboard/mouse shell density polish

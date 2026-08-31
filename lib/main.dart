@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +9,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'core/field_evidence/platform_metadata.dart';
 import 'core/licenses/powertrain_battery_licenses.dart';
+import 'core/share/rig_app_share_platform.dart';
+import 'obd/session_evidence.dart';
+import 'state/app_runtime.dart';
+import 'state/app_share_coordinator.dart';
 import 'state/pid_registry.dart';
+import 'state/telemetry_recorder.dart';
+import 'state/telemetry_runtime.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +32,12 @@ Future<void> main() async {
   // fallback cannot prove field-versus-rig identity, so evidence then fails
   // closed as simulated rather than claiming physical provenance.
   await prefetchPlatformMetadata();
+  final platformMetadata = platformMetadataCache.value;
+  final rigShareCaptureEnabled = isRigShareCaptureEligible(
+    metadata: platformMetadata,
+    buildFlag: isObdTestRigBuild,
+    debugMode: kDebugMode,
+  );
 
   // Orientation / system chrome are phone/tablet concerns. Calling them on
   // desktop is usually a soft no-op, but it is not the product contract for
@@ -47,7 +59,22 @@ Future<void> main() async {
 
   runApp(
     ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        telemetryRecorderRuntimeProvider.overrideWith(
+          (ref) => ref.watch(productionTelemetryRecorderRuntimeProvider),
+        ),
+        appSharePolicyProvider.overrideWith(
+          (ref) => ref.watch(productionAppSharePolicyProvider),
+        ),
+        appShareAvailableBytesProvider.overrideWith(
+          (ref) => ref.watch(productionAppShareAvailableBytesProvider),
+        ),
+        if (rigShareCaptureEnabled)
+          appSharePlatformProvider.overrideWith(
+            (ref) => RigAppSharePlatform(metadata: platformMetadata),
+          ),
+      ],
       child: const TorqueApp(),
     ),
   );

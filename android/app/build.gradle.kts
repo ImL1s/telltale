@@ -1,9 +1,85 @@
 import java.util.Properties
+import com.flutter.gradle.tasks.FlutterTask
 
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Gate C is a debug-only evidence lane. It must not even open the ignored
+// release credential file: doing so would add an unsealed secret input to a
+// build that never needs release signing. The runner sets this exact property
+// only for explicitly requested RigDebug tasks.
+val gateCRigDebugProperty = providers.gradleProperty("telltaleGateCRigDebug").orNull
+if (gateCRigDebugProperty != null && gateCRigDebugProperty != "true") {
+    throw GradleException("telltaleGateCRigDebug must be exactly true when present")
+}
+val gateCRigDebugMode = gateCRigDebugProperty == "true"
+if (gateCRigDebugMode) {
+    val requestedTasks = gradle.startParameter.taskNames.map { it.substringAfterLast(':') }
+    if (requestedTasks.isEmpty() || requestedTasks.any { !it.contains("RigDebug") }) {
+        throw GradleException(
+            "telltaleGateCRigDebug is restricted to explicitly requested RigDebug tasks",
+        )
+    }
+
+    val expectedJdkRoot = System.getenv("TELLTALE_GATE_C_JDK_ROOT")
+        ?.takeIf { it.isNotBlank() }
+        ?: throw GradleException("TELLTALE_GATE_C_JDK_ROOT is not bound")
+    val actualJdkRoot = System.getProperty("java.home")
+        ?.takeIf { it.isNotBlank() }
+        ?: throw GradleException("Gradle java.home is not bound")
+    val expectedJdkDirectory = file(expectedJdkRoot).canonicalFile
+    val actualJdkDirectory = file(actualJdkRoot).canonicalFile
+    if (
+        !expectedJdkDirectory.isDirectory ||
+        !actualJdkDirectory.isDirectory ||
+        actualJdkDirectory != expectedJdkDirectory
+    ) {
+        throw GradleException(
+            "Gate C Gradle JVM does not match TELLTALE_GATE_C_JDK_ROOT",
+        )
+    }
+
+    // Flutter's Android plugin normally launches `${flutter.sdk}/bin/flutter`
+    // again from each FlutterTask. That launcher rewrites SDK cache stamps even
+    // when their bytes are unchanged, which violates Gate C's sealed-toolchain
+    // contract. Route only RigDebug evidence tasks through the repo-owned
+    // cached-Dart entrypoint; ordinary field/debug/release builds stay on the
+    // upstream launcher.
+    val sealedFlutterEntrypoint =
+        rootProject.file("../tool/telemetry_memory_rig/sealed_gradle_flutter.sh")
+    if (!sealedFlutterEntrypoint.isFile || !sealedFlutterEntrypoint.canExecute()) {
+        throw GradleException("Gate C sealed Flutter entrypoint is missing or not executable")
+    }
+    // Flutter's lazy task-registration action writes flutterExecutable after
+    // configureEach actions, so a projectsEvaluated hook is still overwritten
+    // by the upstream launcher. Bind only the selected RigDebug tasks after the
+    // task graph is ready, when all plugin configuration has completed but no
+    // task has executed yet.
+    val gateCProject = project
+    gradle.taskGraph.whenReady {
+        val graphFlutterTasks = allTasks
+            .filterIsInstance<FlutterTask>()
+            .filter { it.project == gateCProject }
+        if (
+            graphFlutterTasks.size != 1 ||
+            graphFlutterTasks.single().name != "compileFlutterBuildRigDebug"
+        ) {
+            throw GradleException(
+                "Gate C task graph does not contain exactly the RigDebug FlutterTask: " +
+                    graphFlutterTasks.joinToString(",") { it.name },
+            )
+        }
+        val task = graphFlutterTasks.single()
+        task.flutterExecutable = sealedFlutterEntrypoint
+        task.doFirst {
+            if (task.flutterExecutable?.canonicalFile != sealedFlutterEntrypoint.canonicalFile) {
+                throw GradleException("Gate C FlutterTask did not bind the sealed entrypoint")
+            }
+        }
+    }
 }
 
 // Release signing, if a keystore has been provided.
@@ -15,8 +91,10 @@ plugins {
 // signed with the debug key cannot be updated by a Play-signed one later, so
 // discovering this after publishing is expensive.
 val keystoreProperties = Properties().apply {
-    val file = rootProject.file("key.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
+    if (!gateCRigDebugMode) {
+        val file = rootProject.file("key.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }
 }
 val hasReleaseKeystore = keystoreProperties.getProperty("storeFile") != null
 

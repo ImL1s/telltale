@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import contextlib
 from dataclasses import dataclass
+import hmac
 import json
 import math
 import os
@@ -30,6 +31,11 @@ class Config:
     close_on_command: int | None
     no_prompt_on_command: int | None
     corrupt_on_command: int | None
+    armed_fault: str | None
+    control_host: str
+    control_port: int | None
+    control_token: str | None
+    disconnect_after_armed_fault: bool
     log_path: str
 
     def __post_init__(self) -> None:
@@ -39,10 +45,20 @@ class Config:
                 self.close_on_command,
                 self.no_prompt_on_command,
                 self.corrupt_on_command,
+                self.armed_fault,
             )
         )
         if configured_faults > 1:
             raise ValueError("at most one fault may be configured")
+        control_values = (self.control_port, self.control_token)
+        if self.armed_fault is None and any(
+            value is not None for value in control_values
+        ):
+            raise ValueError("control options require an armed fault")
+        if self.armed_fault is not None and any(
+            value is None for value in control_values
+        ):
+            raise ValueError("armed fault requires control port and token")
 
 
 class JsonlLogger:
@@ -131,6 +147,15 @@ def parse_config(argv: list[str] | None = None) -> Config:
     parser.add_argument("--close-on-command", type=_positive_int)
     parser.add_argument("--no-prompt-on-command", type=_positive_int)
     parser.add_argument("--corrupt-on-command", type=_positive_int)
+    parser.add_argument(
+        "--arm-next-command",
+        choices=("close", "no_prompt", "corrupt"),
+        dest="armed_fault",
+    )
+    parser.add_argument("--control-host", type=_nonempty)
+    parser.add_argument("--control-port", type=_port)
+    parser.add_argument("--control-token", type=_nonempty)
+    parser.add_argument("--disconnect-after-armed-fault", action="store_true")
     parser.add_argument("--log", default="-")
     args = parser.parse_args(argv)
     if not math.isfinite(args.delay_ms) or args.delay_ms < 0:
@@ -143,11 +168,21 @@ def parse_config(argv: list[str] | None = None) -> Config:
             args.close_on_command,
             args.no_prompt_on_command,
             args.corrupt_on_command,
+            args.armed_fault,
         )
         if value is not None
     ]
     if len(faults) > 1:
         parser.error("at most one fault may be configured")
+    control_values = (args.control_port, args.control_token)
+    if args.armed_fault is None and any(value is not None for value in control_values):
+        parser.error("control options require --arm-next-command")
+    if args.armed_fault is not None and any(value is None for value in control_values):
+        parser.error(
+            "--arm-next-command requires --control-port and --control-token"
+        )
+    if args.disconnect_after_armed_fault and args.armed_fault is None:
+        parser.error("--disconnect-after-armed-fault requires --arm-next-command")
     return Config(
         listen_host=args.listen_host,
         listen_port=args.listen_port,
@@ -159,6 +194,11 @@ def parse_config(argv: list[str] | None = None) -> Config:
         close_on_command=args.close_on_command,
         no_prompt_on_command=args.no_prompt_on_command,
         corrupt_on_command=args.corrupt_on_command,
+        armed_fault=args.armed_fault,
+        control_host=args.control_host or args.listen_host,
+        control_port=args.control_port,
+        control_token=args.control_token,
+        disconnect_after_armed_fault=args.disconnect_after_armed_fault,
         log_path=args.log,
     )
 
@@ -170,11 +210,16 @@ class ChaosProxy:
         self.config = config
         self.logger = logger
         self.server: asyncio.Server | None = None
+        self.control_server: asyncio.Server | None = None
         self._command_seq = 0
         self._connection_seq = 0
         self._clients: set[asyncio.Task[None]] = set()
         self._active_client: asyncio.Task[None] | None = None
         self._driver_lock = asyncio.Lock()
+        self._armed = False
+        self._armed_fault_consumed = False
+        self._armed_fault_injected = asyncio.Event()
+        self._armed_fault_command: int | None = None
 
     @property
     def address(self) -> tuple[str, int]:
@@ -198,8 +243,27 @@ class ChaosProxy:
             upstream_host=self.config.upstream_host,
             upstream_port=self.config.upstream_port,
         )
+        if self.config.control_port is not None:
+            self.control_server = await asyncio.start_server(
+                self._accept_control,
+                self.config.control_host,
+                self.config.control_port,
+            )
+            assert self.control_server.sockets
+            control_host, control_port = self.control_server.sockets[0].getsockname()[
+                :2
+            ]
+            self.logger.emit(
+                "lifecycle",
+                event="control_ready",
+                control_host=str(control_host),
+                control_port=int(control_port),
+                armed_fault=self.config.armed_fault,
+            )
 
     async def close(self) -> None:
+        if self.control_server is not None:
+            self.control_server.close()
         if self.server is not None:
             self.server.close()
         tasks = list(self._clients)
@@ -210,7 +274,71 @@ class ChaosProxy:
         if self.server is not None:
             await self.server.wait_closed()
             self.server = None
+        if self.control_server is not None:
+            await self.control_server.wait_closed()
+            self.control_server = None
         self.logger.emit("lifecycle", event="stopped")
+
+    def _accept_control(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        task = asyncio.create_task(self._serve_control(reader, writer))
+        self._track_client(task)
+
+    async def _serve_control(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        peer = writer.get_extra_info("peername")
+        outcome = "REJECTED"
+        try:
+            line = await asyncio.wait_for(
+                reader.readuntil(b"\n"),
+                timeout=self.config.response_timeout,
+            )
+            prefix = b"ARM "
+            supplied = line[len(prefix) : -1] if line.startswith(prefix) else b""
+            expected_token = str(self.config.control_token).encode()
+            if not line.endswith(b"\n") or not hmac.compare_digest(
+                supplied,
+                expected_token,
+            ):
+                outcome = "INVALID"
+            elif self._armed_fault_consumed:
+                outcome = "CONSUMED"
+            elif self._armed:
+                outcome = "ALREADY_ARMED"
+            else:
+                # No await is permitted between this state transition and its
+                # acknowledgement. Once the device receives ARMED, the next
+                # driver command is unambiguously the fault target.
+                self._armed = True
+                outcome = "ARMED"
+            self.logger.emit(
+                "control",
+                event=outcome.lower(),
+                peer=str(peer),
+                armed_fault=self.config.armed_fault,
+            )
+            writer.write(f"{outcome} {self.config.armed_fault}\n".encode())
+            await writer.drain()
+            if outcome == "ARMED":
+                await asyncio.wait_for(
+                    self._armed_fault_injected.wait(),
+                    timeout=self.config.response_timeout * 4,
+                )
+                writer.write(
+                    f"INJECTED {self.config.armed_fault} "
+                    f"{self._armed_fault_command}\n".encode()
+                )
+                await writer.drain()
+        except (OSError, asyncio.TimeoutError, asyncio.IncompleteReadError):
+            self.logger.emit("control", event="control_error", peer=str(peer))
+        finally:
+            await _close_writer(writer)
 
     def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         task = asyncio.create_task(self._admit_client(reader, writer))
@@ -286,13 +414,21 @@ class ChaosProxy:
                     connection=connection,
                     command=command_seq,
                 )
-                if command_seq == self.config.close_on_command:
+                armed_fault = self._consume_armed_fault()
+                close_fault = (
+                    command_seq == self.config.close_on_command
+                    or armed_fault == "close"
+                )
+                if close_fault:
                     self.logger.emit(
                         "fault",
                         fault="close",
                         connection=connection,
                         command=command_seq,
+                        armed=armed_fault is not None,
                     )
+                    if armed_fault is not None:
+                        self._mark_armed_fault_injected(command_seq)
                     return
 
                 upstream_writer.write(command)
@@ -302,10 +438,16 @@ class ChaosProxy:
                     timeout=self.config.response_timeout,
                 )
                 fault: str | None = None
-                if command_seq == self.config.no_prompt_on_command:
+                if (
+                    command_seq == self.config.no_prompt_on_command
+                    or armed_fault == "no_prompt"
+                ):
                     response = response[:-1]
                     fault = "no_prompt"
-                elif command_seq == self.config.corrupt_on_command:
+                elif (
+                    command_seq == self.config.corrupt_on_command
+                    or armed_fault == "corrupt"
+                ):
                     response = _corrupt(response)
                     fault = "corrupt"
                 if fault is not None:
@@ -314,6 +456,7 @@ class ChaosProxy:
                         fault=fault,
                         connection=connection,
                         command=command_seq,
+                        armed=armed_fault is not None,
                     )
                 await self._write_chunks(
                     writer,
@@ -322,6 +465,21 @@ class ChaosProxy:
                     command=command_seq,
                     fault=fault,
                 )
+                if armed_fault is not None:
+                    self._mark_armed_fault_injected(command_seq)
+                if (
+                    armed_fault is not None
+                    and self.config.disconnect_after_armed_fault
+                ):
+                    self.logger.emit(
+                        "fault",
+                        fault="post_fault_close",
+                        connection=connection,
+                        command=command_seq,
+                        after=armed_fault,
+                        armed=True,
+                    )
+                    return
         except asyncio.CancelledError:
             raise
         except (
@@ -345,6 +503,17 @@ class ChaosProxy:
                 event="client_disconnected",
                 connection=connection,
             )
+
+    def _consume_armed_fault(self) -> str | None:
+        if not self._armed or self._armed_fault_consumed:
+            return None
+        self._armed = False
+        self._armed_fault_consumed = True
+        return self.config.armed_fault
+
+    def _mark_armed_fault_injected(self, command: int) -> None:
+        self._armed_fault_command = command
+        self._armed_fault_injected.set()
 
     async def _write_chunks(
         self,

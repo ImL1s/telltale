@@ -6,12 +6,15 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../obd/pid/pid.dart';
 import '../obd/pid/pid_library.dart';
 import '../obd/powertrain_battery/powertrain_battery_profile.dart';
 import '../obd/powertrain_battery/profile_pid_installer.dart';
+import '../obd/polling_engine.dart';
+import 'pid_mutation_lock.dart';
 
 const _kCustomPidsKey = 'custom_pids_v1';
 const _kActivePidIdsKey = 'active_pid_ids_v1';
@@ -97,7 +100,42 @@ class PidRegistry extends Notifier<List<Pid>> {
     return null;
   }
 
-  Future<void> upsertCustom(Pid pid) => upsertAllCustom([pid]);
+  Future<PidImportOutcome> upsertCustom(Pid pid) => upsertAllCustom([pid]);
+
+  /// Replaces one custom definition as a single in-memory commit.
+  ///
+  /// The lock is checked exactly once before [state] changes, and the old
+  /// definition is never removed in a separate awaitable operation. This is
+  /// the compound edit path used when a header or request changes identity.
+  Future<PidMutationOutcome> replaceCustom(
+    Pid previous,
+    Pid replacement,
+  ) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    final previousId = Pid.canonicalId(previous.id);
+    final index = state.indexWhere(
+      (pid) => pid.isCustom && Pid.canonicalId(pid.id) == previousId,
+    );
+    if (index < 0) return const PidMutationOutcome.noChange();
+
+    final custom = replacement.copyWith(isCustom: true);
+    final replacementId = Pid.canonicalId(custom.id);
+    final collision = state.indexWhere(
+      (pid) =>
+          pid.isCustom &&
+          Pid.canonicalId(pid.id) == replacementId &&
+          Pid.canonicalId(pid.id) != previousId,
+    );
+    if (collision >= 0) return const PidMutationOutcome.noChange();
+
+    final next = [...state];
+    next[index] = custom;
+    state = next;
+    await _persist();
+    return const PidMutationOutcome.applied();
+  }
 
   /// Adds or replaces several definitions with a single write.
   ///
@@ -112,6 +150,14 @@ class PidRegistry extends Notifier<List<Pid>> {
   /// and silently swapped a working formula for it. A gauge then reads 26 rpm
   /// where the vehicle said 1726, with nothing on screen to say why.
   Future<PidImportOutcome> upsertAllCustom(Iterable<Pid> pids) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidImportOutcome(
+        inserted: 0,
+        replaced: 0,
+        duplicatesInFile: [],
+        failure: PidMutationFailure.locked,
+      );
+    }
     final next = [...state];
     var inserted = 0;
     var replaced = 0;
@@ -152,7 +198,13 @@ class PidRegistry extends Notifier<List<Pid>> {
     );
   }
 
-  Future<void> removeCustom(Pid pid) async {
+  Future<PidMutationOutcome> removeCustom(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (!state.any((p) => p.id == pid.id && p.isCustom)) {
+      return const PidMutationOutcome.noChange();
+    }
     state = state.where((p) => !(p.id == pid.id && p.isCustom)).toList();
     await _persist();
     // A deleted PID must also leave the dashboard, and it does — by being
@@ -175,6 +227,7 @@ class PidRegistry extends Notifier<List<Pid>> {
     // here leaves the grid on the rebuild this assignment already triggers. A
     // stale id left in storage never resolves again and is rewritten by the
     // next toggle.
+    return const PidMutationOutcome.applied();
   }
 
   /// Installs or replaces every signal owned by [profile] in one persisted
@@ -212,10 +265,12 @@ class PidImportOutcome {
     required this.inserted,
     required this.replaced,
     required this.duplicatesInFile,
+    this.failure,
   });
 
   final int inserted;
   final int replaced;
+  final PidMutationFailure? failure;
 
   /// Names of rows skipped because an earlier row in the same file already
   /// claimed their identity.
@@ -232,6 +287,9 @@ class PidImportOutcome {
   /// comes to read 26 where the vehicle said 1726, so what is displayed is
   /// held to the same standard as what is stored.
   String describe({int skippedRows = 0, int defaultedRanges = 0}) {
+    if (failure == PidMutationFailure.locked) {
+      return '錄製準備、錄製或儲存完成前不能變更 PID。';
+    }
     final notes = [
       if (skippedRows > 0) '$skippedRows 行有問題已略過',
       if (defaultedRanges > 0) '$defaultedRanges 行套用了預設量程',
@@ -251,6 +309,10 @@ final pidRegistryProvider = NotifierProvider<PidRegistry, List<Pid>>(
 
 /// The PIDs currently on the dashboard, in display order.
 class ActivePids extends Notifier<List<Pid>> {
+  int _persistWriteCount = 0;
+
+  @visibleForTesting
+  int get persistWriteCount => _persistWriteCount;
   @override
   List<Pid> build() {
     final prefs = ref.watch(sharedPreferencesProvider);
@@ -304,10 +366,35 @@ class ActivePids extends Notifier<List<Pid>> {
   /// Order is preserved because the user chose it.
   void _onRegistryChanged(List<Pid>? previous, List<Pid> next) {
     final byId = {for (final pid in next) Pid.canonicalId(pid.id): pid};
+    final replacements = <String, Pid>{};
+    if (previous != null && previous.length == next.length) {
+      for (var index = 0; index < previous.length; index++) {
+        final before = previous[index];
+        final after = next[index];
+        final beforeId = Pid.canonicalId(before.id);
+        final afterId = Pid.canonicalId(after.id);
+        if (before.isCustom &&
+            after.isCustom &&
+            beforeId != afterId &&
+            !byId.containsKey(beforeId)) {
+          replacements[beforeId] = after;
+        }
+      }
+    }
     final kept = <Pid>[];
+    var replacedIdentity = false;
     for (final pid in state) {
-      final current = byId[Pid.canonicalId(pid.id)];
-      if (current != null) kept.add(current);
+      final id = Pid.canonicalId(pid.id);
+      final current = byId[id];
+      if (current != null) {
+        kept.add(current);
+        continue;
+      }
+      final replacement = replacements[id];
+      if (replacement != null) {
+        kept.add(replacement);
+        replacedIdentity = true;
+      }
     }
 
     var changed = kept.length != state.length;
@@ -328,32 +415,62 @@ class ActivePids extends Notifier<List<Pid>> {
     // Only when the *identity* list changed. An edit leaves storage correct
     // already, and rewriting it on every formula tweak is a write per
     // keystroke's worth of saves.
-    if (droppedSome) unawaited(_persist());
+    if (droppedSome || replacedIdentity) unawaited(_persist());
   }
 
   bool contains(Pid pid) => state.any((p) => p.id == pid.id);
 
-  Future<void> toggle(Pid pid) async {
-    if (contains(pid)) {
-      await remove(pid);
-    } else {
-      await add(pid);
+  Future<PidMutationOutcome> toggle(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
     }
+    if (contains(pid)) {
+      return remove(pid);
+    }
+    return add(pid);
   }
 
-  Future<void> add(Pid pid) async {
-    if (contains(pid)) return;
+  Future<PidMutationOutcome> add(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (contains(pid)) return const PidMutationOutcome.noChange();
     state = [...state, pid];
     await _persist();
+    return const PidMutationOutcome.applied();
+  }
+
+  /// Appends every safely selectable shipped definition as one atomic layout
+  /// mutation and one preferences write.
+  Future<SupportedPidSelectionOutcome> appendPositivelyConfirmed(
+    ObdCapabilitySummary summary,
+  ) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const SupportedPidSelectionOutcome.locked();
+    }
+    final activeIds = state.map((pid) => Pid.canonicalId(pid.id)).toSet();
+    final additions = summary.positivelyConfirmedShippedDirectPids
+        .where((pid) => !activeIds.contains(Pid.canonicalId(pid.id)))
+        .toList(growable: false);
+    if (additions.isEmpty) {
+      return const SupportedPidSelectionOutcome.noChange();
+    }
+    state = List<Pid>.unmodifiable(<Pid>[...state, ...additions]);
+    await _persist();
+    return SupportedPidSelectionOutcome.applied(additions.length);
   }
 
   /// Adds [pid] at [index] rather than at the end.
-  Future<void> insert(int index, Pid pid) async {
-    if (contains(pid)) return;
+  Future<PidMutationOutcome> insert(int index, Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (contains(pid)) return const PidMutationOutcome.noChange();
     final next = [...state];
     next.insert(index.clamp(0, next.length), pid);
     state = next;
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
   /// Puts [replacement] where [previous] was, rather than at the end.
@@ -366,19 +483,27 @@ class ActivePids extends Notifier<List<Pid>> {
   ///
   /// A no-op when [previous] was not on the dashboard, so the caller does not
   /// have to ask first.
-  Future<void> replace(Pid previous, Pid replacement) async {
+  Future<PidMutationOutcome> replace(Pid previous, Pid replacement) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
     final index = state.indexWhere((p) => p.id == previous.id);
-    if (index < 0) return;
+    if (index < 0) return const PidMutationOutcome.noChange();
     final next = [...state];
     next[index] = replacement;
     state = next;
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
-  Future<void> remove(Pid pid) async {
-    if (!contains(pid)) return;
+  Future<PidMutationOutcome> remove(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (!contains(pid)) return const PidMutationOutcome.noChange();
     state = state.where((p) => p.id != pid.id).toList();
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
   /// Moves the entry at [oldIndex] to [newIndex].
@@ -387,22 +512,49 @@ class ActivePids extends Notifier<List<Pid>> {
   /// which is what `ReorderableListView.onReorderItem` supplies. The older
   /// `onReorder` callback reports it before removal and needs a -1 adjustment;
   /// passing that one here unadjusted would drop items one slot short.
-  Future<void> reorder(int oldIndex, int newIndex) async {
-    if (oldIndex < 0 || oldIndex >= state.length) return;
+  Future<PidMutationOutcome> reorder(int oldIndex, int newIndex) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (oldIndex < 0 || oldIndex >= state.length) {
+      return const PidMutationOutcome.noChange();
+    }
     final next = [...state];
     final item = next.removeAt(oldIndex);
     next.insert(newIndex.clamp(0, next.length), item);
     state = next;
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
   Future<void> _persist() async {
+    _persistWriteCount++;
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setStringList(
       _kActivePidIdsKey,
       state.map((p) => p.id).toList(),
     );
   }
+}
+
+enum SupportedPidSelectionResult { applied, noChange, locked }
+
+final class SupportedPidSelectionOutcome {
+  const SupportedPidSelectionOutcome._(this.result, this.addedCount);
+
+  const SupportedPidSelectionOutcome.applied(int addedCount)
+    : this._(SupportedPidSelectionResult.applied, addedCount);
+
+  const SupportedPidSelectionOutcome.noChange()
+    : this._(SupportedPidSelectionResult.noChange, 0);
+
+  const SupportedPidSelectionOutcome.locked()
+    : this._(SupportedPidSelectionResult.locked, 0);
+
+  final SupportedPidSelectionResult result;
+  final int addedCount;
+
+  bool get isLocked => result == SupportedPidSelectionResult.locked;
 }
 
 final activePidsProvider = NotifierProvider<ActivePids, List<Pid>>(

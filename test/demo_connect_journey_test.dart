@@ -16,6 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:torque_obd/obd/telemetry.dart';
 import 'package:torque_obd/obd/transport/ble_transport.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
+import 'package:torque_obd/state/app_runtime.dart';
+import 'package:torque_obd/state/app_share_coordinator.dart';
 import 'package:torque_obd/state/obd_session.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/ui/screens/connect/connect_screen.dart';
@@ -109,6 +111,13 @@ void main() {
       ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
+          // ConnectScreen history entry reads [appSharePolicyProvider]. The
+          // root default is fail-closed; production wiring overrides it in
+          // main(). Tests that pump the wizard alone must do the same or the
+          // denied panel pushes Demo below the fold and off the builder.
+          appSharePolicyProvider.overrideWith(
+            (ref) => ref.watch(productionAppSharePolicyProvider),
+          ),
           obdSessionProvider.overrideWith(() => session = _FastDemoSession()),
         ],
         child: MaterialApp.router(routerConfig: router),
@@ -117,8 +126,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // Expand Demo without depending on scroll hit-testing for the start button.
-    final demoCard = find.text(TransportKind.demo.label).last;
-    await tester.ensureVisible(demoCard);
+    final demoCard = find.text(TransportKind.demo.label);
+    await tester.scrollUntilVisible(
+      demoCard,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(demoCard, warnIfMissed: false);
     await tester.pumpAndSettle();
 

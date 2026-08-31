@@ -38,6 +38,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:torque_obd/obd/transport/obd_transport.dart';
 
 import 'rig_support.dart';
 
@@ -59,7 +60,7 @@ void main() {
     // 1. Open the Bluetooth LE section.
     final bleHeader = await revealText(tester, 'Bluetooth LE');
     await tester.tap(bleHeader);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     // 2. Scan. The button is the only control in that section before a result.
     final scanButton = await revealText(tester, '搜尋 BLE 裝置');
@@ -121,6 +122,10 @@ void main() {
           'exchange to /tmp/ble_bridge.log — the last line there is the '
           'command the app stopped on.',
     );
+    await completeTelemetryRigJourney(
+      tester,
+      expectedTransport: TransportKind.bluetoothLe,
+    );
 
     // Inject the app's Dart lifecycle callbacks and use the real
     // Documents-directory store. OS Activity/Doze delivery is a separate
@@ -166,11 +171,13 @@ void main() {
     expect(paused.body, contains(r'>> 0100\r'));
     expect(paused.body, contains('  << '));
 
+    final resumeBaseline = capturePollingResumeBaseline(tester);
     resumeApp(tester);
-    await requireLivePolling(
+    await requirePollingRecoveredAfterResume(
       tester,
+      resumeBaseline,
       timeout: const Duration(seconds: 20),
-      reason: 'polling did not recover after resume',
+      reason: 'BLE polling did not recover after resume',
     );
 
     // Snapshot once more so the recovery marker and its liveness probe are on

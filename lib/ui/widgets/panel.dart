@@ -49,7 +49,9 @@ class Panel extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Color.alphaBlend(
-              (accent ?? palette.accent).withValues(alpha: isActive ? 0.09 : 0.03),
+              (accent ?? palette.accent).withValues(
+                alpha: isActive ? 0.09 : 0.03,
+              ),
               palette.surface,
             ),
             palette.surface,
@@ -142,8 +144,9 @@ class StatusPill extends StatelessWidget {
           ],
           Text(
             label,
-            style: (dense ? context.texts.labelSmall : context.texts.labelMedium)
-                ?.copyWith(color: colour, letterSpacing: 0.2),
+            style:
+                (dense ? context.texts.labelSmall : context.texts.labelMedium)
+                    ?.copyWith(color: colour, letterSpacing: 0.2),
           ),
         ],
       ),
@@ -171,37 +174,52 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(Spacing.lg),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: palette.surfaceAlt,
-                border: Border.all(color: palette.hairline),
-              ),
-              child: Icon(icon, size: 30, color: palette.textTertiary),
+    return Padding(
+      padding: const EdgeInsets.all(Spacing.xl),
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          primary: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.hasBoundedHeight
+                  ? constraints.maxHeight
+                  : 0,
             ),
-            const SizedBox(height: Spacing.lg),
-            Text(title, style: context.texts.titleLarge, textAlign: TextAlign.center),
-            const SizedBox(height: Spacing.sm),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 340),
-              child: Text(
-                message,
-                textAlign: TextAlign.center,
-                style: context.texts.bodyMedium,
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(Spacing.lg),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: palette.surfaceAlt,
+                    border: Border.all(color: palette.hairline),
+                  ),
+                  child: Icon(icon, size: 30, color: palette.textTertiary),
+                ),
+                const SizedBox(height: Spacing.lg),
+                Text(
+                  title,
+                  style: context.texts.titleLarge,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: Spacing.sm),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 340),
+                  child: Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: context.texts.bodyMedium,
+                  ),
+                ),
+                if (action != null) ...[
+                  const SizedBox(height: Spacing.xl),
+                  action!,
+                ],
+              ],
             ),
-            if (action != null) ...[
-              const SizedBox(height: Spacing.xl),
-              action!,
-            ],
-          ],
+          ),
         ),
       ),
     );

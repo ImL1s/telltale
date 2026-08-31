@@ -22,10 +22,13 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../state/app_share_coordinator.dart';
+import '../state/artifact_operation_gate.dart';
 import 'transcript.dart';
 
 /// A recording recovered from a previous run of the app.
@@ -58,16 +61,109 @@ class StoredTranscript {
   int get bytes => body.length;
 }
 
+/// Validated descriptor for a recovered transcript that can be copied without
+/// loading its complete body into memory.
+class StreamingStoredTranscript {
+  StreamingStoredTranscript(
+    this._handle, {
+    required this.bodyOffset,
+    required this.headerBytes,
+    required this.savedAt,
+    required this.fromRealHardware,
+    required this.expectedByteLength,
+  });
+
+  final RandomAccessFile _handle;
+  final int bodyOffset;
+  final List<int> headerBytes;
+  final DateTime savedAt;
+  final bool fromRealHardware;
+  final int expectedByteLength;
+  bool _opened = false;
+  bool _closed = false;
+  Future<void>? _closing;
+
+  Stream<List<int>> open({int maxChunkBytes = 64 * 1024}) async* {
+    if (maxChunkBytes <= 0 || maxChunkBytes > 64 * 1024) {
+      throw ArgumentError.value(maxChunkBytes);
+    }
+    if (_opened || _closed) {
+      throw StateError('recovered transcript descriptor is single-use');
+    }
+    _opened = true;
+    try {
+      await _handle.setPosition(bodyOffset);
+      for (
+        var offset = 0;
+        offset < headerBytes.length;
+        offset += maxChunkBytes
+      ) {
+        final end = (offset + maxChunkBytes).clamp(0, headerBytes.length);
+        yield headerBytes.sublist(offset, end);
+      }
+      while (true) {
+        final chunk = await _handle.read(maxChunkBytes);
+        if (chunk.isEmpty) break;
+        yield chunk;
+      }
+    } finally {
+      await close();
+    }
+  }
+
+  Future<void> close() {
+    if (_closed) return Future<void>.value();
+    final active = _closing;
+    if (active != null) return active;
+    final operation = _closeHandle();
+    _closing = operation;
+    return operation;
+  }
+
+  Future<void> _closeHandle() async {
+    await _handle.close();
+    _closed = true;
+  }
+}
+
+enum TranscriptMutationError {
+  artifactBusy,
+  policyDenied,
+  safetyChanged,
+  storageFailure,
+}
+
+class TranscriptMutationOutcome {
+  const TranscriptMutationOutcome.success() : error = null;
+  const TranscriptMutationOutcome.failure(this.error);
+  final TranscriptMutationError? error;
+  bool get succeeded => error == null;
+}
+
 /// Reads and writes the one snapshot.
 class TranscriptStore {
-  TranscriptStore({Future<Directory> Function()? directory})
-    : _directory = directory ?? getApplicationDocumentsDirectory;
+  TranscriptStore({
+    Future<Directory> Function()? directory,
+    ArtifactOperationGate? artifactGate,
+    ArtifactOperationGate? saveGate,
+    this.destructivePolicy,
+  }) : _directory = directory ?? getApplicationDocumentsDirectory,
+       _artifactGate = artifactGate ?? _defaultArtifactGate,
+       _saveGate = saveGate ?? _defaultSaveGate;
+
+  static final ArtifactOperationGate _defaultArtifactGate =
+      ArtifactOperationGate();
+  static final ArtifactOperationGate _defaultSaveGate = ArtifactOperationGate();
+  static int _ownerSequence = 0;
 
   /// Injected so a test can point this somewhere disposable. Documents rather
   /// than the temporary directory, which the system is free to clear exactly
   /// when storage runs short — which is when a phone is most likely to have
   /// been killing background apps.
   final Future<Directory> Function() _directory;
+  final ArtifactOperationGate _artifactGate;
+  final ArtifactOperationGate _saveGate;
+  final AppSharePolicy? destructivePolicy;
 
   static const _fileName = 'last-session.log';
   static const _headerMarker = '#### TRANSCRIPT ####';
@@ -107,8 +203,13 @@ class TranscriptStore {
     // guard can both yield long enough for live OBD traffic to arrive; a save
     // requested by an event marker must describe that exact moment.
     final snapshot = transcript.frozenCopy();
+    if (snapshot.isEmpty) return true;
+    final artifact = _saveGate.tryAcquire(
+      'transcript-save-${_ownerSequence++}',
+      ArtifactOperation.install,
+    );
+    if (!artifact.acquired) return false;
     try {
-      if (snapshot.isEmpty) return true;
       final file = await _file();
       if (!fromRealHardware) {
         final existing = await load();
@@ -133,6 +234,8 @@ class TranscriptStore {
       // Deliberately silent. There is nothing a driver could do about it and
       // nothing this app should stop doing because of it.
       return false;
+    } finally {
+      _saveGate.release(artifact.token!);
     }
   }
 
@@ -172,6 +275,82 @@ class TranscriptStore {
     }
   }
 
+  /// Validates the bounded metadata prefix and returns a streaming body view.
+  /// Metadata beyond 64 KiB is refused rather than guessed.
+  Future<StreamingStoredTranscript?> openStreaming() async {
+    RandomAccessFile? handle;
+    var transferred = false;
+    try {
+      final file = await _file();
+      final type = await FileSystemEntity.type(file.path, followLinks: false);
+      if (type != FileSystemEntityType.file) return null;
+      handle = await file.open();
+      final fileLength = await handle.length();
+      final prefix = <int>[];
+      const marker = '\n$_headerMarker\n';
+      final markerBytes = marker.codeUnits;
+      final scanLimit = 64 * 1024 + markerBytes.length;
+      var markerAt = -1;
+      while (prefix.length < scanLimit && markerAt < 0) {
+        final remaining = scanLimit - prefix.length;
+        final chunk = await handle.read(remaining.clamp(1, 64 * 1024));
+        if (chunk.isEmpty) break;
+        prefix.addAll(chunk);
+        markerAt = _indexOfBytes(prefix, markerBytes);
+      }
+      if (markerAt < 0 || markerAt > 64 * 1024) return null;
+      final metadata = utf8.decode(prefix.sublist(0, markerAt));
+      final firstBreak = metadata.indexOf('\n');
+      if (firstBreak < 0) return null;
+      final savedAt = DateTime.tryParse(metadata.substring(0, firstBreak));
+      if (savedAt == null) return null;
+      var headerStart = firstBreak + 1;
+      var fromRealHardware = true;
+      if (metadata.startsWith(_hardwareMarker, headerStart)) {
+        final markerEnd = metadata.indexOf('\n', headerStart);
+        if (markerEnd < 0) return null;
+        fromRealHardware =
+            metadata.substring(
+              headerStart + _hardwareMarker.length,
+              markerEnd,
+            ) !=
+            '0';
+        headerStart = markerEnd + 1;
+      }
+      final header = metadata.substring(headerStart);
+      final headerBytes = utf8.encode(header.isEmpty ? '' : '$header\n');
+      final bodyOffset = markerAt + markerBytes.length;
+      if (bodyOffset > fileLength) return null;
+      transferred = true;
+      return StreamingStoredTranscript(
+        handle,
+        bodyOffset: bodyOffset,
+        headerBytes: headerBytes,
+        savedAt: savedAt,
+        fromRealHardware: fromRealHardware,
+        expectedByteLength: headerBytes.length + fileLength - bodyOffset,
+      );
+    } on Object {
+      return null;
+    } finally {
+      if (!transferred) await handle?.close();
+    }
+  }
+
+  static int _indexOfBytes(List<int> haystack, List<int> needle) {
+    for (var i = 0; i <= haystack.length - needle.length; i++) {
+      var matches = true;
+      for (var j = 0; j < needle.length; j++) {
+        if (haystack[i + j] != needle[j]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return i;
+    }
+    return -1;
+  }
+
   /// Finds the header/body sentinel only when it occupies a complete line.
   ///
   /// Adapter identity strings are untrusted and may contain the sentinel text
@@ -185,12 +364,82 @@ class TranscriptStore {
   }
 
   /// Removes the snapshot. Called once the user has taken it away.
-  Future<void> clear() async {
+  Future<TranscriptMutationOutcome> clear() async {
+    final ownerId = 'transcript-clear-${_ownerSequence++}';
+    final artifact = _artifactGate.tryAcquire(
+      ownerId,
+      ArtifactOperation.delete,
+    );
+    if (!artifact.acquired) {
+      return const TranscriptMutationOutcome.failure(
+        TranscriptMutationError.artifactBusy,
+      );
+    }
+    final mutation = _saveGate.tryAcquire(
+      '$ownerId-mutation',
+      ArtifactOperation.delete,
+    );
+    if (!mutation.acquired) {
+      _artifactGate.release(artifact.token!);
+      return const TranscriptMutationOutcome.failure(
+        TranscriptMutationError.artifactBusy,
+      );
+    }
+    final policy = destructivePolicy;
+    final permit = policy?.freeze();
+    if (permit == null) {
+      _saveGate.release(mutation.token!);
+      _artifactGate.release(artifact.token!);
+      return const TranscriptMutationOutcome.failure(
+        TranscriptMutationError.policyDenied,
+      );
+    }
     try {
+      bool valid() => policy!.validate(permit).isValid;
+      if (!valid()) {
+        return const TranscriptMutationOutcome.failure(
+          TranscriptMutationError.safetyChanged,
+        );
+      }
       final file = await _file();
-      if (await file.exists()) await file.delete();
+      if (!valid()) {
+        return const TranscriptMutationOutcome.failure(
+          TranscriptMutationError.safetyChanged,
+        );
+      }
+      final type = await FileSystemEntity.type(file.path, followLinks: false);
+      if (!valid()) {
+        return const TranscriptMutationOutcome.failure(
+          TranscriptMutationError.safetyChanged,
+        );
+      }
+      if (type == FileSystemEntityType.notFound) {
+        return const TranscriptMutationOutcome.success();
+      }
+      if (type != FileSystemEntityType.file) {
+        return const TranscriptMutationOutcome.failure(
+          TranscriptMutationError.storageFailure,
+        );
+      }
+      if (!valid()) {
+        return const TranscriptMutationOutcome.failure(
+          TranscriptMutationError.safetyChanged,
+        );
+      }
+      await file.delete();
+      if (!valid()) {
+        return const TranscriptMutationOutcome.failure(
+          TranscriptMutationError.safetyChanged,
+        );
+      }
+      return const TranscriptMutationOutcome.success();
     } on Object {
-      // Nothing to report: the next save overwrites it anyway.
+      return const TranscriptMutationOutcome.failure(
+        TranscriptMutationError.storageFailure,
+      );
+    } finally {
+      _saveGate.release(mutation.token!);
+      _artifactGate.release(artifact.token!);
     }
   }
 }

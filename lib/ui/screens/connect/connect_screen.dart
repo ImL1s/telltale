@@ -28,6 +28,9 @@ import '../../../obd/transport/wifi_transport.dart';
 import '../../../state/obd_session.dart';
 import '../../../state/settings.dart';
 import '../../widgets/panel.dart';
+import '../../widgets/telemetry/telemetry_connect_recorder_status.dart';
+import '../../widgets/telemetry/telemetry_history_entry.dart';
+import '../../widgets/telemetry/telemetry_startup_recovery_notice.dart';
 import '../../widgets/transcript_export.dart';
 import '../dashboard/dashboard_screen.dart';
 
@@ -346,6 +349,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _Header(connection: connection)),
+            const SliverToBoxAdapter(child: TelemetryConnectRecorderStatus()),
+            const SliverToBoxAdapter(child: TelemetryStartupRecoveryNotice()),
+            if (!connection.isBusy)
+              const SliverToBoxAdapter(child: TelemetryHistoryEntry()),
             // Above the transport list, because on the second and every later
             // visit this is the only row that matters. The list below is a
             // phone's bonded devices — mostly headphones — and finding the one

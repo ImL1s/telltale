@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/obd/elm327_client.dart';
+import 'package:torque_obd/obd/polling_engine.dart';
 import 'package:torque_obd/obd/transport/wifi_transport.dart';
 
 const _enabled = bool.fromEnvironment('CHAOS_ORACLE');
@@ -47,6 +48,8 @@ void main() {
     final transport = WifiTransport(host: _host, port: _port);
     final client = Elm327Client(transport);
     addTearDown(client.dispose);
+    final poller = PollingEngine(client);
+    addTearDown(poller.dispose);
 
     final progress = <int, InitProgress>{};
     final progressFinished = Completer<void>();
@@ -88,6 +91,16 @@ void main() {
 
     expect(connected, isFalse, reason: 'handshake trace: $trace');
     expect(client.isInitialized, isFalse, reason: 'handshake trace: $trace');
+    expect(
+      poller.current.readings,
+      isEmpty,
+      reason: 'a failed handshake accepts zero structured telemetry values',
+    );
+    expect(
+      poller.isRunning,
+      isFalse,
+      reason: 'no recording/polling was invented',
+    );
     expect(
       progress.keys,
       orderedEquals(

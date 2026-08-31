@@ -10,7 +10,8 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:flutter/widgets.dart' show AppLifecycleListener;
+import 'package:flutter/widgets.dart'
+    show AppLifecycleListener, AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/field_evidence/evidence_text.dart';
@@ -23,6 +24,7 @@ import '../obd/freeze_frame.dart';
 import '../obd/polling_engine.dart';
 import '../obd/powertrain_battery/powertrain_battery_catalog.dart';
 import '../obd/powertrain_battery/powertrain_battery_probe.dart';
+import '../obd/session_boundary.dart';
 import '../obd/session_evidence.dart';
 import '../obd/transcript_store.dart';
 import '../obd/telemetry.dart';
@@ -36,6 +38,7 @@ import 'pid_registry.dart';
 import 'powertrain_battery_profiles.dart';
 import 'powertrain_battery_experiments.dart';
 import 'settings.dart';
+import 'transcript_store_runtime.dart';
 import 'vehicle_identity.dart';
 
 enum ConnectionPhase {
@@ -188,13 +191,28 @@ class ObdSession extends Notifier<ObdConnectionState> {
       _sessionEvidence?.testRig ??
       (testRigBuild || platformMetadata.requiresSimulatedEvidence);
 
+  /// Narrow provenance seam for recording/export labels.
+  ///
+  /// `false` means only that this production app connection is eligible for
+  /// field evidence; it is never a claim that a physical vehicle was proven.
+  bool get requiresSimulatedEvidence => _currentSessionIsTestRig;
+
   StreamSubscription<InitProgress>? _initSub;
   StreamSubscription<TelemetrySnapshot>? _snapshotSub;
 
   final _telemetry = StreamController<TelemetrySnapshot>.broadcast();
+  final _sessionBoundaries = StreamController<ObdSessionBoundary>.broadcast(
+    sync: true,
+  );
+  final _foregroundChanges = StreamController<bool>.broadcast(sync: true);
 
   @override
   ObdConnectionState build() {
+    // Absence of a binding lifecycle sample is not evidence that the app is
+    // visible. The first resumed edge will open the foreground gate.
+    _foreground =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+    transcriptStore = ref.read(obdTranscriptStoreProvider);
     // Keep the running poller in step with the user's PID selection. Without
     // this the polling set is frozen at whatever it was when the session
     // connected: a gauge added from the PID manager shows dashes forever, and
@@ -244,6 +262,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // car's bus while the user is elsewhere, and it must not present values
     // captured before the interruption as current when they come back.
     _lifecycle = AppLifecycleListener(
+      onHide: _onAppPaused,
       onPause: _onAppPaused,
       onResume: () => unawaited(_onAppResumed()),
     );
@@ -263,6 +282,8 @@ class ObdSession extends Notifier<ObdConnectionState> {
       _lifecycle = null;
       unawaited(_teardown());
       unawaited(_telemetry.close());
+      unawaited(_sessionBoundaries.close());
+      unawaited(_foregroundChanges.close());
     });
     return const ObdConnectionState();
   }
@@ -287,6 +308,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// commands — but finite, which is the point.
   static const Duration censusBudget = Duration(seconds: 20);
 
+  // Fake sessions used by provider-level tests can override [build] entirely.
+  // Real sessions always overwrite this in [build] from the binding lifecycle,
+  // where a null lifecycle remains fail-closed.
   bool _foreground = true;
 
   /// Whether the app is in the foreground.
@@ -298,6 +322,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// app's foreground-only policy has to cover every producer, or the comments
   /// claiming the session is parked are describing one of them.
   bool get isForeground => _foreground;
+
+  /// Synchronous lifecycle edge for root-owned artifact controllers.
+  Stream<bool> get foregroundChanges => _foregroundChanges.stream;
 
   /// Serialises lifecycle transitions.
   ///
@@ -330,6 +357,10 @@ class ObdSession extends Notifier<ObdConnectionState> {
   int get connectionGeneration => _generation;
 
   void _onAppPaused() {
+    // Android/iOS commonly emit hidden followed by paused. Desktop may emit
+    // hidden without paused. One synchronous edge must cover both without
+    // double-counting the same suspension.
+    if (!_foreground) return;
     // Snapshot first, before anything else this method does.
     //
     // `onPause` is the last callback Android reliably delivers before it is
@@ -344,6 +375,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     _pauseEpoch++;
     _foreground = false;
     ref.read(powertrainExperimentalProbeConsentsProvider.notifier).revokeAll();
+    if (!_foregroundChanges.isClosed) _foregroundChanges.add(false);
     // Synchronously, and before anything is queued. The freeze can start at
     // any moment after this callback returns, and the watchdog's next tick
     // will be delivered after it against a wall clock that moved on — so the
@@ -382,7 +414,9 @@ class ObdSession extends Notifier<ObdConnectionState> {
   }
 
   Future<void> _onAppResumed() {
+    if (_foreground) return Future<void>.value();
     _foreground = true;
+    if (!_foregroundChanges.isClosed) _foregroundChanges.add(true);
     _client?.transcript.recordNote('App 回到前景');
     // First thing, and unconditionally. Timers that came due while the process
     // was frozen are delivered now, in expiry order, and the watchdog's is
@@ -895,6 +929,22 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// tell that the car it started on is still the car it is talking to.
   int get generation => _generation;
 
+  /// Synchronous broadcast used by recorders to close acceptance before any
+  /// disconnect/replacement teardown can yield to the event loop.
+  Stream<ObdSessionBoundary> get sessionBoundaries => _sessionBoundaries.stream;
+
+  void _publishSessionBoundary(ObdSessionBoundaryReason reason) {
+    _engine?.interruptCapabilityDiscovery();
+    if (_sessionBoundaries.isClosed) return;
+    _sessionBoundaries.add(
+      ObdSessionBoundary(
+        generation: _generation,
+        observedAtUtc: DateTime.now().toUtc(),
+        reason: reason,
+      ),
+    );
+  }
+
   /// How many times a *new connection* has been started.
   ///
   /// [generation] answers "is the work I started still the current work", and
@@ -936,6 +986,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
       // discover. Kept, because it is also this caller's claim on being the
       // one the user is waiting for.
       _connectEpoch++;
+      _publishSessionBoundary(ObdSessionBoundaryReason.sessionReplacement);
       final mine = ++_generation;
       // Said out loud, because the wait is the part that looks broken.
       //
@@ -1017,6 +1068,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     _connecting = true;
     _inFlightTransport = transport;
     _connectEpoch++;
+    _publishSessionBoundary(ObdSessionBoundaryReason.sessionReplacement);
     final attempt = _connectInner(transport, kind, ++_generation);
     _inFlight = attempt;
     try {
@@ -1328,6 +1380,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
   void _handleConnectionLost(int generation) {
     if (_superseded(generation)) return;
     _client?.transcript.recordNote('連線事件：轉接器連線中斷');
+    _publishSessionBoundary(ObdSessionBoundaryReason.linkLoss);
     _generation++;
     unawaited(
       ref.read(vehicleProfileProvider.notifier).invalidateForVehicleBoundary(),
@@ -1547,6 +1600,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // Invalidates any handshake still in flight, so a connect the user has
     // just abandoned cannot finish and publish itself as live.
     _client?.transcript.recordNote('連線事件：使用者中斷連線');
+    _publishSessionBoundary(ObdSessionBoundaryReason.userDisconnect);
     _generation++;
     await _teardown();
     await ref
@@ -1774,6 +1828,34 @@ class ObdSession extends Notifier<ObdConnectionState> {
 final obdSessionProvider = NotifierProvider<ObdSession, ObdConnectionState>(
   ObdSession.new,
 );
+
+/// The current connection's immutable capability evidence.
+///
+/// Watching the session state retires this subscription when the connection
+/// changes. The engine stream then makes scan phases and direct-answer
+/// promotions visible without waiting for an unrelated telemetry repaint.
+final obdCapabilitySummaryProvider = StreamProvider<ObdCapabilitySummary>((
+  ref,
+) {
+  ref.watch(obdSessionProvider);
+  final engine = ref.read(obdSessionProvider.notifier).engine;
+  if (engine == null) {
+    return Stream<ObdCapabilitySummary>.value(
+      ObdCapabilitySummary.notStarted(),
+    );
+  }
+  final controller = StreamController<ObdCapabilitySummary>();
+  controller.add(engine.capabilitySummary);
+  final subscription = engine.capabilitySummaries.listen(
+    controller.add,
+    onError: controller.addError,
+  );
+  ref.onDispose(() {
+    unawaited(subscription.cancel());
+    unawaited(controller.close());
+  });
+  return controller.stream;
+});
 
 /// Live telemetry. Replays the engine's current snapshot before subscribing, so
 /// a screen opened mid-drive paints real values on its first frame rather than

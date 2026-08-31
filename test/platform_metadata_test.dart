@@ -81,6 +81,66 @@ void main() {
       expect(metadata.requiresSimulatedEvidence, isFalse);
     });
 
+    test('rig share capture requires define, debug, Android, and exact id', () {
+      PlatformMetadata metadata(String platform, String applicationId) =>
+          PlatformMetadata(
+            applicationId: applicationId,
+            appVersion: '1',
+            appBuild: '1',
+            platform: platform,
+            osVersion: 'unknown',
+            manufacturer: 'unknown',
+            model: 'unknown',
+            sdkInt: 'unknown',
+          );
+
+      expect(
+        isRigShareCaptureEligible(
+          metadata: metadata('android', androidRigApplicationId),
+          buildFlag: true,
+          debugMode: true,
+        ),
+        isTrue,
+      );
+      for (final candidate
+          in <({PlatformMetadata metadata, bool flag, bool debug})>[
+            (
+              metadata: metadata('android', androidFieldApplicationId),
+              flag: true,
+              debug: true,
+            ),
+            (
+              metadata: metadata('android', androidRigApplicationId),
+              flag: false,
+              debug: true,
+            ),
+            (
+              metadata: metadata('android', androidRigApplicationId),
+              flag: true,
+              debug: false,
+            ),
+            (
+              metadata: metadata('macos', androidRigApplicationId),
+              flag: true,
+              debug: true,
+            ),
+            (
+              metadata: metadata('android', '$androidRigApplicationId '),
+              flag: true,
+              debug: true,
+            ),
+          ]) {
+        expect(
+          isRigShareCaptureEligible(
+            metadata: candidate.metadata,
+            buildFlag: candidate.flag,
+            debugMode: candidate.debug,
+          ),
+          isFalse,
+        );
+      }
+    });
+
     test('cache exposes a synchronous value before prefetch completes', () {
       const initial = PlatformMetadata(
         appVersion: 'unknown',

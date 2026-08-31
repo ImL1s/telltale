@@ -15,6 +15,7 @@ import '../../../obd/addressing.dart';
 import '../../../obd/pid/formula_engine.dart';
 import '../../../obd/pid/pid.dart';
 import '../../../obd/pid/priority_tier.dart';
+import '../../../state/pid_mutation_lock.dart';
 import '../../../state/pid_registry.dart';
 import '../../widgets/gauges/linear_gauge.dart';
 import '../../widgets/panel.dart';
@@ -243,6 +244,12 @@ class _PidEditorScreenState extends ConsumerState<PidEditorScreen> {
       _definitionRejection == null &&
       _preview.error == null;
 
+  void _showMutationLocked() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(kPidMutationLockedMessage)),
+    );
+  }
+
   Future<void> _save() async {
     final pid = Pid(
       name: _name.text.trim(),
@@ -272,33 +279,13 @@ class _PidEditorScreenState extends ConsumerState<PidEditorScreen> {
 
     final previous = _original;
     final registry = ref.read(pidRegistryProvider.notifier);
-    // Changing the header or the command changes the wire identity, so the old
-    // entry is no longer the same signal. Remove it explicitly instead of
-    // leaving an orphan the dashboard may still be pointing at.
-    final active = ref.read(activePidsProvider.notifier);
-    final wasOnDashboard = previous != null && active.contains(previous);
-    // Captured before anything moves, because that is the only moment it is
-    // still true.
-    final index = wasOnDashboard
-        ? ref.read(activePidsProvider).indexWhere((p) => p.id == previous.id)
-        : -1;
-
-    if (previous != null && previous.id != pid.id) {
-      await registry.removeCustom(previous);
-    }
-    await registry.upsertCustom(pid);
-
-    // Removing the old entry also removed it from the dashboard. Put the
-    // replacement back *where it was* — appending sent a gauge the user had
-    // placed second to the end of the grid every time they corrected a
-    // mistyped PID.
-    if (wasOnDashboard) {
-      final current = ref.read(activePidsProvider);
-      if (index >= 0 && index <= current.length) {
-        await active.insert(index, pid);
-      } else {
-        await active.add(pid);
-      }
+    final locked = previous == null
+        ? (await registry.upsertCustom(pid)).failure ==
+              PidMutationFailure.locked
+        : (await registry.replaceCustom(previous, pid)).isLocked;
+    if (locked) {
+      if (mounted) _showMutationLocked();
+      return;
     }
     if (mounted) context.pop();
   }
@@ -332,7 +319,13 @@ class _PidEditorScreenState extends ConsumerState<PidEditorScreen> {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(pidRegistryProvider.notifier).removeCustom(pid);
+    final outcome = await ref
+        .read(pidRegistryProvider.notifier)
+        .removeCustom(pid);
+    if (outcome.isLocked) {
+      if (mounted) _showMutationLocked();
+      return;
+    }
     if (mounted) context.pop();
   }
 

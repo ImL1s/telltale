@@ -135,118 +135,123 @@ class _DtcScreenState extends ConsumerState<DtcScreen> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Spacing.lg,
-                Spacing.md,
-                Spacing.lg,
-                Spacing.md,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('故障碼', style: context.texts.headlineMedium),
-                        Text(
-                          !scan.hasScanned
-                              ? '尚未掃描'
-                              : scan.totalCodes > 0
-                                  ? '共 ${scan.totalCodes} 筆'
-                                  : switch (verdict) {
-                                      // The panel below has always said what
-                                      // this actually establishes — that the
-                                      // controllers which *replied* reported
-                                      // nothing. The header said 未偵測到故障碼,
-                                      // an unqualified statement about the
-                                      // vehicle, and it is the line a glance
-                                      // lands on. Somebody could drive away on
-                                      // it while the hedge sits in body text
-                                      // two paragraphs down.
-                                      ScanVerdict.completeClean =>
-                                        '已回應的控制器沒有故障碼',
-                                      ScanVerdict.partialClean => '部分未確認',
-                                      _ => '無法確認',
-                                    },
-                          style: context.texts.bodySmall,
-                        ),
-                      ],
+        child: CustomScrollView(
+          key: const ValueKey('dtc-page-scroll'),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  Spacing.md,
+                  Spacing.lg,
+                  Spacing.md,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('故障碼', style: context.texts.headlineMedium),
+                          Text(
+                            !scan.hasScanned
+                                ? '尚未掃描'
+                                : scan.totalCodes > 0
+                                    ? '共 ${scan.totalCodes} 筆'
+                                    : switch (verdict) {
+                                        // The panel below has always said what
+                                        // this actually establishes — that the
+                                        // controllers which *replied* reported
+                                        // nothing. The header said 未偵測到故障碼,
+                                        // an unqualified statement about the
+                                        // vehicle, and it is the line a glance
+                                        // lands on. Somebody could drive away on
+                                        // it while the hedge sits in body text
+                                        // two paragraphs down.
+                                        ScanVerdict.completeClean =>
+                                          '已回應的控制器沒有故障碼',
+                                        ScanVerdict.partialClean => '部分未確認',
+                                        _ => '無法確認',
+                                      },
+                            style: context.texts.bodySmall,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (scan.hasScanned && scan.totalCodes > 0)
-                    OutlinedButton.icon(
-                      onPressed: scan.loading ||
-                              scan.clearing ||
-                              scan.clearRepeatWouldHarm
-                          ? null
-                          : _clear,
-                      icon: scan.clearing
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.delete_sweep_outlined, size: 18),
-                      // Says why it cannot be pressed, and what makes it
-                      // pressable again. A control that is merely dead invites
-                      // the reading that the app has stopped working, on the
-                      // screen where that guess is most expensive.
-                      label: Text(scan.clearing
-                          ? '清除中…'
-                          : scan.clearRepeatWouldHarm
-                              ? '請先重新掃描'
-                              : '清除'),
-                    ),
-                ],
+                    if (scan.hasScanned && scan.totalCodes > 0)
+                      OutlinedButton.icon(
+                        onPressed: scan.loading ||
+                                scan.clearing ||
+                                scan.clearRepeatWouldHarm
+                            ? null
+                            : _clear,
+                        icon: scan.clearing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.delete_sweep_outlined, size: 18),
+                        // Says why it cannot be pressed, and what makes it
+                        // pressable again. A control that is merely dead invites
+                        // the reading that the app has stopped working, on the
+                        // screen where that guess is most expensive.
+                        label: Text(scan.clearing
+                            ? '清除中…'
+                            : scan.clearRepeatWouldHarm
+                                ? '請先重新掃描'
+                                : '清除'),
+                      ),
+                  ],
+                ),
               ),
             ),
             // The clear's own outcome, held until the next one replaces it.
             if (scan.clearMessage != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg,
-                  0,
-                  Spacing.lg,
-                  Spacing.md,
-                ),
-                child: Panel(
-                  accent: scan.clearWorked ? palette.success : palette.warning,
-                  isActive: true,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        scan.clearWorked
-                            ? Icons.check_circle_outline
-                            : Icons.error_outline,
-                        color: scan.clearWorked ? palette.success : palette.warning,
-                        size: 22,
-                      ),
-                      const SizedBox(width: Spacing.md),
-                      Expanded(
-                        child: SelectableText(
-                          scan.clearMessage!,
-                          style: context.texts.bodySmall,
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Spacing.lg,
+                    0,
+                    Spacing.lg,
+                    Spacing.md,
+                  ),
+                  child: Panel(
+                    accent: scan.clearWorked ? palette.success : palette.warning,
+                    isActive: true,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          scan.clearWorked
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline,
+                          color: scan.clearWorked ? palette.success : palette.warning,
+                          size: 22,
                         ),
-                      ),
-                      IconButton(
-                        // Dismisses the message, not the lock. Closing a
-                        // panel is not the same as learning what happened, and
-                        // only a rescan is.
-                        onPressed: () => ref
-                            .read(dtcScanProvider.notifier)
-                            .dismissClearMessage(),
-                        icon: const Icon(Icons.close, size: 18),
-                        tooltip: '關閉',
-                      ),
-                    ],
+                        const SizedBox(width: Spacing.md),
+                        Expanded(
+                          child: SelectableText(
+                            scan.clearMessage!,
+                            style: context.texts.bodySmall,
+                          ),
+                        ),
+                        IconButton(
+                          // Dismisses the message, not the lock. Closing a
+                          // panel is not the same as learning what happened, and
+                          // only a rescan is.
+                          onPressed: () => ref
+                              .read(dtcScanProvider.notifier)
+                              .dismissClearMessage(),
+                          icon: const Icon(Icons.close, size: 18),
+                          tooltip: '關閉',
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            Expanded(
+            SliverFillRemaining(
               child: !connected
                   ? const EmptyState(
                       icon: Icons.link_off,

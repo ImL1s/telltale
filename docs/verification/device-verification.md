@@ -17,6 +17,74 @@ Round 9 added a proxy in that socket that logs every byte and can hold a reply
 back, which is how the timing findings were tested and how one of them was
 found to have been testing nothing at all.
 
+## 2026-08-30 — telemetry-v1 evidence snapshot
+
+This section reports only terminal artifacts present in the current
+`.omx/evidence/telemetry-v1/` bundle. It does not erase the dated historical
+runs below, but it prevents an older pass from being mistaken for a pass of the
+current tree.
+
+### Host/software
+
+- The project-owned freeze-frame oracle reports `passed=7 skipped=0 failed=0`.
+- Direct Ircama reports `passed=6 skipped=0 failed=0`.
+- The nominal fragmentation proxy reports `passed=6 skipped=0 failed=0`, with
+  136 commands, 1,506 chunks, and a maximum chunk size of five bytes.
+- Fresh close, missing-prompt, and critical-reply-corruption proxy processes
+  each report `passed=1 skipped=0 failed=0` at their expected command boundary.
+
+These are socket/protocol/software results. They do not involve the Samsung
+phone, Bluetooth, a purchased adapter, an ECU, or a vehicle.
+
+### Samsung `SM-S9280`
+
+- `device/demo/flutter-final.log` ends `All tests passed!` after app-ready,
+  live polling, lifecycle callback recovery, recording, History, replay,
+  disconnected export capture, and deletion/privacy assertions. This is a
+  shipped-app UI/storage journey driven by Demo data. It uses no socket or
+  radio.
+- `device/classic/flutter-final.log` ends `All tests passed!`. This crosses the
+  Flutter method/event-channel boundary and serial bytes through the rig's
+  simulated RFCOMM path. The native Classic boundary is mocked, so this is not
+  `BluetoothSocket`, RFCOMM-radio, adapter, ECU, or vehicle evidence.
+- `device/ble/flutter-final.log` ends `All tests passed!`. The paired bridge log
+  records real central writes and notification replies, including a post-resume
+  `ATRV` response followed by additional PID traffic. The app-side test also
+  requires persisted simulated-rig provenance, selected Nordic UART/CCCD
+  metadata, telemetry recording/export, and transcript evidence that the
+  resume probe occurred. This is a physical-phone-to-Mac BLE/GATT pass against
+  a synthetic peripheral/ECU, not a purchased-adapter or vehicle pass.
+- `device/wifi/nominal/flutter-final.log` ends `All tests passed!` after the
+  test-only TextField target was corrected. The Samsung used actual LAN TCP to
+  the Mac fragmentation proxy and Ircama synthetic ELM/ECU. The paired proxy
+  log records 65 commands, zero injected faults, and two phone connections,
+  including the resume path. This is nominal phone/network/software-ECU
+  evidence; it is not a purchased Wi-Fi adapter/hotspot, cellular-handoff,
+  physical ECU, or vehicle test. Deterministic close, missing-prompt, and
+  corruption control exists on the host, but those post-first-value chaos modes
+  have not yet run on the device in this snapshot.
+
+No 2026-08-30 artifact in this bundle uses the purchased adapter or GT86. The
+only real-adapter/real-vehicle evidence remains the bounded 2026-08-27
+observation below; it cannot establish another adapter unit, another GT86, or
+any other make/model.
+
+### Telemetry lifecycle and memory/share gates
+
+The lifecycle runner is designed to use an actual Android Home event and
+`am force-stop`, then compare the killed durable prefix with fresh-process
+recovery and root History UI. The memory runner is designed to measure PSS and
+exercise production streaming/share sources. Neither has a fresh terminal
+device log in the current telemetry-v1 bundle, so runner code and readiness
+markers are not reported as device passes.
+
+Revision-8 Gate C also remains explicitly incomplete. There is no deterministic
+production pause seam at the verified-source-to-handoff cut or the
+durable-handoff-to-platform cut, not every UI share entry exposes a common
+controller seam, and the real chooser/plugin mirror cannot be made
+deterministic by the injected measured platform. See
+[`tool/telemetry_memory_rig/GATE_C_BLOCKERS.md`](../../tool/telemetry_memory_rig/GATE_C_BLOCKERS.md).
+
 ## 2026-08-27 — purchased BLE adapter on a Toyota GT86
 
 The maintainer identified the vehicle as a Toyota GT86 and the purchased

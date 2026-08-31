@@ -1,0 +1,34 @@
+(version 1)
+
+; Gate C executes build tooling with an explicit capability allow-list.  The
+; Android SDK is intentionally absent from every file-write rule. Flutter is
+; also sealed except for exact writability probes on the two Flutter-owned
+; Gradle project directories and three generated roots owned by flutter_tools.
+(deny default)
+
+(allow process*)
+(allow file-read*)
+(allow network*)
+(allow sysctl*)
+(allow mach*)
+(allow ipc*)
+(allow iokit*)
+(allow system*)
+
+(allow file-write-data
+  (literal (string-append (param "FLUTTER_ROOT") "/packages/flutter_tools/gradle")))
+
+(allow file-write-data
+  (literal (string-append (param "FLUTTER_ROOT") "/packages/integration_test/android")))
+
+(allow file-write*
+  (subpath (param "APP_ROOT"))
+  (subpath (param "PUB_CACHE"))
+  (subpath (param "GRADLE_HOME"))
+  (subpath (param "ISOLATED_ROOT"))
+  (subpath (param "RUN_TEMP"))
+  (subpath (string-append (param "FLUTTER_ROOT") "/packages/flutter_tools/gradle/.gradle"))
+  (subpath (string-append (param "FLUTTER_ROOT") "/packages/flutter_tools/gradle/build"))
+  (subpath (string-append (param "FLUTTER_ROOT") "/packages/flutter_tools/gradle/.kotlin"))
+  (subpath "/private/tmp")
+  (subpath "/dev"))

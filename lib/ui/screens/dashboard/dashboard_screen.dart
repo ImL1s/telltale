@@ -21,23 +21,56 @@ import '../../../obd/telemetry.dart';
 import '../../../state/obd_session.dart';
 import '../../../state/pid_registry.dart';
 import '../../../state/settings.dart';
+import '../../../state/telemetry_sessions.dart';
 import '../../widgets/gauges/dial_gauge.dart';
 import '../../widgets/panel.dart';
+import '../../widgets/telemetry/telemetry_recorder_panel.dart';
 import '../pids/pid_manager_screen.dart';
+import 'telemetry_workspace.dart';
 
-class DashboardScreen extends ConsumerWidget {
+enum DashboardWorkspaceMode { gauges, trends }
+
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   static const String path = '/dashboard';
+  static const String trendsPath = '/dashboard?workspace=trends';
 
   /// Tiles below this width stop being legible at arm's length.
   static const double _minTileWidth = 156;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  DashboardWorkspaceMode _mode = DashboardWorkspaceMode.gauges;
+  bool _routeModeApplied = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final router = GoRouter.maybeOf(context);
+    final wantsTrends =
+        router
+            ?.routerDelegate
+            .currentConfiguration
+            .uri
+            .queryParameters['workspace'] ==
+        'trends';
+    if (wantsTrends &&
+        (!_routeModeApplied || _mode != DashboardWorkspaceMode.trends)) {
+      _mode = DashboardWorkspaceMode.trends;
+    }
+    _routeModeApplied = wantsTrends;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final connection = ref.watch(obdSessionProvider);
     final activePids = ref.watch(activePidsProvider);
     final telemetry = ref.watch(telemetryProvider);
+    final historyAccess = ref.watch(telemetryHistoryAccessProvider);
     final snapshot = telemetry.value ?? const TelemetrySnapshot();
 
     return Scaffold(
@@ -48,17 +81,50 @@ class DashboardScreen extends ConsumerWidget {
             SliverToBoxAdapter(
               child: _StatusStrip(connection: connection, snapshot: snapshot),
             ),
-            if (activePids.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: EmptyState(
-                  icon: Icons.tune,
-                  title: '儀表板是空的',
-                  message: '到 PID 頁面挑選想要監看的訊號，它們會出現在這裡。',
-                  action: FilledButton.icon(
-                    onPressed: () => context.go(PidManagerScreen.path),
-                    icon: const Icon(Icons.add, size: 20),
-                    label: const Text('選擇 PID'),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  0,
+                  Spacing.lg,
+                  Spacing.md,
+                ),
+                child: _WorkspaceToolbar(
+                  mode: _mode,
+                  onModeChanged: (mode) => setState(() => _mode = mode),
+                  historyAccess: historyAccess,
+                  onHistory: historyAccess == TelemetryHistoryAccess.permitted
+                      ? () => context.push('/sessions')
+                      : null,
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  0,
+                  Spacing.lg,
+                  Spacing.lg,
+                ),
+                child: TelemetryRecorderPanel(),
+              ),
+            ),
+            if (_mode == DashboardWorkspaceMode.trends)
+              const SliverToBoxAdapter(child: TelemetryWorkspace())
+            else if (activePids.isEmpty)
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 320,
+                  child: EmptyState(
+                    icon: Icons.tune,
+                    title: '儀表板是空的',
+                    message: '到 PID 頁面挑選想要監看的訊號，它們會出現在這裡。',
+                    action: FilledButton.icon(
+                      onPressed: () => context.go(PidManagerScreen.path),
+                      icon: const Icon(Icons.add, size: 20),
+                      label: const Text('選擇 PID'),
+                    ),
                   ),
                 ),
               )
@@ -72,7 +138,8 @@ class DashboardScreen extends ConsumerWidget {
                 ),
                 sliver: _GaugeGrid(pids: activePids, snapshot: snapshot),
               ),
-            SliverToBoxAdapter(child: _DerivedStrip(snapshot: snapshot)),
+            if (_mode == DashboardWorkspaceMode.gauges)
+              SliverToBoxAdapter(child: _DerivedStrip(snapshot: snapshot)),
             // Clears the navigation bar so the derived figures can be scrolled
             // fully into view rather than sitting half-under it.
             SliverToBoxAdapter(
@@ -83,6 +150,91 @@ class DashboardScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _WorkspaceToolbar extends StatelessWidget {
+  const _WorkspaceToolbar({
+    required this.mode,
+    required this.onModeChanged,
+    required this.historyAccess,
+    required this.onHistory,
+  });
+
+  final DashboardWorkspaceMode mode;
+  final ValueChanged<DashboardWorkspaceMode> onModeChanged;
+  final TelemetryHistoryAccess historyAccess;
+  final VoidCallback? onHistory;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final stack = constraints.maxWidth < 430 || scale > 1.35;
+        final switcher = ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: SegmentedButton<DashboardWorkspaceMode>(
+            key: const ValueKey('dashboard-workspace-switch'),
+            segments: const [
+              ButtonSegment(
+                value: DashboardWorkspaceMode.gauges,
+                icon: Icon(Icons.speed, size: 18),
+                label: Text('儀表'),
+              ),
+              ButtonSegment(
+                value: DashboardWorkspaceMode.trends,
+                icon: Icon(Icons.show_chart, size: 18),
+                label: Text('趨勢'),
+              ),
+            ],
+            selected: {mode},
+            expandedInsets: EdgeInsets.zero,
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => onModeChanged(selection.first),
+          ),
+        );
+        final history = Column(
+          crossAxisAlignment: stack
+              ? CrossAxisAlignment.stretch
+              : CrossAxisAlignment.end,
+          children: [
+            OutlinedButton.icon(
+              key: const ValueKey('telemetry-history'),
+              onPressed: onHistory,
+              icon: const Icon(Icons.history, size: 18),
+              label: const Text('本機紀錄'),
+            ),
+            if (historyAccess != TelemetryHistoryAccess.permitted) ...[
+              const SizedBox(height: Spacing.xs),
+              Text(
+                historyAccess.message!,
+                key: const ValueKey('telemetry-history-blocked-copy'),
+                style: context.texts.bodySmall,
+                textAlign: stack ? TextAlign.start : TextAlign.end,
+              ),
+            ],
+          ],
+        );
+        if (stack) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              switcher,
+              const SizedBox(height: Spacing.sm),
+              history,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: switcher),
+            const SizedBox(width: Spacing.md),
+            history,
+          ],
+        );
+      },
     );
   }
 }

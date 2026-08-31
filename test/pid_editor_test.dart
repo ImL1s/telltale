@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:torque_obd/obd/pid/pid.dart';
+import 'package:torque_obd/state/pid_mutation_lock.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/ui/screens/pids/pid_editor_screen.dart';
 import 'package:torque_obd/ui/screens/pids/pid_manager_screen.dart';
@@ -408,5 +409,65 @@ void main() {
       isEmpty,
       reason: 'and confirming still deletes it',
     );
+  });
+
+  testWidgets('recording lock refuses save without closing the editor',
+      (tester) async {
+    _tallViewport(tester);
+    final container = await _container({'custom_pids_v1': <String>[_stored]});
+    addTearDown(container.dispose);
+    final original = container.read(pidRegistryProvider).firstWhere(
+          (pid) => pid.isCustom && pid.name == 'Boost',
+        );
+    final token = container
+        .read(pidMutationLockProvider)
+        .tryAcquire('recording')!;
+
+    await tester.pumpWidget(_host(container, original.id));
+    await tester.pumpAndSettle();
+    await _enter(tester, '名稱', 'Must not save');
+    await _save(tester);
+
+    expect(find.text('編輯 PID'), findsOneWidget);
+    expect(find.text('請先停止並儲存'), findsOneWidget);
+    expect(
+      container.read(pidRegistryProvider).where((pid) => pid.name == 'Boost'),
+      hasLength(1),
+    );
+    expect(
+      container
+          .read(pidRegistryProvider)
+          .where((pid) => pid.name == 'Must not save'),
+      isEmpty,
+    );
+    container.read(pidMutationLockProvider).release(token);
+  });
+
+  testWidgets('recording lock refuses confirmed delete without closing editor',
+      (tester) async {
+    _tallViewport(tester);
+    final container = await _container({'custom_pids_v1': <String>[_stored]});
+    addTearDown(container.dispose);
+    final original = container.read(pidRegistryProvider).firstWhere(
+          (pid) => pid.isCustom && pid.name == 'Boost',
+        );
+    final token = container
+        .read(pidMutationLockProvider)
+        .tryAcquire('recording')!;
+
+    await tester.pumpWidget(_host(container, original.id));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '刪除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('編輯 PID'), findsOneWidget);
+    expect(find.text('請先停止並儲存'), findsOneWidget);
+    expect(
+      container.read(pidRegistryProvider).where((pid) => pid.name == 'Boost'),
+      hasLength(1),
+    );
+    container.read(pidMutationLockProvider).release(token);
   });
 }

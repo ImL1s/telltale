@@ -16,6 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:torque_obd/obd/transport/ble_transport.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
+import 'package:torque_obd/state/app_runtime.dart';
+import 'package:torque_obd/state/app_share_coordinator.dart';
 import 'package:torque_obd/state/obd_session.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/state/settings.dart';
@@ -101,6 +103,9 @@ Future<_ReconnectSession> _pumpShortcut(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
+        appSharePolicyProvider.overrideWith(
+          (ref) => ref.watch(productionAppSharePolicyProvider),
+        ),
         obdSessionProvider.overrideWith(
           () => session = _ReconnectSession(succeeds),
         ),

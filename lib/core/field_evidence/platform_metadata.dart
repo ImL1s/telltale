@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 const String unknownPlatformMetadata = 'unknown';
 const String androidFieldApplicationId = 'com.cbstudio.telltale';
+const String androidRigApplicationId = 'com.cbstudio.telltale.rig';
 
 typedef PlatformMetadataLoader = Future<Object?> Function();
 
@@ -70,7 +71,7 @@ final class PlatformMetadata {
   final String sdkInt;
 
   bool get isObdTestRigApplication =>
-      applicationId == 'com.cbstudio.telltale.rig';
+      platform == 'android' && applicationId == androidRigApplicationId;
 
   /// Whether vehicle evidence must be treated as simulated.
   ///
@@ -98,6 +99,21 @@ final class PlatformMetadata {
     return text.trim().isEmpty ? unknownPlatformMetadata : text;
   }
 }
+
+/// The capture-only share sink is a test capability, not a flavor hint.
+///
+/// All three facts must agree. In particular, a leaked dart-define in the
+/// field application remains on the native sharing path and can never create
+/// rig capture artifacts.
+bool isRigShareCaptureEligible({
+  required PlatformMetadata metadata,
+  required bool buildFlag,
+  required bool debugMode,
+}) =>
+    buildFlag &&
+    debugMode &&
+    metadata.platform == 'android' &&
+    metadata.applicationId == androidRigApplicationId;
 
 final class PlatformMetadataCache {
   PlatformMetadataCache({

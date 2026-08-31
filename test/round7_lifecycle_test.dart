@@ -36,6 +36,34 @@ void _foreground(TestWidgetsFlutterBinding binding) {
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(() {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+
+  tearDown(() {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+
+  test('hidden is a foreground boundary and hidden then paused counts once',
+      () async {
+    final container = await _container();
+    addTearDown(container.dispose);
+    final session = container.read(obdSessionProvider.notifier);
+    final before = session.pauseEpoch;
+
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    expect(session.isForeground, isFalse);
+    expect(session.pauseEpoch, before + 1);
+
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    expect(
+      session.pauseEpoch,
+      before + 1,
+      reason: 'mobile hidden -> paused is one suspension, not two',
+    );
+  });
+
   test('R7 F-10: backgrounding clears the gauges and says the session paused',
       () async {
     // The guard here was inverted, which reversed both halves: the empty

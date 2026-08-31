@@ -145,6 +145,19 @@ void main() {
   });
 
   group('the header is what makes a log usable by somebody else', () {
+    test('streamed export is byte-identical and bounded', () async {
+      final t = ObdTranscript()
+        ..recordWrite('ATI\r'.codeUnits, DateTime(2026))
+        ..recordRead([0x41, 0x00, 0x0d], DateTime(2026));
+      final chunks = await t
+          .streamEncoded(header: '# test', withHex: true, maxChunkBytes: 32)
+          .toList();
+      expect(chunks.every((chunk) => chunk.length <= 32), isTrue);
+      expect(
+        chunks.expand((chunk) => chunk),
+        t.encode(header: '# test', withHex: true),
+      );
+    });
     test('it is carried through to the rendered file', () {
       final t = ObdTranscript();
       t.recordWrite('ATI\r'.codeUnits, DateTime(2026));
