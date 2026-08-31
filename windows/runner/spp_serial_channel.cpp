@@ -386,8 +386,10 @@ class SppSerialChannel::Impl {
           std::lock_guard<std::mutex> lock(mutex_);
           reading_ = false;
           if (sink_ != nullptr) {
-            flutter::EncodableValue details(static_cast<int64_t>(err));
-            sink_->Error("read_failed", "ReadFile failed", &details);
+            // EventSink::Error takes const T&, not a pointer (unlike
+            // MethodResult::Error's optional details overload).
+            sink_->Error("read_failed", "ReadFile failed",
+                         flutter::EncodableValue(static_cast<int64_t>(err)));
           }
         }
         break;
