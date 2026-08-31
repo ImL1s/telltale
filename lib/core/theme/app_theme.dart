@@ -361,6 +361,11 @@ abstract final class AppTheme {
           TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
           TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          // Desktop (non-Apple) keeps Material transitions; Cupertino glyphs
+          // are wrong on Windows/Linux chrome, and the default Material
+          // builders already match a keyboard/mouse primary surface.
+          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
         },
       ),
     );

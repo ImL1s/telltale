@@ -433,7 +433,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     isExpanded: _expanded == kind,
                     isDisabled: unavailable || connection.isBusy,
                     disabledReason: unavailable
-                        ? 'iOS 不開放第三方 App 使用藍牙 SPP'
+                        ? classicUnavailableReason
                         : null,
                     onTap: () => _select(kind),
                     child: _bodyFor(kind, palette),
@@ -1520,7 +1520,21 @@ typedef TransportQuestion = ({
 /// disagree, so the card was greyed out saying Classic is unavailable while
 /// four lines above it a question told you to pick it. That is the same defect
 /// as the iOS wording it replaced, in the platform nobody checked.
+///
+/// Desktop plugins exist for Classic in the dependency tree, but this app only
+/// enables the transport on Android today: the ELM327 SPP path is verified
+/// there, and shipping an untested Classic card on Windows/Linux/macOS would
+/// reintroduce the same "enabled in UI, broken in practice" failure mode.
 bool get classicTransportAvailable => Platform.isAndroid;
+
+/// Why the Classic transport card is greyed out on non-Android hosts.
+///
+/// The old copy always said "iOS", which was true for iPhone and false for
+/// every other platform that already builds this app. Desktop and iOS share
+/// the same gate (`classicTransportAvailable`) but not the same reason.
+String get classicUnavailableReason => Platform.isIOS
+    ? 'iOS 不開放第三方 App 使用藍牙 SPP'
+    : 'Bluetooth Classic（SPP）目前僅在 Android 驗證過';
 
 List<TransportQuestion> whichTransportGuidance({
   required bool classicAvailable,

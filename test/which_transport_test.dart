@@ -82,6 +82,19 @@ void main() {
     );
   });
 
+  test('classic unavailable copy names the host constraint, not always iOS', () {
+    // The card used to hard-code an iOS sentence for every non-Android host.
+    // macOS/Windows/Linux already build this app; blaming iOS there is a lie.
+    expect(classicUnavailableReason, isNot(isEmpty));
+    if (!classicTransportAvailable) {
+      expect(
+        classicUnavailableReason.contains('iOS') ||
+            classicUnavailableReason.contains('Android'),
+        isTrue,
+      );
+    }
+  });
+
   test('each transport is the destination of exactly one question', () {
     // Two questions leading to the same place means one of them is not
     // separating anything, which is how the pairing-list version went wrong.
