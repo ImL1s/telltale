@@ -70,15 +70,17 @@ void main() {
   });
 
   test('a host without BLE is not routed to Bluetooth LE at all', () {
-    // Same honesty rule as Classic: Linux has no universal_ble registrant, so
-    // the guidance must not advertise a card the shell greys out.
-    final linuxish = whichTransportGuidance(
+    // Guidance API still accepts an explicit bleAvailable:false for hosts that
+    // might one day lack a stack. Shipping hosts all return
+    // bleTransportAvailable == true (Linux uses Dart BlueZ, not a Flutter
+    // plugin registrant).
+    final noBle = whichTransportGuidance(
       classicAvailable: false,
       bleAvailable: false,
     );
-    expect(linuxish.map((q) => q.transport),
+    expect(noBle.map((q) => q.transport),
         isNot(contains(TransportKind.bluetoothLe)));
-    expect(linuxish.map((q) => q.transport), [TransportKind.wifi]);
+    expect(noBle.map((q) => q.transport), [TransportKind.wifi]);
   });
 
   test('the guidance and the transport card read the same predicate', () {
@@ -117,9 +119,11 @@ void main() {
     }
   });
 
-  test('ble unavailable copy is non-empty when BLE is gated off', () {
+  test('BLE is available on every shipping host including Linux', () {
+    // Linux uses universal_ble's Dart BlueZ backend; absence from
+    // generated_plugins.cmake is expected and must not grey out the card.
+    expect(bleTransportAvailable, isTrue);
     expect(bleUnavailableReason, isNot(isEmpty));
-    expect(bleUnavailableReason.toLowerCase(), contains('linux'));
   });
 
   test('each transport is the destination of exactly one question', () {

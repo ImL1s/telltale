@@ -75,10 +75,12 @@ response echo、exact payload length、有限公式結果與數值範圍檢查�
 來源限制、同意規則、授權與驗證邊界見
 [大電池車型設定說明](docs/powertrain-battery-profiles.md)。
 
-Android 是裝置、UI 與 BLE rig 路徑的主要實體測試平台。iOS 與 macOS 目前只有
-編譯閘門，不能視為具備同等的實體轉接器或實車證據。Bluetooth Classic 實務上
-只支援 Android，因為 Apple
-平台不向一般第三方 App 開放通用 RFCOMM/SPP 配件。
+Android 是裝置、UI 與 BLE rig 路徑的主要實體測試平台。iOS、macOS、Windows
+與 Linux 有公開編譯閘門與可執行的 Demo／Wi-Fi 路徑；BLE 在每個出貨主機都已
+接上（Linux 走 BlueZ／D-Bus）。它們尚無同等的實體轉接器或實車證據。
+Bluetooth Classic 在 UI 上仍僅 Android：iOS 永久不開放第三方 SPP，桌面 Classic
+在有實機驗證前維持 fail-closed。見
+[平台支援說明](docs/platform-support.md)。
 
 ## 已實車連線的轉接器
 

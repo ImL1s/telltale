@@ -1555,10 +1555,14 @@ typedef TransportQuestion = ({
 /// four lines above it a question told you to pick it. That is the same defect
 /// as the iOS wording it replaced, in the platform nobody checked.
 ///
-/// Desktop plugins exist for Classic in the dependency tree, but this app only
-/// enables the transport on Android today: the ELM327 SPP path is verified
-/// there, and shipping an untested Classic card on Windows/Linux/macOS would
-/// reintroduce the same "enabled in UI, broken in practice" failure mode.
+/// Two different reasons collapse to the same gate:
+/// - **iOS:** permanent OS/API host limit — third-party apps cannot open
+///   generic RFCOMM/SPP without the External Accessory / MFi path.
+/// - **Desktop (macOS/Windows/Linux):** plugins exist in the dependency tree,
+///   but the ELM327 SPP path is only verified on Android. Shipping an untested
+///   Classic card would recreate "enabled in UI, broken in practice".
+///
+/// Fail closed everywhere that is not Android. That is not a CI failure.
 bool get classicTransportAvailable => Platform.isAndroid;
 
 /// Why the Classic transport card is greyed out on non-Android hosts.
@@ -1572,18 +1576,17 @@ String get classicUnavailableReason => Platform.isIOS
 
 /// Whether Bluetooth LE scanning/connect is usable on this host.
 ///
-/// `universal_ble` registers native plugins on Android, iOS, macOS, and
-/// Windows. Linux has no registrant (`linux/flutter/generated_plugins.cmake`
-/// lists only Classic + url_launcher), so enabling the BLE card there reaches
-/// a missing platform channel instead of BlueZ. Gate the UI the same way
-/// Classic is gated: honest "not available here" beats a green compile with a
-/// broken tap target.
-bool get bleTransportAvailable => !Platform.isLinux;
+/// Every shipping host has a path:
+/// - Android / iOS / macOS / Windows: `universal_ble` native pigeon plugins
+/// - Linux: Dart BlueZ backend inside `universal_ble` (`bluez` → D-Bus). No
+///   Flutter plugin registrant is expected — `linux/flutter/generated_plugins.cmake`
+///   correctly omits it. The earlier Linux UI gate assumed
+///   `MissingPluginException`; that was a misread of the package layout.
+bool get bleTransportAvailable => true;
 
 /// Why the BLE transport card is greyed out when [bleTransportAvailable] is
-/// false.
-String get bleUnavailableReason =>
-    'Bluetooth LE 目前在 Linux 尚未接入原生實作（universal_ble 無 Linux plugin）';
+/// false. Kept for UI wiring; every current host returns true above.
+String get bleUnavailableReason => 'Bluetooth LE 在此主機尚不可用';
 
 List<TransportQuestion> whichTransportGuidance({
   required bool classicAvailable,
