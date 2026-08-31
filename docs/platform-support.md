@@ -21,9 +21,9 @@ proven to the full smoothness bar.
 
 | Feature | Android | iOS | macOS | Windows | Linux |
 |---|---|---|---|---|---|
-| Demo connect → live telemetry UI | **pass** (device + `demo_connect_journey_test`) | **pass** (journey test; sim/device thin) | **pass** (journey + local `Telltale.app` smoke) | **pass** (journey test; device thin) | **pass** (journey test; device thin) |
-| Session telemetry record / replay / export | **pass** (unit + rigs; field thin) | **wired** (same Dart stack; device thin) | **wired** (same Dart stack; local thin) | **wired** (unit path; device thin) | **wired** (unit path; device thin) |
-| `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus`) | **pass** (native `MethodChannel` + unit) | **wired** (`share_plus`) | **wired** (`share_plus` / weaker UX) |
+| Demo connect → live telemetry UI | **pass** (device + `demo_connect_journey_test`) | **wired** (iOS build gate; journey suite runs on macOS host, not an iOS sim) | **pass** (journey + local `Telltale.app` smoke) | **pass** (journey test; device thin) | **pass** (journey test; device thin) |
+| Session telemetry record / replay / export | **pass** (unit + rigs; field thin) | **wired** (same Dart stack; device thin) | **pass** (`telemetry_demo_journey` + `desktop_telemetry_share_smoke`; interactive sheet thin) | **pass** (same automated path on Windows runner; sheet soft-fail OK) | **pass** (same automated path on Linux runner; sheet soft-fail OK) |
+| `app_share*` prepare → platform handoff | **pass** (native + unit) | **wired** (`share_plus`) | **pass** (native `MethodChannel` + unit) | **wired** (`share_plus`; soft-fail OK if file staged) | **wired** (`share_plus`; soft-fail OK if file staged) |
 | Wi‑Fi TCP to adapter | **pass** (+ Android route binder) | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP | **wired** plain TCP |
 | BLE scan/connect | **pass** (field) | **wired** CoreBluetooth | **wired** entitlements | **wired** WinRT plugin | **wired** Dart BlueZ/D-Bus (needs BlueZ at runtime) |
 | Classic SPP | **pass** | **OS-blocked** (no third-party SPP) | product-gated (unverified) | product-gated | product-gated |
@@ -39,7 +39,8 @@ UI predicate: `classicTransportAvailable` → **Android only**. Guidance,
 transport cards, and remembered-adapter reconnect all fail closed together.
 Automated coverage: `which_transport_test`, `remembered_adapter_navigation_test`,
 and reconnect host-gate tests. **Classic-on-iOS is not a bug** — the card stays
-grey with an explicit OS reason.
+grey with an explicit OS reason. BLE empty-scan / “which transport” copy never
+points at Classic when the host gate is closed.
 
 | Host | Status | Why |
 |---|---|---|
@@ -68,17 +69,21 @@ device or simulator is attached; do not treat green CI as a field BLE pass.
 - **macOS:** network client + Bluetooth entitlements; Demo smoke-launched
   locally as `Telltale.app`. SystemChrome orientation skipped on desktop.
   Share uses the native `com.cbstudio.telltale/app_share` channel.
+  `default-flavor: field` requires matching Xcode scheme + configs (`field.xcscheme`, `Debug-field`/`Release-field`/`Profile-field`);
+  Android-only `rig` stays out of Apple schemes.
 - **Windows:** `Telltale` / `telltale.exe`; MSVC coroutine silence for
   `permission_handler_windows` (singular `_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNING`).
 - **Linux:** wakelock no-op; Demo / Wi‑Fi / BLE (BlueZ) do not depend on it.
 - **iOS:** Classic permanently unavailable; Demo / Wi‑Fi / BLE are the core
   path. Wi‑Fi / guidance copy stays phone-centric on iOS/Android only.
+  Same `field` scheme requirement as macOS for `default-flavor`.
 
 ## Still deferred (does **not** meet the full functional bar alone)
 
 - Store packaging (MSIX / Flatpak / notarized DMG)
 - Classic desktop enablement with device evidence
 - Linux / desktop BLE field verification against a real adapter
-- End-to-end Demo → record → export/share on every desktop host with a human
-  share-sheet target present
+- Interactive share-sheet target present on every desktop host (file staging
+  + soft-fail is proven; human “Save/Share…” confirmation is not)
+- iOS simulator/device run of the Demo journey (CI still uses the macOS test host)
 - Keyboard/mouse shell density polish

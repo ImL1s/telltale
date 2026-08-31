@@ -160,6 +160,8 @@ jobs:
           flutter test \
             test/demo_connect_journey_test.dart \
             test/transcript_export_smoke_test.dart \
+            test/telemetry_demo_journey_test.dart \
+            test/desktop_telemetry_share_smoke_test.dart \
             test/which_transport_test.dart \
             test/wifi_transport_test.dart \
             test/telemetry_heartbeat_test.dart \
@@ -207,6 +209,8 @@ jobs:
           flutter test \
             test/demo_connect_journey_test.dart \
             test/transcript_export_smoke_test.dart \
+            test/telemetry_demo_journey_test.dart \
+            test/desktop_telemetry_share_smoke_test.dart \
             test/which_transport_test.dart \
             test/wifi_transport_test.dart \
             test/telemetry_heartbeat_test.dart \
@@ -240,6 +244,8 @@ jobs:
           flutter test \
             test/demo_connect_journey_test.dart \
             test/transcript_export_smoke_test.dart \
+            test/telemetry_demo_journey_test.dart \
+            test/desktop_telemetry_share_smoke_test.dart \
             test/which_transport_test.dart \
             test/wifi_transport_test.dart \
             test/telemetry_heartbeat_test.dart \
@@ -478,7 +484,7 @@ jobs:
 
           flutter test test/emulator_integration_test.dart --reporter json \
             > "$RUNNER_TEMP/ircama.json" || true
-          python3 "$RUNNER_TEMP/assert_no_skips.py" "$RUNNER_TEMP/ircama.json" 5
+          python3 "$RUNNER_TEMP/assert_no_skips.py" "$RUNNER_TEMP/ircama.json" 6
 
       - name: Stop the emulator
         if: always()

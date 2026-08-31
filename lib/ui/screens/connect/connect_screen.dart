@@ -1069,7 +1069,10 @@ class _BleBodyState extends State<_BleBody> {
         ],
         if (_scanned && !_scanning && _found.isEmpty) ...[
           const SizedBox(height: Spacing.md),
-          Text(bleEmptyScanGuidance, style: context.texts.bodyMedium),
+          Text(
+            bleEmptyScanGuidance(classicAvailable: classicTransportAvailable),
+            style: context.texts.bodyMedium,
+          ),
         ],
         if (_found.isNotEmpty) ...[
           const SizedBox(height: Spacing.md),
@@ -1636,11 +1639,15 @@ List<TransportQuestion> whichTransportGuidance({
       // is sometimes an SPP-only adapter with a dual-mode chip it does not
       // use. Somebody who answered honestly and got nothing needs the next
       // step attached to the answer that failed them, not four lines below
-      // it.
-      answer:
-          '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
-          '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
-          '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。',
+      // it. Only offer Classic when this host actually enables it.
+      answer: classicAvailable
+          ? '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
+              '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
+              '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。'
+          : '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
+              '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
+              '如果掃描不到，先確認轉接器有通電，或改試 Wi‑Fi；'
+              '此主機未開放 Bluetooth Classic。',
     ),
   if (classicAvailable)
     (
@@ -1662,12 +1669,20 @@ List<TransportQuestion> whichTransportGuidance({
 /// from a blank panel.
 ///
 /// Ordered by how often each one is the answer, not by how interesting it is.
-const String bleEmptyScanGuidance =
-    '搜尋結束，沒有找到 BLE 轉接器。依序確認：轉接器的燈有沒有亮 —— '
-    '多數 OBD 插座要電門轉到 ON 才供電；再來是距離，先坐進車裡再搜尋；'
-    '最後看盒子上的規格，如果寫的是 2.0 或 3.0，那是 Bluetooth Classic，'
-    '不會出現在這份清單裡，請改用上面的 Bluetooth Classic。'
-    'BLE 轉接器不需要、也不應該在系統設定裡配對，那條路走不通。';
+/// When Classic is unavailable on this host, never point at the greyed-out
+/// Classic card — offer power/range checks and Wi‑Fi instead.
+String bleEmptyScanGuidance({bool? classicAvailable}) {
+  final classic = classicAvailable ?? classicTransportAvailable;
+  final classicOrWifi = classic
+      ? '最後看盒子上的規格，如果寫的是 2.0 或 3.0，那是 Bluetooth Classic，'
+          '不會出現在這份清單裡，請改用上面的 Bluetooth Classic。'
+      : '最後看盒子上的規格：若寫的是 2.0／3.0 或只有 Wi‑Fi，'
+          '請改試 Wi‑Fi（此主機未開放 Bluetooth Classic）。';
+  return '搜尋結束，沒有找到 BLE 轉接器。依序確認：轉接器的燈有沒有亮 —— '
+      '多數 OBD 插座要電門轉到 ON 才供電；再來是距離，先坐進車裡再搜尋；'
+      '$classicOrWifi'
+      'BLE 轉接器不需要、也不應該在系統設定裡配對，那條路走不通。';
+}
 
 class _WhichTransportCard extends ConsumerStatefulWidget {
   const _WhichTransportCard();

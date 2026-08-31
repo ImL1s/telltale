@@ -54,6 +54,15 @@ void main() {
     expect(ble.answer, contains('Bluetooth Classic'));
   });
 
+  test('desktop BLE guidance never points at disabled Classic', () {
+    final ble = whichTransportGuidance(classicAvailable: false)
+        .firstWhere((q) => q.transport == TransportKind.bluetoothLe);
+    expect(ble.answer, contains('掃描不到'));
+    expect(ble.answer, isNot(contains('改用 Bluetooth Classic')));
+    expect(ble.answer, contains('Wi‑Fi'));
+    expect(ble.answer, contains('未開放 Bluetooth Classic'));
+  });
+
   test('a platform without SPP is not routed to Bluetooth Classic at all', () {
     // Not reworded — absent. The transport card on the same screen is disabled
     // where SPP is unavailable, and a question above it telling somebody to

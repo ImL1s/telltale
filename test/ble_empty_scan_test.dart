@@ -20,7 +20,7 @@ import 'package:torque_obd/ui/screens/connect/connect_screen.dart';
 
 void main() {
   test('the empty-scan guidance names the causes rather than the symptom', () {
-    const text = bleEmptyScanGuidance;
+    final text = bleEmptyScanGuidance(classicAvailable: true);
 
     expect(text, isNotEmpty);
 
@@ -44,10 +44,17 @@ void main() {
             'system settings, which cannot work for a BLE adapter: $text');
   });
 
+  test('hosts without Classic are not sent to the greyed-out Classic card', () {
+    final text = bleEmptyScanGuidance(classicAvailable: false);
+    expect(text.contains('改用上面的 Bluetooth Classic'), isFalse);
+    expect(text.contains('Wi‑Fi') || text.contains('Wi-Fi'), isTrue);
+    expect(text.contains('未開放 Bluetooth Classic'), isTrue);
+  });
+
   test('it does not merely restate that the list is empty', () {
     // "找不到裝置" alone is the failure this test exists to prevent: it tells
     // the user something they can already see, and nothing they can act on.
-    const text = bleEmptyScanGuidance;
+    final text = bleEmptyScanGuidance(classicAvailable: true);
     expect(text.length, greaterThan(30),
         reason: 'a one-line restatement of the empty list is not guidance');
   });
