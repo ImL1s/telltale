@@ -84,6 +84,7 @@ final class TelemetrySessionProjection {
     required this.gapCount,
     required this.terminalReason,
     required this.bytes,
+    required this.elapsedDurationUs,
   });
 
   final String id;
@@ -99,7 +100,14 @@ final class TelemetrySessionProjection {
   final TelemetryTerminalReason terminalReason;
   final int bytes;
 
-  Duration get duration => endedAtUtc.difference(startedAtUtc);
+  /// Monotonic event span (last elapsed − first elapsed), matching replay.
+  /// Prefer this over wall-clock header/footer diffs: recovery footers use
+  /// recovery time and can inflate overnight gaps into the history label.
+  final int elapsedDurationUs;
+
+  Duration get duration => Duration(
+    microseconds: elapsedDurationUs < 0 ? 0 : elapsedDurationUs,
+  );
   String get sourceLabel => telemetrySourceLabel(source);
 }
 
@@ -799,8 +807,21 @@ Future<Map<String, Object?>> _scanLibraryWorker(String documentsPath) async {
   final index = await store.listSessions();
   final candidates = <Map<String, Object?>>[];
   for (final entry in index.sessions) {
+    var elapsedOriginUs = 0;
+    var elapsedOriginCaptured = false;
+    var elapsedDurationUs = 0;
     final result = await store.reader.read(
       FileTelemetryChunkSource(entry.file),
+      onLine: (line) {
+        final event = line.canonicalEvent;
+        if (event == null) return;
+        if (!elapsedOriginCaptured) {
+          elapsedOriginUs = event.elapsedUs;
+          elapsedOriginCaptured = true;
+        }
+        final span = event.elapsedUs - elapsedOriginUs;
+        if (span > elapsedDurationUs) elapsedDurationUs = span;
+      },
     );
     final header = result.sessionHeader;
     final footer = result.sessionFooter;
@@ -820,6 +841,7 @@ Future<Map<String, Object?>> _scanLibraryWorker(String documentsPath) async {
       'gapCount': footer.gapCount,
       'terminalReason': footer.terminalReason.name,
       'bytes': await entry.file.length(),
+      'elapsedDurationUs': elapsedDurationUs,
     });
   }
   for (final entry in index.damaged) {
@@ -874,6 +896,7 @@ TelemetrySessionLibrary _decodeLibrary(Map<String, Object?> raw) {
             item['terminalReason']! as String,
           ),
           bytes: item['bytes']! as int,
+          elapsedDurationUs: item['elapsedDurationUs']! as int,
         ),
       );
     } else {

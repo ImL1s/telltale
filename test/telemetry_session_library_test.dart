@@ -16,8 +16,10 @@ import 'package:torque_obd/telemetry/session/telemetry_session_store.dart';
 Future<void> _writeSession(
   Directory documents,
   String id,
-  TelemetrySource source,
-) async {
+  TelemetrySource source, {
+  Duration wallClockDuration = const Duration(seconds: 2),
+  List<int> elapsedUsValues = const [1000000],
+}) async {
   final started = DateTime.utc(2026, 8, 30, 1);
   final definition = freezePidDefinition(PidLibrary.engineRpm);
   final header = TelemetrySessionHeader(
@@ -31,19 +33,20 @@ Future<void> _writeSession(
     signals: [definition],
   );
   final events = <TelemetryEvent>[
-    TelemetryEvent.value(
-      observedAtUtc: started.add(const Duration(seconds: 1)),
-      sourceTimestampUtc: started.add(const Duration(seconds: 1)),
-      elapsedUs: 1000000,
-      pidId: definition.definition.id,
-      value: 1726,
-    ),
+    for (final elapsedUs in elapsedUsValues)
+      TelemetryEvent.value(
+        observedAtUtc: started.add(Duration(microseconds: elapsedUs)),
+        sourceTimestampUtc: started.add(Duration(microseconds: elapsedUs)),
+        elapsedUs: elapsedUs,
+        pidId: definition.definition.id,
+        value: 1726,
+      ),
   ];
   final prefix = TelemetrySessionCodec.encodePrefix(header, events);
   final footer = TelemetrySessionFooter(
-    endedAtUtc: started.add(const Duration(seconds: 2)),
+    endedAtUtc: started.add(wallClockDuration),
     terminalReason: TelemetryTerminalReason.user,
-    valueCount: 1,
+    valueCount: events.length,
     statusCount: 0,
     gapCount: 0,
     bytesBeforeFooter: prefix.length,
@@ -83,6 +86,38 @@ void main() {
       expect(library.recognizedBytes, greaterThan(0));
       expect(library.encodedProjectionBytes, lessThanOrEqualTo(80 * 1024));
       expect(library.workerDebugName, isNot(Isolate.current.debugName));
+    },
+  );
+
+  test(
+    'history duration uses monotonic event span, not recovery wall clock',
+    () async {
+      final documents = await Directory.systemTemp.createTemp(
+        'library-duration',
+      );
+      addTearDown(() => documents.delete(recursive: true));
+      const id = '00000000000000000000000000000004';
+      // Five-minute recording recovered the next morning: wall span is ~24h,
+      // but history must show the ~5 minute monotonic event span.
+      await _writeSession(
+        documents,
+        id,
+        TelemetrySource.demo,
+        wallClockDuration: const Duration(hours: 23),
+        elapsedUsValues: const [1_000_000, 301_000_000],
+      );
+
+      final library = await TelemetrySessionLibraryService(
+        documentsDirectory: () async => documents,
+      ).load();
+
+      final session = library.sessions.single;
+      expect(
+        session.endedAtUtc.difference(session.startedAtUtc),
+        const Duration(hours: 23),
+      );
+      expect(session.elapsedDurationUs, 300_000_000);
+      expect(session.duration, const Duration(minutes: 5));
     },
   );
 
@@ -225,7 +260,7 @@ void main() {
     addTearDown(() => documents.delete(recursive: true));
     const id = '0000000000000000000000000000000b';
     await _writeSession(documents, id, TelemetrySource.demo);
-    final policy = _PermittingPolicy(invalidateAtValidation: 5);
+    final policy = _PermittingPolicy(invalidateAtValidation: 6);
     final gate = ArtifactOperationGate();
     var restartNotices = 0;
     final actions = TelemetrySessionActions(

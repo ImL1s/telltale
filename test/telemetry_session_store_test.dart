@@ -355,6 +355,63 @@ void main() {
     },
   );
 
+  test(
+    'deleteGroup removes staging before the installed session',
+    () async {
+      final id = 'a' * 32;
+      final telemetry = Directory('${root.path}/telltale-telemetry')
+        ..createSync();
+      File('${telemetry.path}/$id.ndjson').writeAsStringSync('installed');
+      File('${telemetry.path}/$id.ndjson.part').writeAsStringSync('staging');
+      final store = TelemetrySessionStore(documentsDirectory: () async => root);
+      final order = <String>[];
+
+      expect(
+        await store.deleteGroup(
+          id,
+          checkpoint: (checkpoint) {
+            if (checkpoint.startsWith('delete.beforeDelete.')) {
+              order.add(checkpoint);
+            }
+          },
+        ),
+        TelemetryDeleteOutcome.deleted,
+      );
+      expect(order, [
+        'delete.beforeDelete..ndjson.part',
+        'delete.beforeDelete..ndjson',
+      ]);
+      expect(telemetry.listSync(followLinks: false), isEmpty);
+    },
+  );
+
+  test(
+    'partial collision delete after staging leaves installed session intact',
+    () async {
+      final id = 'b' * 32;
+      final telemetry = Directory('${root.path}/telltale-telemetry')
+        ..createSync();
+      final installed = File('${telemetry.path}/$id.ndjson')
+        ..writeAsStringSync('installed');
+      File('${telemetry.path}/$id.ndjson.part').writeAsStringSync('staging');
+      final store = TelemetrySessionStore(documentsDirectory: () async => root);
+
+      expect(
+        await store.deleteGroup(
+          id,
+          checkpoint: (checkpoint) {
+            if (checkpoint == 'delete.beforeDelete..ndjson') {
+              throw StateError('cut after staging');
+            }
+          },
+        ),
+        TelemetryDeleteOutcome.uncontainedFailure,
+      );
+      expect(File('${telemetry.path}/$id.ndjson.part').existsSync(), isFalse);
+      expect(await installed.readAsString(), 'installed');
+    },
+  );
+
   test('group deletion removes only an empty exact-name directory', () async {
     final emptyId = 'd' * 32;
     final nonemptyId = 'e' * 32;

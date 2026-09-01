@@ -27,6 +27,7 @@ TelemetrySessionLibrary _library() => TelemetrySessionLibrary(
       gapCount: 1,
       terminalReason: TelemetryTerminalReason.user,
       bytes: 1024,
+      elapsedDurationUs: 2 * 60 * 1000000,
     ),
   ],
   damaged: [

@@ -588,7 +588,9 @@ final class TelemetrySessionStore {
       if (rootType != FileSystemEntityType.directory) {
         return TelemetryDeleteOutcome.storageError;
       }
-      for (final suffix in const <String>['.ndjson', '.ndjson.part']) {
+      // Staging first: if deletion fails after the part is gone, startup
+      // recovery cannot resurrect a user-deleted collision as a fresh install.
+      for (final suffix in const <String>['.ndjson.part', '.ndjson']) {
         final path = '${directory.path}/$id$suffix';
         _invokeCheckpoint(checkpoint, 'delete.beforeStat.$suffix');
         final type = await FileSystemEntity.type(path, followLinks: false);

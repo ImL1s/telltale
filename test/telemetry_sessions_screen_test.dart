@@ -63,6 +63,7 @@ final _library = TelemetrySessionLibrary(
       gapCount: 2,
       terminalReason: TelemetryTerminalReason.user,
       bytes: 1024 * 1024,
+      elapsedDurationUs: 2 * 60 * 1000000,
     ),
   ],
   damaged: [
