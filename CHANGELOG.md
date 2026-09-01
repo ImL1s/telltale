@@ -10,6 +10,37 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ### Added
 
+- Three more installable community battery profiles, each cross-corroborated
+  by two mutually independent, license-pinned implementations: MG4 Electric
+  (OVMS × OBDb on functional 7DF/7ED; not the Mk1 ZS EV 781/789 map), MG5 EV
+  2020–2023 (OVMS × WiCAN on physical 7E5/7ED; identity from OVMS, not
+  WiCAN's MG5/Marvel/ZS union; B046 excluded because the scales disagree),
+  and BYD Atto 3 before the 2024.10 firmware (OVMS × WiCAN little-endian
+  0005/0008/0009 on 7E7/7EF; the short `atto3.json` big-endian 0008 window
+  is not used; 0032 temperature uses the sibling WiCAN file).
+- A Toyota bZ4X / Subaru Solterra (e-TNGA, first gen) experimental profile
+  for the one-shot laboratory: capture-verified 7D2/7DA `1F5B` and `106C`.
+  Community is blocked by a 7D2 vs 747 header split on the same DID; `1F9A`
+  is not shipped. Year ceiling 2024.
+- Recorded honest exclusions on the affected research entries — MINI Cooper
+  SE F56 (i3-grade extended addressing), Nissan Ariya (29-bit ISO-TP), Fiat
+  500e Type 332 (no open DID map; SGW is not the read blocker) — plus a
+  pointer from the bZ4X EPA stub to the experimental sibling.
+- A wire-contract regression suite for the new profiles: synthetic
+  source-agreed responses through catalog → installer → engine, including
+  the Atto 3 little-endian voltage (so a big-endian misread cannot hide)
+  and the pinned e-TNGA capture bytes through the one-shot probe path.
+
+### Changed
+
+- Wave-3 review closeout: MG4 pack current is ±400 A (was a copied Mk1
+  ZS EV 200 A bound that would have discarded DC-charge readings as
+  formula errors); pack voltage ceiling 500 V and DC-bus 1000 V follow
+  OBDb. A second ECU answering functional 7DF now has a wire-contract
+  fail-closed test. Atto 3 expected responder 7EF is recorded as the
+  same ISO 15765 request+8 inference as Mk1 ZS EV 789. OVMS lock-while-
+  charging alarm warning is on the MG4/MG5 entries.
+
 - Four more installable community battery profiles, each cross-corroborated
   by two mutually independent, license-pinned implementations: Hyundai
   Ioniq 6 (the proven E-GMP 59/43-byte contract, verified byte-for-byte

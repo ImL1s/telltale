@@ -114,6 +114,150 @@
       "commands": []
     },
     {
+      "id": "byd-atto3-2022-2024-community",
+      "display_name": "BYD Atto 3 (pre-2024.10 firmware)",
+      "description": "Community-corroborated read-only BMS map for the BYD Atto 3 / Yuan Plus before the 2024.10 firmware that moved live SoC onto DID 1FFC. Little-endian 0005/0008/0009 plus 0032 temperature.",
+      "limitations": [
+        "Cross-source community mapping: SoC 0005, pack voltage 0008 and pack current 0009 agree across OVMS vehicle_byd_atto3 and WiCAN byd_202410_update.json as little-endian Mode 22 on 7E7/7EF. Pack temperature 0032 agrees across OVMS and the sibling WiCAN atto3.json (same WiCAN family, different firmware-split file). Telltale has not physically validated it on an Atto 3.",
+        "Firmware bound: this map is only for vehicles before the 2024.10 update. Post-update cars use DID 1FFC for SoC and must not inherit this profile. Year_to 2024 is that firmware bound, not a production-end claim.",
+        "Expected responder 7EF is the ISO 15765 physical-address inference (request 7E7 + 8), the same convention as Mk1 ZS EV 781/789. OVMS polls 0x7e7/0x7ef explicitly. WiCAN byd_202410_update.json and atto3.json set ATSH7E7 without ATCRA; they rely on the adapter's default off-by-8 ISO-TP response filter, not a second spelled-out CAN ID. A reply from any other responder still fails closed.",
+        "Identity: OVMS development vehicle is an Australian RHD Atto 3; OVMS and OBDb generations.yaml expect Yuan Plus / other-country versions to share the map, so the catalog records Global. Do not market-restrict the id to AU.",
+        "Endian: 0008 and 0009 are little-endian (B*256+A). The short atto3.json 220008 [B4:B5] window is NOT used as a big-endian voltage formula.",
+        "WiCAN ATFCSM1 is adapter boilerplate: OVMS polls the same headers with ISOTP_STD. Telltale must not require ATFCSM1.",
+        "Signal-level exclusions: DID 1FFC (OVMS does not poll it as live SoC; Battery-Emulator uses it after UDS 0x27); 002F/0031 min/max temps (OVMS-only). OBDb/BYD-Atto-3 signalset is empty (identity only). Dala Battery-Emulator is CAN broadcasts plus SecurityAccess, not a countable Mode 22 map."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "BYD",
+      "model": "Atto 3",
+      "year_from": 2022,
+      "year_to": 2024,
+      "variant": "e-Platform 3.0 Blade, firmware before 2024.10",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+        "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "license": "MIT",
+        "path": "vehicle/OVMS.V3/components/vehicle_byd_atto3/src/vehicle_byd_atto3.cpp",
+        "locator": "vehicle_atto3_polls[] {0x7e7, 0x7ef, VEHICLE_POLL_TYPE_READDATA, 0x0008/0x0009/0x0005/0x0032} ISOTP_STD; little-endian 0008/0009",
+        "artifact_sha256": "065d69b3e4bec2581aadb1a094f669133f1e883eab8de1ee984c3e2155ca4b7b"
+      },
+      "secondary_sources": [
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/byd/byd_202410_update.json",
+          "locator": "EU version, only before 2024.10 update; ATSH7E7; 220005 SOC_D=B4; 220008 HV_V=((B5*256)+B4); 220009 HV_A=(raw-5000)/10",
+          "artifact_sha256": "884a967ddcde195b953fe9070119561c6defde0f22866834260b3a65746c1116"
+        },
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/byd/atto3.json",
+          "locator": "ATSH7E7; 0032 BATT_TEMP=B4-40 corroboration. Do not use its 220008 [B4:B5] as a big-endian voltage against the pre-2024.10 LE map.",
+          "artifact_sha256": "e07bd252e466aca87f4961136e08e213b9f29522d4341f68fd8432e0b9aa24fc"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E7",
+          "expected_responder": "7EF",
+          "mode": "22",
+          "identifier": "0005",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "soc",
+              "name": "Battery state of charge",
+              "offset": 0,
+              "width": 1,
+              "equation": "A",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7E7",
+          "expected_responder": "7EF",
+          "mode": "22",
+          "identifier": "0008",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 0,
+              "width": 2,
+              "equation": "(B*256+A)",
+              "unit": "V",
+              "min_value": 200,
+              "max_value": 500,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7E7",
+          "expected_responder": "7EF",
+          "mode": "22",
+          "identifier": "0009",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 0,
+              "width": 2,
+              "equation": "((B*256+A)-5000)/10",
+              "unit": "A",
+              "min_value": -400,
+              "max_value": 400,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7E7",
+          "expected_responder": "7EF",
+          "mode": "22",
+          "identifier": "0032",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "pack_temp",
+              "name": "Battery pack temperature",
+              "offset": 0,
+              "width": 1,
+              "equation": "A-40",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "chevrolet-bolt-euv-2022-2023",
       "display_name": "Chevrolet Bolt EUV",
       "description": "Searchable BEV research entry for Chevrolet Bolt EUV.",
@@ -224,6 +368,35 @@
         "license": "Apache-2.0",
         "path": "volkswagen/MEB.json",
         "locator": "cupra:born* alias"
+      },
+      "commands": []
+    },
+    {
+      "id": "fiat-500e-332-2020-2026",
+      "display_name": "Fiat 500e (Type 332)",
+      "description": "Searchable BEV research entry for the 2020+ Fiat 500e Type 332 (Nuova 500). No qualifying open DID map exists.",
+      "limitations": [
+        "OBDb/FIAT-500e generations.yaml is the identity anchor (Type 312 2012-2019 US compliance car vs Type 332 2020+). Its signalset is empty. 2026 is this catalog snapshot ceiling, not a documented production end.",
+        "Actively excluded from executable tiers (2026-09 review): zero qualifying open-source families carry a BMS DID map for Type 332. OBDb/FIAT-500e, OBDb/FIAT-500 and OBDb/Abarth-500 signalsets are empty; iternio has no Fiat file; WiCAN's Fiat profiles are e-CMP (600e, eUlysse), a different platform; OVMS vehicle_fiat500 supports only the 2013-2019 car via passive CAN, not UDS; Battery-Emulator has no 332 pack. Proprietary apps (Car Scanner Pro, MultiECUscan) demonstrably read BPCM data but cannot be cited, licensed, or byte-verified.",
+        "The FCA Security Gateway is not the blocker for a read-only tool: owner reports on fiat500owners.com (2024-12) state the 332 SGW blocks writes, DTC clearing and actuations but not reads, and that generic ELM327-class BLE dongles read BPCM battery data. That is forum context, not a countable signal source. If a redistributable DID map lands in two independent families, re-run this research — the transport path itself looks compatible with the installable subset.",
+        "Research index only; no command from this entry is installed by Telltale."
+      ],
+      "status": "researchOnly",
+      "evidence": "sourceBacked",
+      "market": "source-unspecified",
+      "make": "Fiat",
+      "model": "500e",
+      "year_from": 2020,
+      "year_to": 2026,
+      "variant": "Type 332 (Nuova 500)",
+      "powertrain": "BEV",
+      "source": {
+        "name": "OBDb/FIAT-500e",
+        "url": "https://github.com/OBDb/FIAT-500e/tree/bb7c74f4b1a2fbd67ef93e4ee9cd1322fc8122c4",
+        "revision": "bb7c74f4b1a2fbd67ef93e4ee9cd1322fc8122c4",
+        "license": "CC-BY-SA-4.0",
+        "path": "generations.yaml",
+        "locator": "Type 332 2020+ vs Type 312 2012-2019; 42 kWh / 37.3 usable"
       },
       "commands": []
     },
@@ -678,30 +851,294 @@
     {
       "id": "mg-mg4-2022-2026",
       "display_name": "MG4 Electric",
-      "description": "Searchable BEV research entry for MG4 Electric.",
+      "description": "Community-corroborated read-only BMS map for the MG4 Electric (SAIC MSP). Every installed command and formula is confirmed by OVMS vehicle_mg4 against the pinned OBDb MG-MG4 signalset on the functional 7DF/7ED pair.",
       "limitations": [
-        "OBDb coverage is retained as attribution/search metadata; arbitrary bit-packed or protocol-specific commands are not imported.",
-        "The source does not establish a final production year; 2026 is this catalog snapshot ceiling, not a documented production end.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (OVMS vehicle_mg4 and OBDb/MG-MG4) on UDS Mode 22, 11-bit, standard ISO-TP. Telltale has not physically validated it on an MG4.",
+        "Functional addressing: OVMS and OBDb poll the BMS at broadcast 7DF with responder 7ED. Telltale still requires the pinned responder filter; a second ECU answering the same functional request fails closed. This is not the Mk1 ZS EV 781/789 map and must not be selected on that vehicle, nor on the MG5 7E5/7ED map.",
+        "Identity: neither source names a type-market, so the catalog records Global the same way as the E-GMP community entries. Year start 2022 is OBDb generations.yaml First Generation; OVMS docs title the type 'MG4 (2023-)'. 2026 is this catalog snapshot ceiling, not a documented production end. Pack sizes 51/64/77 kWh share this DID/header map; XPower is OBDb prose only.",
+        "Pack-current bounds are ±400 A and pack-voltage ceiling 500 V from the 400 V / 144 kW DC-charge architecture (OBDb B042 max 500 V, B043 max 250 A, widened past the Mk1 ZS EV 200 A CSV). A 180 kW peak that exceeds 400 A still fails closed rather than displaying.",
+        "OVMS docs warn that polling while locked and charging may sound the vehicle alarm; Telltale still requires a parked, confirmed vehicle before any request.",
+        "Temperature floor is -40 degC (OVMS 'half degrees from -40C'), not the Mk1 ZS EV CSV's 0 degC floor.",
+        "Signal-level exclusions: Mode 01 PID 5B (installable subset is Mode 22 only); DID B046 (OVMS MG4 poll table comments it out); DID B045 (unit/physical-implausibility, same as ZS EV); cell module DIDs B001..B115 and B058/B059 (multi-frame / missing second source).",
+        "WiCAN has no MG4 profile. iternio's only MG file is Mk1 781. Battery-Emulator has no MG4 module."
       ],
-      "status": "researchOnly",
+      "status": "community",
       "evidence": "sourceBacked",
-      "market": "source-unspecified",
+      "market": "Global",
       "make": "MG",
       "model": "MG4 Electric",
       "year_from": 2022,
       "year_to": 2026,
-      "variant": "source-unspecified",
+      "variant": "SAIC MSP 51/64/77 kWh, BMS at 7DF/7ED",
       "powertrain": "BEV",
-      "source": {
-        "name": "OBDb/MG-MG4",
-        "url": "https://github.com/OBDb/MG-MG4/tree/271f098e5020ca0be109db68dc277d7bfa962c1e",
-        "revision": "271f098e5020ca0be109db68dc277d7bfa962c1e",
-        "license": "CC-BY-SA-4.0",
-        "path": "generations.yaml",
-        "locator": "First Generation"
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
       },
-      "commands": []
+      "source": {
+        "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+        "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "license": "MIT",
+        "path": "vehicle/OVMS.V3/components/vehicle_mgev/src/vehicle_mg4.cpp",
+        "locator": "mg4_obdii_polls[] BMS rows on broadcastId 0x7DF -> bmsMk2Id|rxFlag 0x7ED, ISOTP_STD; RegisterVehicle MG4 / MG 4",
+        "artifact_sha256": "6feb29329ab82e89f7426445083a330b0b6d9716e215011e14ded90768590571"
+      },
+      "secondary_sources": [
+        {
+          "name": "OBDb/MG-MG4",
+          "url": "https://github.com/OBDb/MG-MG4/tree/271f098e5020ca0be109db68dc277d7bfa962c1e",
+          "revision": "271f098e5020ca0be109db68dc277d7bfa962c1e",
+          "license": "CC-BY-SA-4.0",
+          "path": "signalsets/v3/default.json",
+          "locator": "BMS commands hdr 7DF rax 7ED cmd 22 B041/B042/B043/B056/B05C/B061",
+          "artifact_sha256": "a1e27bcde44001454960ad9959d353e2b876993e2d9263ca0f1556cc0726b10d"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7DF",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B041",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "dc_bus_voltage",
+              "name": "DC bus voltage",
+              "offset": 0,
+              "width": 2,
+              "equation": "(A*256+B)*0.25",
+              "unit": "V",
+              "min_value": 0,
+              "max_value": 1000,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7DF",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B042",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 0,
+              "width": 2,
+              "equation": "(A*256+B)*0.25",
+              "unit": "V",
+              "min_value": 0,
+              "max_value": 500,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7DF",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B043",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 0,
+              "width": 2,
+              "equation": "((A*256+B)-40000)*0.025",
+              "unit": "A",
+              "min_value": -400,
+              "max_value": 400,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7DF",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B056",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "hv_battery_temp",
+              "name": "HV battery temperature",
+              "offset": 0,
+              "width": 1,
+              "equation": "A/2-40",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7DF",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B05C",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "battery_coolant_temp",
+              "name": "Battery coolant temperature",
+              "offset": 0,
+              "width": 1,
+              "equation": "A*0.5-40",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 100,
+              "semantic_kind": "coolantTemperature",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7DF",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B061",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "battery_soh",
+              "name": "Battery state of health",
+              "offset": 0,
+              "width": 2,
+              "equation": "(A*256+B)/100",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mg-mg5-ev-2020-2023",
+      "display_name": "MG5 EV (2020–2023)",
+      "description": "Community-corroborated read-only BMS map for the MG5 EV estate. Identity is the OVMS MG5 2020–2023 vehicle type, not WiCAN's MG5/Marvel/ZS union label. Pack voltage, SoH and pack temperature agree across OVMS and WiCAN on physical 7E5/7ED.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (OVMS vehicle_mg5 and WiCAN mg5-marvel-zs.json) on UDS Mode 22, 11-bit, standard ISO-TP. Telltale has not physically validated it on an MG5.",
+        "Physical 7E5/7ED only. This is not the Mk1 ZS EV 781/789 map and not the MG4 functional 7DF/7ED map. Marvel R and ZS EV Mk2 also live on 7E5/7ED with this DID family; do not select this profile as those vehicles. Identity rests on OVMS RegisterVehicle 'MG 5 (2020-2023)', not on WiCAN's union car_model.",
+        "Identity: neither counted source names a type-market, so the catalog records Global. Variant SR 48.8 kWh / LR 57.4 kWh share this DID/header map.",
+        "OVMS docs warn that polling while locked and charging may sound the vehicle alarm; Telltale still requires a parked, confirmed vehicle before any request.",
+        "Temperature formula is A/2-40 (OVMS and WiCAN). Battery-Emulator uses A-100 on the same DID and is recorded as dissent, not averaged.",
+        "Signal-level exclusions: DID B046 (WiCAN *1.035 vs OVMS /10, and the MG5 poll table comments batterySoCPid out); Mode 01 PID 5B; DID B043 current, B041 bus voltage, and B05C coolant (no second agreeing family).",
+        "No OBDb MG5 repository exists."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "MG",
+      "model": "MG5 EV",
+      "year_from": 2020,
+      "year_to": 2023,
+      "variant": "Estate BEV, BMS at 7E5/7ED, 2020-2023",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+        "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "license": "MIT",
+        "path": "vehicle/OVMS.V3/components/vehicle_mgev/src/vehicle_mg5.cpp",
+        "locator": "mg5_obdii_polls[] BMS block on bmsMk2Id 0x7E5 -> 0x7ED, ISOTP_STD; RegisterVehicle MG5 / MG 5 (2020-2023)",
+        "artifact_sha256": "259980744418923c5c1151e56d25bd15c2cf535651fd19b2da6bcedbc42e6b3e"
+      },
+      "secondary_sources": [
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/mg/mg5-marvel-zs.json",
+          "locator": "ATSH7E5;ATCRA7ED; 22B042 HV_V=[B4:B5]*0.25, 22B061 SOH=[B4:B5]/100, 22B0561 BATT_TEMP=(B4/2)-40. car_model is a union label; identity is not taken from it.",
+          "artifact_sha256": "c5d22a1e5a1c4e7f97983ae1ecf050c1fd5707d5f59bbeca152680ea3d145e47"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E5",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B042",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 0,
+              "width": 2,
+              "equation": "(A*256+B)*0.25",
+              "unit": "V",
+              "min_value": 0,
+              "max_value": 500,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7E5",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B061",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "battery_soh",
+              "name": "Battery state of health",
+              "offset": 0,
+              "width": 2,
+              "equation": "(A*256+B)/100",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7E5",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "B056",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "hv_battery_temp",
+              "name": "HV battery temperature",
+              "offset": 0,
+              "width": 1,
+              "equation": "A/2-40",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "mg-zs-ev-au-2021",
@@ -958,7 +1395,7 @@
       "description": "Searchable BEV research entry for MINI Cooper SE.",
       "limitations": [
         "Source applicability uses broad aliases or an upstream profile without Telltale physical-vehicle proof.",
-        "The source requires session-control, raw-CAN, TP2.0, custom initialization, or another protocol path outside the installable catalog safety subset.",
+        "Actively excluded from executable tiers (2026-09 review): every implementation that polls the Cooper SE battery uses ISO 15765-2 extended addressing on the BMW diagnostic gateway — request CAN ID 0x6F1 with target-ECU byte 0x07 as the first data byte, responses on 0x607 prefixed 0xF1, and a flow-control frame that itself carries the 0x07 prefix (ATCEA07 + ATFCSH6F1 + ATFCSD073000xx + ATFCSM1). Four independent source families agree and none shows an 11-bit standard ISO-TP alternative: iternio MiniCooperSE.json @ c45a018 (sha256 6ec79514dc3a11248a5a5853a05034765efcd136e3cb472612f30c26ce697173), OBDb/MINI-Cooper-SE @ 24a057be (hdr 6F1 / rax 607 / eax 07 / fcm1), WiCAN se_electric.json @ bc3ae6d4 (PRO-hardware-only), and OVMS vehicle_minise @ 587a91d7 (ISOTP_EXTADR, I3_ECU_SME_TX 0x06F107). This is the same SME addressing that excluded the BMW i3; the F56 Cooper SE carries that ECU. Telltale’s ELM327 stack has no ATCEA/ATFCSM support, so these commands cannot be sent correctly. F56 only; the 2024+ J01 Cooper E/SE is unattested. The DID layer itself (0xDDBC SoC, 0xDD68 pack V, 0xDD69 pack A, 0xDDC0 temps, 0x6335 SoH) is recorded for a future stack that gains extended addressing.",
         "Research index only; no command from this entry is installed by Telltale."
       ],
       "status": "researchOnly",
@@ -987,7 +1424,8 @@
       "limitations": [
         "The pinned EPA rows establish United States model years 2025–2026 and alternative_vehicle_type=EV; they do not establish battery ECU compatibility.",
         "The source provides no diagnostic request header, responder CAN ID, read service, identifier, payload layout, transport requirement, or battery equation.",
-        "Research index only: commands are intentionally empty and Telltale cannot install this profile."
+        "Research index only: commands are intentionally empty and Telltale cannot install this profile.",
+        "Actively excluded from executable tiers (2026-09 review): the only open BMS map that names Ariya is WiCAN vehicle_profiles/nissan/ariya.json @ bc3ae6d4 (sha256 ffad338366ba24f9b9c0110d765c303df881b0782188e6df6538b4c2b1627784) — ATSP7 + ATSHDADBF1 + ATCRA18DAF1DB + ATFCSM1, PIDs 229002/229003. That is 29-bit ISO-TP (18DADBF1/18DAF1DB) plus custom ELM flow control, the VW ID.4 and Leaf exclusions stacked. OBDb/Nissan-Ariya signalset is empty; its command_support YAML shows 11-bit TPMS/odo only and lists Leaf-style 79B/7BB as unsupported. Official OVMS has vehicle_nissanleaf only. No family shows an 11-bit standard ISO-TP path to pack SoC/V/A. Recorded for a future 29-bit stack: 22 9002 SoC and 22 9003 SoH as [B4:B5]/100 on that 29-bit pair."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -1352,7 +1790,8 @@
       "limitations": [
         "The pinned EPA rows establish United States model years 2023–2025 and alternative_vehicle_type=EV; they do not establish battery ECU compatibility.",
         "The source provides no diagnostic request header, responder CAN ID, read service, identifier, payload layout, transport requirement, or battery equation.",
-        "Research index only: commands are intentionally empty and Telltale cannot install this profile."
+        "Research index only: commands are intentionally empty and Telltale cannot install this profile.",
+        "2026-09 e-TNGA review: a capture-verified 11-bit Mode 22 map exists, but community is blocked by a 7D2 vs 747 header disagreement on DID 1F5B. MY2025 is the facelift in OBDb generations.yaml and command_support lists 221F5B as unsupported, so this EPA 2023-2025 span is not the executable year window. The executable candidate is the experimental sibling toyota-etnga-bev-2022-2024, not this stub."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -1372,6 +1811,104 @@
         "locator": "exact make=Toyota; model=bZ4X; epa_id=45756,47918,49126"
       },
       "commands": []
+    },
+    {
+      "id": "toyota-etnga-bev-2022-2024",
+      "display_name": "Toyota bZ4X / Subaru Solterra (e-TNGA, first gen)",
+      "description": "Capture-verified read-only hybrid-control SoC candidates for first-generation e-TNGA BEVs: DID 1F5B and block SoC 106C at 7D2/7DA, matching the Prius TNGA experimental pattern. Community is blocked by a 7D2 vs 747 header split on the same DID.",
+      "limitations": [
+        "Experimental, not community: two independent families agree the 1F5B formula but disagree on the request header (OBDb 7D2/7DA vs Kezar Battery ECU 747/74F). Header disagreement cannot install at community.",
+        "Single-organization decode for the shipped 7D2 path: OBDb Toyota-bZ4X signalset plus MY2023/2024 real captures. Kezar (OVMS vehicle_toyota_etnga plus etnga-obd) is the independent second family and is recorded, but it polls a different header. kezarjg/etnga-obd and the OVMS fork are one family, not two.",
+        "Year ceiling 2024: OBDb bZ4X command_support lists 7D2.7DA.221F5B as unsupported for MY2025/2026 facelift. OVMS 78/104-cell 2025/26 packs are unvalidated. Solterra MY2025 still lists 1F5B as supported; do not silently extend the executable years.",
+        "OBDb fcm1:true on these commands is capture boilerplate. OVMS polls the same DIDs with ISOTP_STD. Telltale must not require ATFCSM1.",
+        "Pack voltage/current 1F9A is not shipped: header split 747 (etnga-obd) vs 7D2 (OVMS poll table / Prius / bZ4X 2023 command_support).",
+        "Display SoC 1739 vs 1738 DID split on 745 is not shipped.",
+        "747 182E cell block is excluded: aggregating 96 cells is beyond the formula engine.",
+        "Subaru-Solterra OBDb signalset is empty; Solterra identity for this entry is the shared e-TNGA platform plus OVMS docs and Solterra command_support, not a Solterra-specific decode.",
+        "toyota-prius-tnga-2016-2026 is a related HEV on 7D2 and is not a second BEV family.",
+        "The EPA stub toyota-bz4x-us-2023-2025 is identity-only and is not this executable window (its 2025 year sits on the facelift).",
+        "Telltale has not physically validated bZ4X or Solterra."
+      ],
+      "status": "experimental",
+      "evidence": "sourceBacked",
+      "market": "source-unspecified",
+      "make": "Toyota",
+      "model": "bZ4X",
+      "year_from": 2022,
+      "year_to": 2024,
+      "variant": "e-TNGA first generation (96-cell); Subaru Solterra is the same platform",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "unknown",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "OBDb/Toyota-bZ4X",
+        "url": "https://github.com/OBDb/Toyota-bZ4X/tree/fad9ece2987eeccc5c0027921aadb7c8cc72a9aa",
+        "revision": "fad9ece2987eeccc5c0027921aadb7c8cc72a9aa",
+        "license": "CC-BY-SA-4.0",
+        "path": "signalsets/v3/default.json",
+        "locator": "7D2 221F5B / 22106C with tests/test_cases/{2023,2024} real-car captures",
+        "artifact_sha256": "11e8b5957fe6ec9643f6d9afb62494e135aebb9a8c6e737c0ccd873d34b2cfdb"
+      },
+      "commands": [
+        {
+          "request_header": "7D2",
+          "expected_responder": "7DA",
+          "mode": "22",
+          "identifier": "1F5B",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "bms_soc",
+              "name": "HV battery state of charge (BMS)",
+              "offset": 0,
+              "width": 1,
+              "equation": "A*100/255",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7D2",
+          "expected_responder": "7DA",
+          "mode": "22",
+          "identifier": "106C",
+          "payload_length": 3,
+          "signals": [
+            {
+              "id": "block_soc_max",
+              "name": "HV battery charge (max)",
+              "offset": 1,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "block_soc_min",
+              "name": "HV battery charge (min)",
+              "offset": 2,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "volkswagen-egolf-2014-2020",
