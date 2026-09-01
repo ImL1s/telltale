@@ -278,6 +278,29 @@ void main() {
   );
 
   test(
+    'finalized file whose header sessionId mismatches filename is damaged',
+    () async {
+      final telemetry = Directory('${root.path}/telltale-telemetry')
+        ..createSync();
+      final fileId = '4' * 32;
+      final headerId = '5' * 32;
+      File('${telemetry.path}/$fileId.ndjson').writeAsBytesSync(
+        _completeSession(headerId, DateTime.utc(2026, 1, 3)),
+      );
+      final store = TelemetrySessionStore(documentsDirectory: () async => root);
+
+      final index = await store.listSessions();
+
+      expect(index.sessions, isEmpty);
+      expect(index.damaged.single.id, fileId);
+      expect(
+        index.damaged.single.kind,
+        DamagedTelemetryArtifactKind.corrupt,
+      );
+    },
+  );
+
+  test(
     'exact-name non-regular artifacts consume groups and are damaged',
     () async {
       final telemetry = Directory('${root.path}/telltale-telemetry')

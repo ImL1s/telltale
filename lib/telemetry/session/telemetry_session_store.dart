@@ -696,7 +696,10 @@ final class TelemetrySessionStore {
           FileTelemetryChunkSource(finalFile.file),
         );
         final started = parsed.sessionHeader?.startedAtUtc;
-        if (parsed.isValid && parsed.sessionFooter != null && started != null) {
+        if (parsed.isValid &&
+            parsed.sessionFooter != null &&
+            started != null &&
+            parsed.sessionHeader?.sessionId == id) {
           sessions.add(
             TelemetrySessionIndexEntry(
               id: id,
