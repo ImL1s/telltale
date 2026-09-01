@@ -10,22 +10,23 @@ Telltale supports that vehicle or has verified its battery-management system
 
 ## Current catalog snapshot
 
-The bundled **schema v3** snapshot contains **217 source-backed profiles**:
+The bundled **schema v3** snapshot contains **221 source-backed profiles**:
 
 | Powertrain | Profiles | Research-only | Experimental | Installable (community) |
 | --- | ---: | ---: | ---: | ---: |
-| BEV | 85 | 75 | 1 | 9 |
+| BEV | 89 | 75 | 2 | 12 |
 | FCEV | 5 | 5 | 0 | 0 |
 | HEV | 48 | 46 | 2 | 0 |
 | MHEV | 7 | 7 | 0 | 0 |
 | PHEV | 69 | 69 | 0 | 0 |
 | REEV | 3 | 3 | 0 | 0 |
-| **Total** | **217** | **205** | **3** | **9** |
+| **Total** | **221** | **205** | **4** | **12** |
 
 The **205 `researchOnly` profiles are metadata indexes with no commands**.
 They cover identity and discovery evidence but cannot query a vehicle.
 
-The **9 `community` profiles are installable**: MG ZS EV Mk1, Hyundai
+The **12 `community` profiles are installable**: MG ZS EV Mk1, MG4 Electric,
+MG5 EV (2020–2023), BYD Atto 3 (pre-2024.10 firmware), Hyundai
 Ioniq 5 and Ioniq 6 (E-GMP), Kia EV6 (E-GMP), Hyundai Kona Electric (OS),
 Kia Niro EV / e-Niro (DE), Kia Soul EV (SK3, 2020 attested year), Renault
 Zoe Ph1, and VW e-up! gen2. Community is the cross-corroborated tier —
@@ -33,8 +34,9 @@ every installed byte window and formula agrees across at least two mutually
 independent, license-pinned implementations, and the runtime still requires
 a per-connection vehicle confirmation before a single request is sent.
 
-The **3 `experimental` profiles** (Lexus RX450hL 2020 source vehicle, Toyota
-Prius TNGA, Kia EV9) carry pinned read-only commands usable only through the
+The **4 `experimental` profiles** (Lexus RX450hL 2020 source vehicle, Toyota
+Prius TNGA, Kia EV9, Toyota bZ4X / Subaru Solterra e-TNGA first gen) carry
+pinned read-only commands usable only through the
 opt-in one-shot laboratory. Experimental commands cannot be installed,
 enabled for polling, or added to the dashboard. The EV9's only evidence
 family is OBDb, whose signalset marks the pack current unsigned even though
@@ -42,13 +44,18 @@ its own capture then decodes to an absurd 6540 A; the entry ships the
 physically coherent signed decode and records the upstream disagreement.
 
 The 2026-09 review also recorded **transport-level exclusions** directly on
-the affected research entries: BMW i3 (every SME poll needs ISO 15765-2
-extended addressing), VW ID.3/ID.4 (BMS answers only through the 29-bit
-gateway pair), and Renault Zoe Ph2 (29-bit-only DID set) — in all three the
-data is well corroborated and the transport is the blocker. Genesis GV60 and
+the affected research entries: BMW i3 and MINI Cooper SE F56 (every SME poll
+needs ISO 15765-2 extended addressing), VW ID.3/ID.4 (BMS answers only
+through the 29-bit gateway pair), Nissan Ariya (29-bit ISO-TP plus custom
+flow control), and Renault Zoe Ph2 (29-bit-only DID set) — in those cases
+the data is well corroborated and the transport is the blocker. Fiat 500e
+Type 332 stays research-only because no qualifying open DID map exists
+(its SGW blocks writes, not reads). Genesis GV60 and
 Electrified GV70 stay research-only because their single WiCAN source
 attests no model year, and Hyundai Casper/Inster has no usable source at
-all.
+all. Toyota bZ4X/Solterra community is blocked by a 7D2 vs 747 header
+split; the capture-verified 7D2 subset ships as experimental
+`toyota-etnga-bev-2022-2024`.
 
 ## Status and evidence are separate
 
@@ -57,8 +64,8 @@ all.
 | Status | Meaning |
 | --- | --- |
 | `ready` | Reserved for a profile that completed the project's installable acceptance process with a physical-vehicle run. The current snapshot contains none. |
-| `community` | A source-backed read-only mapping whose every formula and byte window is confirmed by at least one source independent of the primary, with pinned artifact hashes. Installable after an install-time identity acknowledgement and a fresh per-connection vehicle confirmation; also eligible for one-shot lab reads. The current snapshot contains nine. |
-| `experimental` | A pinned, bounded candidate eligible only for the opt-in one-shot laboratory. It cannot be installed, polled, persisted as telemetry, or shown on the dashboard. The current snapshot contains three. |
+| `community` | A source-backed read-only mapping whose every formula and byte window is confirmed by at least one source independent of the primary, with pinned artifact hashes. Installable after an install-time identity acknowledgement and a fresh per-connection vehicle confirmation; also eligible for one-shot lab reads. The current snapshot contains twelve. |
+| `experimental` | A pinned, bounded candidate eligible only for the opt-in one-shot laboratory. It cannot be installed, polled, persisted as telemetry, or shown on the dashboard. The current snapshot contains four. |
 | `researchOnly` | A source or identity index with no executable commands. It cannot be installed or query a vehicle. The current snapshot contains 205. |
 
 `evidence` records where an entry's evidence came from; it never overrides the
@@ -70,7 +77,7 @@ status gate:
 | `syntheticRig` | A project-owned deterministic simulator exercised the mapping or transport path. This does not establish real ECU or BMS behaviour. |
 | `physicalVehicle` | A retained physical-vehicle run supports the stated scope. It still applies only to the recorded market, generation, variant, adapter, ECU software, and test conditions. |
 
-All 217 current entries are `sourceBacked`. Running a synthetic ELM327 rig
+All 221 current entries are `sourceBacked`. Running a synthetic ELM327 rig
 through a phone can validate the app, parser, UI, and transport path, but it
 does not turn a profile into `physicalVehicle` evidence and does not prove a
 real PID or formula.
@@ -172,6 +179,33 @@ moved its BMS to 7E5/7ED and is not covered. Range DID B0CE is excluded
 (OVMS ships its decode disabled), and the temperature DIDs carry a recorded
 MG5 disagreement.
 
+### MG4 Electric — community
+
+Primary: OVMS `vehicle_mg4` at the catalog pin, polling the BMS
+functionally at 7DF with responder 7ED. Corroboration: OBDb/MG-MG4 on the
+same headers and DID formulas (bus V, pack V, pack A, pack temp, coolant
+temp, SoH). This is not the Mk1 ZS EV 781/789 map. Mode 01 PID 5B and DID
+B046 are excluded (OVMS MG4 does not poll B046). Temperature floor is
+−40 °C from OVMS, not the ZS EV CSV's 0 °C floor.
+
+### MG5 EV (2020–2023) — community
+
+Primary: OVMS `vehicle_mg5`, physical 7E5/7ED. Corroboration: WiCAN
+`mg5-marvel-zs.json` for pack voltage, SoH and pack temperature only.
+Identity is the OVMS MG5 2020–2023 vehicle type, not WiCAN's
+MG5/Marvel/ZS union label. B046 is excluded (`*1.035` vs `/10`); current,
+bus voltage and coolant have no second agreeing family.
+
+### BYD Atto 3 (pre-2024.10) — community
+
+Primary: OVMS `vehicle_byd_atto3` on 7E7/7EF, little-endian 0005/0008/0009
+and 0032 temperature. Corroboration: WiCAN `byd_202410_update.json` for the
+three little-endian live readings (firmware-bound: before the 2024.10
+update) and sibling `atto3.json` for 0032 only. The short `atto3.json`
+220008 `[B4:B5]` window is not treated as big-endian voltage. DID 1FFC is
+excluded. OVMS development vehicle is Australian RHD; the catalog records
+Global because neither counted source restricts a type-market.
+
 ### Hyundai / Kia BMS family — community
 
 Six profiles share the 7E4/7EC `220101`/`220105` contract with exact 59- and
@@ -217,6 +251,17 @@ confirms 1F5B for 2023–2025), but all licensed evidence is a single
 organization, so the entry is experimental until an independent source
 appears. The forum-circulated 7E2 Mode 21 tables exist only in unlicensed
 sources and are not shipped.
+
+### Toyota bZ4X / Subaru Solterra (e-TNGA) — experimental
+
+Capture-verified SoC (`1F5B`) and block SoC (`106C`) from the hybrid
+control ECU at 7D2/7DA, matching the Prius TNGA experimental pattern and
+pinned MY2023/2024 OBDb captures. Community is blocked: OBDb polls `1F5B`
+on 7D2, while the Kezar family (OVMS `vehicle_toyota_etnga` plus
+`etnga-obd`, one family) polls it on Battery ECU 747. Pack voltage/current
+`1F9A` is not shipped for the same header split. Year ceiling is 2024
+(96-cell, capture-verified); MY2025+ bZ4X lists `1F5B` unsupported. The EPA
+stub `toyota-bz4x-us-2023-2025` stays identity-only.
 
 ### Nissan Leaf and Mitsubishi Outlander PHEV — researched, not shipped
 

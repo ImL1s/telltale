@@ -16,10 +16,10 @@ void main() {
 
       expect(profiles.length, greaterThanOrEqualTo(60));
       expect(snapshot.profileCount, profiles.length);
-      expect(snapshot.profileCount, 217);
-      expect(snapshot.signalCount, 141);
+      expect(snapshot.profileCount, 221);
+      expect(snapshot.signalCount, 157);
       expect(snapshot.countsByPowertrain, {
-        'BEV': 85,
+        'BEV': 89,
         'FCEV': 5,
         'HEV': 48,
         'MHEV': 7,
@@ -71,13 +71,13 @@ void main() {
                 ),
               )
               .toSet(),
-          hasLength(56),
+          hasLength(60),
         );
         expect(
           snapshot.catalog.profiles
               .map((profile) => (profile.source.name, profile.source.revision))
               .toSet(),
-          hasLength(33),
+          hasLength(34),
         );
         expect(
           snapshot.catalog.profiles
@@ -95,7 +95,7 @@ void main() {
                     profile.status == PowertrainProfileStatus.community,
               )
               .length,
-          9,
+          12,
         );
         expect(
           snapshot.catalog.profiles
@@ -104,7 +104,7 @@ void main() {
                     profile.status == PowertrainProfileStatus.experimental,
               )
               .length,
-          3,
+          4,
         );
         for (final profile in snapshot.catalog.profiles) {
           expect(
@@ -142,20 +142,20 @@ void main() {
           (profile) => validator.validateProfile(profile).canInstall,
         );
 
-        expect(
-          installable.map((profile) => profile.id).toSet(),
-          {
-            'mg-zs-ev-au-2021',
-            'hyundai-ioniq5-egmp-2021-2024-community',
-            'kia-ev6-egmp-2022-2024-community',
-            'hyundai-kona-electric-os-2019-2023-community',
-            'kia-niro-ev-de-2019-2022-community',
-            'volkswagen-eup-gen2-2020-2023-community',
-            'renault-zoe-ph1-2012-2019-community',
-            'hyundai-ioniq6-egmp-2022-2024-community',
-            'kia-soul-ev-sk3-2020-community',
-          },
-        );
+        expect(installable.map((profile) => profile.id).toSet(), {
+          'mg-zs-ev-au-2021',
+          'mg-mg4-2022-2026',
+          'mg-mg5-ev-2020-2023',
+          'byd-atto3-2022-2024-community',
+          'hyundai-ioniq5-egmp-2021-2024-community',
+          'kia-ev6-egmp-2022-2024-community',
+          'hyundai-kona-electric-os-2019-2023-community',
+          'kia-niro-ev-de-2019-2022-community',
+          'volkswagen-eup-gen2-2020-2023-community',
+          'renault-zoe-ph1-2012-2019-community',
+          'hyundai-ioniq6-egmp-2022-2024-community',
+          'kia-soul-ev-sk3-2020-community',
+        });
         final metadataOnlyMappings = snapshot.catalog.profiles.where(
           (profile) => {
             'chevrolet-bolt-ev-2017',
@@ -321,6 +321,35 @@ void main() {
         expect(byId['honda-accord-hybrid-us-2018-2026']?.powertrain, 'HEV');
         expect(byId['ford-f150-lightning-4wd-us-2022-2024']?.powertrain, 'BEV');
         expect(byId['kia-ev9-long-range-awd-us-2024-2026']?.commands, isEmpty);
+        expect(
+          byId['mg-mg4-2022-2026']?.status,
+          PowertrainProfileStatus.community,
+        );
+        expect(
+          byId['mg-mg5-ev-2020-2023']?.status,
+          PowertrainProfileStatus.community,
+        );
+        expect(
+          byId['byd-atto3-2022-2024-community']?.status,
+          PowertrainProfileStatus.community,
+        );
+        expect(
+          byId['toyota-etnga-bev-2022-2024']?.status,
+          PowertrainProfileStatus.experimental,
+        );
+        expect(byId['fiat-500e-332-2020-2026']?.commands, isEmpty);
+        expect(
+          byId['mini-cooper-se-2020-2024']?.limitations.join(' '),
+          contains('extended addressing'),
+        );
+        expect(
+          byId['nissan-ariya-fwd-63kwh-us-2025-2026']?.limitations.join(' '),
+          contains('29-bit'),
+        );
+        expect(
+          byId['toyota-bz4x-us-2023-2025']?.limitations.join(' '),
+          contains('toyota-etnga-bev-2022-2024'),
+        );
         expect(
           byId['rivian-r1t-at-dual-large-20-us-2024-2026']?.source.license,
           'U.S.-Government-Public-Domain',

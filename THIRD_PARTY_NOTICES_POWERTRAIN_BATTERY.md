@@ -1,9 +1,9 @@
 # Powertrain battery catalog third-party notices
 
-The bundled schema-v3 powertrain battery catalog is a curated index of **217
-source-backed profiles**: 205 metadata-only `researchOnly` entries, nine
-cross-corroborated installable `community` entries, and three one-shot
-`experimental` entries. The executable subset contains 141 bounded signals.
+The bundled schema-v3 powertrain battery catalog is a curated index of **221
+source-backed profiles**: 205 metadata-only `researchOnly` entries, twelve
+cross-corroborated installable `community` entries, and four one-shot
+`experimental` entries. The executable subset contains 157 bounded signals.
 The current snapshot has no `ready` profile.
 
 Telltale does not claim that any entry is supported. Community entries are
@@ -97,9 +97,10 @@ and data licences.
   `assets/licenses/ovms-MIT.txt`).
 
 OVMS vehicle components corroborate — and for the Ioniq 5, Kona Electric,
-Niro EV and e-up! gen2 community profiles, provide the primary decode
-formulas for — the installed BMS signals (`vehicle_mgev`,
-`vehicle_hyundai_ioniq5`, `vehicle_kianiroev`, `vehicle_vweup`). Per-file
+Niro EV, e-up! gen2, MG4, MG5 EV and Atto 3 community profiles, provide the
+primary decode formulas for — the installed BMS signals (`vehicle_mgev`
+including `vehicle_mg4` and `vehicle_mg5`, `vehicle_hyundai_ioniq5`,
+`vehicle_kianiroev`, `vehicle_vweup`, `vehicle_byd_atto3`). Per-file
 artifact SHA-256 digests are recorded on the affected catalog entries. The
 `vehicle_renaultzoe` component is recorded on the Zoe Ph1 entry as supporting
 material only: its mapping embeds CanZE's CSV verbatim, so it is not counted
@@ -112,8 +113,9 @@ formula dialect; no OVMS code is copied.
   `bc3ae6d4ad09f32b96ca101b31950e4fbf56b825` (GPL-3.0, full text packaged at
   `assets/licenses/GPL-3.0.txt`).
 
-WiCAN vehicle-profile JSON corroborates DID positions and scales for the MG,
-Hyundai/Kia, VW e-up! gen2 and Renault Zoe Ph1 community profiles. The
+WiCAN vehicle-profile JSON corroborates DID positions and scales for the MG
+(ZS EV Mk1, MG5 EV), Hyundai/Kia, VW e-up! gen2, Renault Zoe Ph1 and BYD
+Atto 3 (pre-2024.10) community profiles. The
 adapted data (byte windows and scales, re-expressed in Telltale's formula
 dialect) is attributed here and on each entry; Telltale's app code is
 GPL-3.0 so redistribution terms are compatible.
@@ -144,7 +146,8 @@ windows and scales in its own formula dialect; no CanZE code is copied.
 ## OBDb data — CC BY-SA 4.0
 
 Research-index metadata — and, for the community and Toyota experimental
-profiles, executable signal positions and scales — are adapted from
+profiles (Prius TNGA, e-TNGA BEV, and MG4 corroboration), executable signal
+positions and scales — are adapted from
 individually pinned repositories in the
 [OBDb organization](https://github.com/OBDb). Each affected entry records the
 repository, full commit SHA, source path, and locator; executable entries
@@ -166,6 +169,27 @@ Three Mode 22 commands (`1F5B`, `1F9A`, `106C` on `7D2`/`7DA`) become five
 bounded signals, verified against the repository's pinned real-car captures.
 All licensed evidence is one organization, so the subset is one-shot
 experimental only and cannot be installed.
+
+### Toyota bZ4X / Subaru Solterra e-TNGA experimental subset
+
+- `OBDb/Toyota-bZ4X`, pinned at `fad9ece2987eeccc5c0027921aadb7c8cc72a9aa`;
+  signalset artifact SHA-256
+  `11e8b5957fe6ec9643f6d9afb62494e135aebb9a8c6e737c0ccd873d34b2cfdb`.
+
+Two Mode 22 commands (`1F5B`, `106C` on `7D2`/`7DA`) become three bounded
+signals, verified against the repository's pinned MY2023/2024 real-car
+captures. A second family (Kezar) agrees the `1F5B` formula but polls a
+different header, so the subset stays one-shot experimental and cannot be
+installed. `1F9A` is not shipped.
+
+### MG4 Electric community corroboration
+
+- `OBDb/MG-MG4`, pinned at `271f098e5020ca0be109db68dc277d7bfa962c1e`;
+  signalset artifact SHA-256
+  `a1e27bcde44001454960ad9959d353e2b876993e2d9263ca0f1556cc0726b10d`.
+
+Corroborates the OVMS `vehicle_mg4` 7DF/7ED Mode 22 map. Telltale
+re-expresses the agreed byte windows in its own formula dialect.
 
 ## MIT-licensed upstream research
 
