@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -165,9 +166,19 @@ flutter::EncodableList EnumerateBluetoothSppPorts() {
 
 }  // namespace
 
+// EventSink posts outlive Impl when the window tears down with tasks still
+// queued on the platform thread. Shared delivery state keeps those lambdas
+// from touching a destroyed Impl.
+struct SppDeliveryState {
+  std::mutex mutex;
+  std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> sink;
+  std::atomic<uint64_t> open_generation{0};
+};
+
 class SppSerialChannel::Impl {
  public:
-  explicit Impl(flutter::FlutterEngine* engine) : engine_(engine) {
+  explicit Impl(flutter::FlutterEngine* engine)
+      : engine_(engine), delivery_(std::make_shared<SppDeliveryState>()) {
     auto* messenger = engine_->messenger();
     method_channel_ =
         std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
@@ -182,27 +193,39 @@ class SppSerialChannel::Impl {
         std::make_unique<flutter::EventChannel<flutter::EncodableValue>>(
             messenger, kEventChannel,
             &flutter::StandardMethodCodec::GetInstance());
+    std::weak_ptr<SppDeliveryState> weak_delivery = delivery_;
     event_channel_->SetStreamHandler(
         std::make_unique<flutter::StreamHandlerFunctions<flutter::EncodableValue>>(
-            [this](const flutter::EncodableValue*,
-                   std::unique_ptr<flutter::EventSink<flutter::EncodableValue>>&&
-                       sink)
+            [weak_delivery](
+                const flutter::EncodableValue*,
+                std::unique_ptr<flutter::EventSink<flutter::EncodableValue>>&&
+                    sink)
                 -> std::unique_ptr<
                     flutter::StreamHandlerError<flutter::EncodableValue>> {
-              std::lock_guard<std::mutex> lock(mutex_);
-              sink_ = std::move(sink);
+              if (auto delivery = weak_delivery.lock()) {
+                std::lock_guard<std::mutex> lock(delivery->mutex);
+                delivery->sink = std::move(sink);
+              }
               return nullptr;
             },
-            [this](const flutter::EncodableValue*)
+            [weak_delivery](const flutter::EncodableValue*)
                 -> std::unique_ptr<
                     flutter::StreamHandlerError<flutter::EncodableValue>> {
-              std::lock_guard<std::mutex> lock(mutex_);
-              sink_.reset();
+              if (auto delivery = weak_delivery.lock()) {
+                std::lock_guard<std::mutex> lock(delivery->mutex);
+                delivery->sink.reset();
+              }
               return nullptr;
             }));
   }
 
-  ~Impl() { ClosePort(); }
+  ~Impl() {
+    ClosePort();
+    // Drop the sink while delivery_ may still be held by queued tasks; those
+    // tasks no-op once sink is null / generation advanced.
+    std::lock_guard<std::mutex> lock(delivery_->mutex);
+    delivery_->sink.reset();
+  }
 
  private:
   void HandleMethod(
@@ -308,9 +331,9 @@ class SppSerialChannel::Impl {
       reading_ = true;
       // New open invalidates any platform-thread posts still queued from a
       // prior ReadLoop so they cannot touch the EventSink after reopen.
-      open_generation_.fetch_add(1);
+      delivery_->open_generation.fetch_add(1);
     }
-    const uint64_t generation = open_generation_.load();
+    const uint64_t generation = delivery_->open_generation.load();
     read_thread_ = std::thread([this, generation]() { ReadLoop(generation); });
     result->Success();
   }
@@ -367,7 +390,7 @@ class SppSerialChannel::Impl {
   void ClosePort() {
     // Bump generation before joining so any already-queued platform tasks from
     // this open are dropped, mirroring Linux RFCOMM open_generation.
-    open_generation_.fetch_add(1);
+    delivery_->open_generation.fetch_add(1);
     {
       std::lock_guard<std::mutex> lock(mutex_);
       reading_ = false;
@@ -383,26 +406,33 @@ class SppSerialChannel::Impl {
   }
 
   void PostBytes(uint64_t generation, std::vector<uint8_t> chunk) {
+    // Capture shared delivery — not `this` — so a queued task can outlive
+    // FlutterWindow teardown without use-after-free.
+    auto delivery = delivery_;
     engine_->PostPlatformThreadTask(
-        [this, generation, chunk = std::move(chunk)]() mutable {
-          std::lock_guard<std::mutex> lock(mutex_);
-          if (generation != open_generation_.load() || sink_ == nullptr) {
+        [delivery, generation, chunk = std::move(chunk)]() mutable {
+          std::lock_guard<std::mutex> lock(delivery->mutex);
+          if (generation != delivery->open_generation.load() ||
+              delivery->sink == nullptr) {
             return;
           }
-          sink_->Success(flutter::EncodableValue(chunk));
+          delivery->sink->Success(flutter::EncodableValue(chunk));
         });
   }
 
   void PostReadError(uint64_t generation, DWORD err) {
-    engine_->PostPlatformThreadTask([this, generation, err]() {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (generation != open_generation_.load() || sink_ == nullptr) {
+    auto delivery = delivery_;
+    engine_->PostPlatformThreadTask([delivery, generation, err]() {
+      std::lock_guard<std::mutex> lock(delivery->mutex);
+      if (generation != delivery->open_generation.load() ||
+          delivery->sink == nullptr) {
         return;
       }
       // EventSink::Error takes const T&, not a pointer (unlike
       // MethodResult::Error's optional details overload).
-      sink_->Error("read_failed", "ReadFile failed",
-                   flutter::EncodableValue(static_cast<int64_t>(err)));
+      delivery->sink->Error(
+          "read_failed", "ReadFile failed",
+          flutter::EncodableValue(static_cast<int64_t>(err)));
     });
   }
 
@@ -448,18 +478,15 @@ class SppSerialChannel::Impl {
   }
 
   flutter::FlutterEngine* engine_;
+  std::shared_ptr<SppDeliveryState> delivery_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       method_channel_;
   std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>>
       event_channel_;
-  std::unique_ptr<flutter::EventSink<flutter::EncodableValue>> sink_;
   std::mutex mutex_;
   HANDLE handle_ = INVALID_HANDLE_VALUE;
   std::thread read_thread_;
   bool reading_ = false;
-  // Bumped on close/reopen so platform-thread EventSink posts from a prior
-  // ReadLoop cannot deliver after the port is gone.
-  std::atomic<uint64_t> open_generation_{0};
 };
 
 SppSerialChannel::SppSerialChannel(flutter::FlutterEngine* engine)
