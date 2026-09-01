@@ -8,6 +8,114 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ## Unreleased
 
+### Added
+
+- Three more installable community battery profiles, each cross-corroborated
+  by two mutually independent, license-pinned implementations: MG4 Electric
+  (OVMS × OBDb on functional 7DF/7ED; not the Mk1 ZS EV 781/789 map), MG5 EV
+  2020–2023 (OVMS × WiCAN on physical 7E5/7ED; identity from OVMS, not
+  WiCAN's MG5/Marvel/ZS union; B046 excluded because the scales disagree),
+  and BYD Atto 3 before the 2024.10 firmware (OVMS × WiCAN little-endian
+  0005/0008/0009 on 7E7/7EF; the short `atto3.json` big-endian 0008 window
+  is not used; 0032 temperature uses the sibling WiCAN file).
+- A Toyota bZ4X / Subaru Solterra (e-TNGA, first gen) experimental profile
+  for the one-shot laboratory: capture-verified 7D2/7DA `1F5B` and `106C`.
+  Community is blocked by a 7D2 vs 747 header split on the same DID; `1F9A`
+  is not shipped. Year ceiling 2024.
+- Recorded honest exclusions on the affected research entries — MINI Cooper
+  SE F56 (i3-grade extended addressing), Nissan Ariya (29-bit ISO-TP), Fiat
+  500e Type 332 (no open DID map; SGW is not the read blocker) — plus a
+  pointer from the bZ4X EPA stub to the experimental sibling.
+- A wire-contract regression suite for the new profiles: synthetic
+  source-agreed responses through catalog → installer → engine, including
+  the Atto 3 little-endian voltage (so a big-endian misread cannot hide)
+  and the pinned e-TNGA capture bytes through the one-shot probe path.
+
+### Changed
+
+- Wave-3 review closeout: MG4 pack current is ±400 A (was a copied Mk1
+  ZS EV 200 A bound that would have discarded DC-charge readings as
+  formula errors); pack voltage ceiling 500 V and DC-bus 1000 V follow
+  OBDb. A second ECU answering functional 7DF now has a wire-contract
+  fail-closed test. Atto 3 expected responder 7EF is recorded as the
+  same ISO 15765 request+8 inference as Mk1 ZS EV 789. OVMS lock-while-
+  charging alarm warning is on the MG4/MG5 entries.
+
+- Four more installable community battery profiles, each cross-corroborated
+  by two mutually independent, license-pinned implementations: Hyundai
+  Ioniq 6 (the proven E-GMP 59/43-byte contract, verified byte-for-byte
+  against a pinned real capture), Kia Soul EV (SK3, narrowed to its
+  attested 2020 model year, adding dual-source minimum cell deterioration;
+  its three battery temperatures are excluded because both model-explicit
+  sources decode them unsigned, leaving signed sub-zero semantics without
+  a second source), Renault Zoe Ph1 (CanZE × WiCAN; pack
+  voltage deliberately excluded because it never cleared the two-source
+  independence bar — one DID has a single independent source, the other
+  only a WiCAN window with a recorded indexing bug), and
+  VW e-up! gen2 (OVMS × WiCAN; pack current excluded — two sources, two
+  formulas, no tiebreaker).
+- A Kia EV9 experimental profile for the one-shot laboratory: the only
+  evidence family is OBDb, whose signalset labels pack current unsigned
+  while its own capture then reads an absurd 6540 A; the entry ships the
+  physically coherent signed decode and records the upstream flaw.
+- Recorded honest transport-level exclusions on the affected research
+  entries — BMW i3 (extended addressing), VW ID.3/ID.4 (29-bit gateway),
+  Renault Zoe Ph2 (29-bit-only DIDs) — plus the e-Golf's
+  three-sources-three-formulas SoC and the year-unattested Genesis pair,
+  so the next reviewer starts from evidence instead of a blank map.
+- A wire-contract regression suite for the new profiles: synthetic
+  source-agreed responses driven through catalog → installer → engine,
+  including a charging (negative) Zoe current, an out-of-physics e-up!
+  voltage that must be refused, and the Ioniq 5 capture replayed
+  identically through the separate Ioniq 6 entry.
+
+- A standalone Wear OS shell: the watch runs the same engine and
+  transports and gets glance-first pages — one large cycling dial
+  (speed/RPM/coolant, long-press to disconnect) and a four-number glance
+  grid. Demo connects in one tap; BLE adapters in two. Bluetooth Classic
+  and Wi-Fi are deliberately absent (a watch cannot open RFCOMM), all
+  write paths stay phone-only, and the screen holds awake while
+  connected. A battery page behind the same per-connection vehicle
+  confirmation as the phone is code-complete and widget-tested, but
+  profile installation is phone-only and the watch app is standalone, so
+  no provisioning path reaches it on a real watch yet — it is a
+  follow-up, not a shipped claim. Ships as a `wear` flavor whose
+  manifest declares the watch form factor for the Play Wear OS track;
+  see docs/wearos.md for the verified/unverified boundary.
+- Opened a gated installation path for reviewed battery profiles: `community`
+  is a new cross-corroborated tier whose every formula and byte window must
+  agree across at least two mutually independent, license-pinned sources
+  (disagreements are excluded, not averaged). Installation adds read-only
+  BMS PIDs to the PID manager after an identity acknowledgement, and polling
+  still requires a fresh per-connection vehicle confirmation bound to the
+  connection generation and source revision.
+- Promoted MG ZS EV Mk1 (2019–2021) to installable community status, with
+  OVMS `vehicle_mgev` and WiCAN as recorded corroborating sources and the
+  weakly corroborated range DID removed.
+- Added installable community BMS profiles for Hyundai Ioniq 5 (E-GMP),
+  Kia EV6 (E-GMP), Hyundai Kona Electric (OS), and Kia Niro EV / e-Niro (DE),
+  verified against pinned real-vehicle response captures (exact 59/43-byte
+  payload contracts on 7E4/7EC).
+- Added a Toyota Prius (TNGA) experimental profile — capture-verified SoC,
+  pack voltage/current, and block SoC from the hybrid control ECU — kept at
+  the one-shot tier because all licensed evidence is a single organization.
+- Community profiles are also probe-eligible in the laboratory, so a driver
+  can try one consented read before installing.
+- Installed profiles persist as references only and are rebuilt from the
+  SHA-256-verified catalog on every start; a catalog that withdraws a
+  profile uninstalls it cleanly.
+
+### Documentation
+
+- Recorded why researched vehicles ship nothing: Nissan Leaf and Mitsubishi
+  Outlander PHEV need custom ELM327 flow control the app does not implement;
+  Hyundai Ioniq Electric lacks exact payload-length evidence; the Lexus
+  RX450hL byte windows found no independent confirmation and stay
+  experimental.
+- Registered OVMS (MIT) and GPL-3.0 licence texts with the in-app licence
+  page and extended the third-party notices for the new corroborating
+  sources.
+
 ## 1.0.7+8 — 2026-08-31
 
 ### Added

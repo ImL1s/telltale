@@ -120,6 +120,8 @@ flutter:
     - THIRD_PARTY_NOTICES_POWERTRAIN_BATTERY.md
     - assets/licenses/Apache-2.0.txt
     - assets/licenses/wican-bridge-MIT.txt
+    - assets/licenses/ovms-MIT.txt
+    - assets/licenses/GPL-3.0.txt
     - assets/powertrain_battery/powertrain_battery_catalog.json
     - assets/powertrain_battery/powertrain_battery_catalog.manifest.json
     - assets/vehicle_catalog/us_epa_vehicles.csv

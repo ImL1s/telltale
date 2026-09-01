@@ -24,6 +24,7 @@ import '../../../state/settings.dart';
 import '../../../state/telemetry_sessions.dart';
 import '../../widgets/gauges/dial_gauge.dart';
 import '../../widgets/panel.dart';
+import '../../widgets/powertrain_profile_confirm_banner.dart';
 import '../../widgets/telemetry/telemetry_recorder_panel.dart';
 import '../pids/pid_manager_screen.dart';
 import 'telemetry_workspace.dart';
@@ -81,6 +82,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             SliverToBoxAdapter(
               child: _StatusStrip(connection: connection, snapshot: snapshot),
             ),
+            const SliverToBoxAdapter(child: PowertrainProfileConfirmBanner()),
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(

@@ -20,6 +20,7 @@ import '../telemetry/session/telemetry_session_writer.dart'
 import 'artifact_operation_gate.dart';
 import 'obd_session.dart';
 import 'pid_mutation_lock.dart';
+import 'pid_registry.dart';
 
 const telemetryRecorderDurationLimit = Duration(minutes: 60);
 
@@ -238,6 +239,8 @@ abstract interface class TelemetryRecorderStorage {
   });
 }
 
+bool _pidDefinitionsAlwaysSettled() => true;
+
 /// Owns the Start command, artifact gate, PID lock, acceptance gate, and writer.
 ///
 /// The object is deliberately root-scoped rather than screen-scoped. Every
@@ -252,6 +255,7 @@ final class RootTelemetryRecorder {
     required this.utcNow,
     required this.elapsedUs,
     this.scheduleDurationLimit = _scheduleDurationLimit,
+    this.pidDefinitionsSettled = _pidDefinitionsAlwaysSettled,
   }) {
     _recorder = _newRecorder();
   }
@@ -264,6 +268,7 @@ final class RootTelemetryRecorder {
   final DateTime Function() utcNow;
   final int Function() elapsedUs;
   final TelemetryDurationLimitScheduler scheduleDurationLimit;
+  final bool Function() pidDefinitionsSettled;
   final StreamController<TelemetryRecorderState> _states =
       StreamController<TelemetryRecorderState>.broadcast(sync: true);
 
@@ -313,8 +318,8 @@ final class RootTelemetryRecorder {
     final monoUs = startedElapsed == null
         ? 0
         : (endedElapsed - startedElapsed < 0
-            ? 0
-            : endedElapsed - startedElapsed);
+              ? 0
+              : endedElapsed - startedElapsed);
     final monoEnd = started.add(Duration(microseconds: monoUs));
     if (wall.isBefore(started) || wall.isBefore(monoEnd)) return monoEnd;
     return wall;
@@ -336,6 +341,11 @@ final class RootTelemetryRecorder {
     if (initialFailure != null) {
       _releaseCommand();
       return TelemetryStartResult(initialFailure);
+    }
+
+    if (!pidDefinitionsSettled()) {
+      _releaseCommand();
+      return const TelemetryStartResult(TelemetryStartOutcome.pidLocked);
     }
 
     final ownerId = 'telemetry-start-${++_ownerSequence}';
@@ -946,6 +956,8 @@ final telemetryRecorderControllerProvider = Provider<RootTelemetryRecorder>((
     pidMutationLock: ref.watch(pidMutationLockProvider),
     utcNow: runtime.utcNow,
     elapsedUs: runtime.elapsedUs,
+    pidDefinitionsSettled: () =>
+        ref.read(pidRegistryProvider.notifier).pidDefinitionsReadyForRecording,
   );
   ref.listen(telemetryProvider, (_, next) {
     final value = authoritativeTelemetryValue(next);

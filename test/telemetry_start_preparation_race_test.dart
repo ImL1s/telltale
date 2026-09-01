@@ -283,6 +283,25 @@ void main() {
       expect(artifacts.snapshot.isIdle, isTrue);
       pids.release(pidOwner);
 
+      final waiting = RootTelemetryRecorder(
+        environment: environment,
+        storage: storage,
+        startCommandMutex: command,
+        artifactGate: artifacts,
+        pidMutationLock: pids,
+        utcNow: () => environment.now,
+        elapsedUs: () => environment.elapsedUs,
+        pidDefinitionsSettled: () => false,
+      );
+      expect(
+        (await waiting.start(_request())).outcome,
+        TelemetryStartOutcome.pidLocked,
+        reason: 'Start must not freeze PIDs before catalog restore settles',
+      );
+      expect(command.isLocked, isFalse);
+      expect(artifacts.snapshot.isIdle, isTrue);
+      expect(pids.isLocked, isFalse);
+
       final invalid = TelemetryStartRequest(
         source: TelemetrySource.demo,
         transport: TransportKind.demo,

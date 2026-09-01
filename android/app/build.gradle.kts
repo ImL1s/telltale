@@ -147,6 +147,14 @@ android {
             applicationIdSuffix = ".rig"
             versionNameSuffix = "-rig"
         }
+        create("wear") {
+            dimension = "environment"
+            // Same applicationId as the phone app on purpose: Google Play
+            // ships watch and phone artifacts of one listing under one id,
+            // each declaring its form factor. The manifest overlay in
+            // src/wear/ adds the watch feature and standalone declaration.
+            versionNameSuffix = "-wear"
+        }
     }
 
     buildTypes {

@@ -70,7 +70,44 @@ void main() {
     },
   );
 
+  test(
+    'Start stays locked while stored catalog installs have not restored',
+    () async {
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      SharedPreferences.setMockInitialValues({
+        'powertrain_profile_installs_v1': [
+          '{"profile_id":"pending","vehicle_year":2021}',
+        ],
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final rig = _Rig();
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          telemetryRecorderRuntimeProvider.overrideWithValue(
+            TelemetryRecorderRuntime(
+              environment: rig,
+              storage: rig.storage,
+              utcNow: () => rig.now,
+              elapsedUs: () => rig.elapsedUs,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final controller = container.read(telemetryRecorderControllerProvider);
+      expect(
+        (await controller.start(rig.request)).outcome,
+        TelemetryStartOutcome.pidLocked,
+      );
+      expect(controller.isAccepting, isFalse);
+    },
+  );
+
   test('non-autoDispose root provider eagerly binds heartbeat and boundary streams', () async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
     final rig = _Rig();
     final snapshots = StreamController<TelemetrySnapshot>.broadcast(sync: true);
     final boundaries = StreamController<ObdSessionBoundary>.broadcast(
@@ -79,6 +116,7 @@ void main() {
     final foreground = StreamController<bool>.broadcast(sync: true);
     final container = ProviderContainer(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
         telemetryRecorderRuntimeProvider.overrideWithValue(
           TelemetryRecorderRuntime(
             environment: rig,

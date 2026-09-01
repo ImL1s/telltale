@@ -43,6 +43,48 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            FORM_FACTOR_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                // The platform's own answer, not an inference from window
+                // geometry: a narrow split-screen phone is still a phone.
+                "isWatch" -> result.success(
+                    packageManager.hasSystemFeature(
+                        android.content.pm.PackageManager.FEATURE_WATCH,
+                    ),
+                )
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            SCREEN_WAKE_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "keepOn" -> {
+                    // A driving dashboard that dozes off mid-corner is worse
+                    // than the battery it saves. Scoped to this window only:
+                    // the flag clears with the activity, so a crash cannot
+                    // leave the screen pinned on.
+                    val on = call.argument<Boolean>("on") == true
+                    if (on) {
+                        window.addFlags(
+                            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                        )
+                    } else {
+                        window.clearFlags(
+                            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                        )
+                    }
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     /**
@@ -263,6 +305,8 @@ class MainActivity : FlutterActivity() {
         const val APP_STORAGE_CAPACITY_CHANNEL =
             "com.cbstudio.telltale/app_storage_capacity"
         const val WIFI_ROUTE_CHANNEL = "com.cbstudio.telltale/wifi_route"
+        const val SCREEN_WAKE_CHANNEL = "com.cbstudio.telltale/screen_wake"
+        const val FORM_FACTOR_CHANNEL = "com.cbstudio.telltale/form_factor"
         const val UNKNOWN = "unknown"
     }
 }

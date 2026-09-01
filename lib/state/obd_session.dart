@@ -1466,14 +1466,26 @@ class ObdSession extends Notifier<ObdConnectionState> {
   }
 
   /// Pushes a changed PID selection into the running loop.
-  void syncActivePids(List<Pid> pids) => _engine?.setActivePids(
-    filterAuthorizedPowertrainPids(
+  ///
+  /// The engine receives the authorized profile PID ids alongside the
+  /// filtered set: filtering alone tells it nothing about *why* a profile PID
+  /// is present, and its sink guard must be able to distinguish a
+  /// session-authorized definition from forged queued work.
+  void syncActivePids(List<Pid> pids) {
+    final filtered = filterAuthorizedPowertrainPids(
       pids,
       ref.read(powertrainProfileAuthorizationsProvider),
       connectionGeneration: _generation,
-    ),
-    includeProfileDerivedInputs: ref.read(vehicleProfileProvider).isConfirmed,
-  );
+    );
+    _engine?.setActivePids(
+      filtered,
+      includeProfileDerivedInputs: ref.read(vehicleProfileProvider).isConfirmed,
+      authorizedProfilePidIds: {
+        for (final pid in filtered)
+          if (pid.ownerProfileId != null) pid.id,
+      },
+    );
+  }
 
   /// Performs one consent-bound experimental read outside the polling queue.
   ///

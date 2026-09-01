@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/field_evidence/platform_metadata.dart';
+import 'core/form_factor.dart';
 import 'core/licenses/powertrain_battery_licenses.dart';
 import 'core/share/rig_app_share_platform.dart';
 import 'obd/session_evidence.dart';
@@ -38,6 +39,11 @@ Future<void> main() async {
     buildFlag: isObdTestRigBuild,
     debugMode: kDebugMode,
   );
+
+  // The shell decision (phone router vs wear shell) is made before the first
+  // frame from the platform's own watch-feature answer; geometry never
+  // decides it, because a narrow window is not a wrist.
+  await FormFactor.prefetch();
 
   // Orientation / system chrome are phone/tablet concerns. Calling them on
   // desktop is usually a soft no-op, but it is not the product contract for

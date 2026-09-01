@@ -161,7 +161,219 @@ void main() {
     });
   });
 
-  group('profile polling is disabled', () {
+  group('authorized profile polling', () {
+    test('polls end-to-end and slices each signal window', () async {
+      // Payload after the `62 B0 46` echo: 01 F4 01 18.
+      final soc = _profilePid(
+        signal: 'raw-soc',
+        equation: '(A*256+B)/10',
+        offset: 0,
+        length: 2,
+        responseLength: 4,
+        maxValue: 100,
+      );
+      // Offset into the payload: `A` must mean payload byte 2, not byte 0.
+      // If the engine ever hands the whole payload to this formula, it reads
+      // 0x01F4/4-40 = 85 — plausible, in range and wrong.
+      final temp = _profilePid(
+        signal: 'pack-temp',
+        equation: '(A*256+B)/4-40',
+        offset: 2,
+        length: 2,
+        responseLength: 4,
+        minValue: -40,
+        maxValue: 80,
+      );
+      final transport = _transport([
+        _ecu(payload: const [0x62, 0xB0, 0x46, 0x01, 0xF4, 0x01, 0x18]),
+      ]);
+      final client = Elm327Client(
+        transport,
+        commandTimeout: const Duration(milliseconds: 120),
+      );
+      expect(await client.connect(), isTrue);
+      final engine = PollingEngine(client)
+        ..setActivePids(
+          [soc, temp],
+          includeProfileDerivedInputs: false,
+          authorizedProfilePidIds: {soc.id, temp.id},
+        )
+        ..start();
+      addTearDown(engine.dispose);
+
+      final deadline = DateTime.now().add(const Duration(seconds: 3));
+      while (DateTime.now().isBefore(deadline) &&
+          (!engine.current.readings.containsKey(soc.id) ||
+              !engine.current.readings.containsKey(temp.id)) &&
+          !engine.current.faults.containsKey(soc.id) &&
+          !engine.current.faults.containsKey(temp.id)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await engine.stop();
+
+      expect(engine.current.readings[soc.id]?.value, 50.0);
+      expect(engine.current.readings[temp.id]?.value, 30.0);
+      expect(engine.current.faults[soc.id], isNull);
+      expect(engine.current.faults[temp.id], isNull);
+    });
+
+    test('a 59-byte multi-frame E-GMP payload reassembles and slices', () async {
+      // The Hyundai/Kia 220101 block answers across nine ISO-TP frames. The
+      // engine must reassemble the full payload before slicing, or every
+      // window past byte 3 reads the wrong frame's bytes.
+      final payload = List<int>.filled(59, 0);
+      payload[4] = 0x8E; // soc_bms: 142 / 2 = 71 %
+      payload[12] = 0x1D; // pack_voltage: 0x1D3E / 10 = 748.6 V
+      payload[13] = 0x3E;
+      const soc = Pid(
+        name: 'BMS state of charge',
+        shortName: 'SOC',
+        modeAndPid: '220101',
+        equation: 'A/2',
+        minValue: 0,
+        maxValue: 100,
+        units: '%',
+        header: '7E4',
+        ownerProfileId: 'hyundai-ioniq5-egmp-2021-2024-community',
+        sourceSignalId: 'soc_bms',
+        sourceRevision: '587a91d7',
+        expectedResponseId: '7EC',
+        dataOffsetBytes: 4,
+        dataLengthBytes: 1,
+        responseDataLengthBytes: 59,
+      );
+      final volts = soc.copyWith(
+        name: 'Battery pack voltage',
+        shortName: 'Pack V',
+        equation: '(A*256+B)/10',
+        minValue: 400,
+        maxValue: 810,
+        units: 'V',
+        sourceSignalId: 'pack_voltage',
+        dataOffsetBytes: 12,
+        dataLengthBytes: 2,
+      );
+      final transport = _transport([
+        FakeEcu(
+          name: 'E-GMP BMS',
+          requestId: '7E4',
+          responseId: '7EC',
+          responses: {
+            '220101': [0x62, 0x01, 0x01, ...payload],
+          },
+        ),
+      ]);
+      final client = Elm327Client(
+        transport,
+        commandTimeout: const Duration(milliseconds: 200),
+      );
+      expect(await client.connect(), isTrue);
+      final engine = PollingEngine(client)
+        ..setActivePids(
+          [soc, volts],
+          includeProfileDerivedInputs: false,
+          authorizedProfilePidIds: {soc.id, volts.id},
+        )
+        ..start();
+      addTearDown(engine.dispose);
+
+      final deadline = DateTime.now().add(const Duration(seconds: 3));
+      while (DateTime.now().isBefore(deadline) &&
+          (!engine.current.readings.containsKey(soc.id) ||
+              !engine.current.readings.containsKey(volts.id)) &&
+          !engine.current.faults.containsKey(soc.id) &&
+          !engine.current.faults.containsKey(volts.id)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await engine.stop();
+
+      expect(engine.current.faults[soc.id], isNull);
+      expect(engine.current.faults[volts.id], isNull);
+      expect(engine.current.readings[soc.id]?.value, 71.0);
+      expect(engine.current.readings[volts.id]?.value, 748.6);
+    });
+
+    test('a wrong responder is refused, not decoded', () async {
+      final pid = _profilePid(
+        signal: 'raw-soc',
+        equation: '(A*256+B)/10',
+        offset: 0,
+        length: 2,
+        responseLength: 2,
+        maxValue: 100,
+      );
+      final transport = _transport([
+        _ecu(
+          responseId: '78A',
+          payload: const [0x62, 0xB0, 0x46, 0x01, 0xF4],
+        ),
+      ]);
+      final client = Elm327Client(
+        transport,
+        commandTimeout: const Duration(milliseconds: 120),
+      );
+      expect(await client.connect(), isTrue);
+      final engine = PollingEngine(client)
+        ..setActivePids(
+          [pid],
+          includeProfileDerivedInputs: false,
+          authorizedProfilePidIds: {pid.id},
+        )
+        ..start();
+      addTearDown(engine.dispose);
+
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while (DateTime.now().isBefore(deadline) &&
+          !engine.current.faults.containsKey(pid.id)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await engine.stop();
+
+      expect(engine.current.readings[pid.id], isNull);
+      expect(engine.current.faults[pid.id], isNotNull);
+    });
+
+    test('a source-impossible value is a fault, not telemetry', () async {
+      final pid = _profilePid(
+        signal: 'raw-soc',
+        equation: '(A*256+B)/10',
+        offset: 0,
+        length: 2,
+        responseLength: 2,
+        maxValue: 100,
+      );
+      // 0x07D0 → 200% state of charge: correctly attributed, correctly
+      // framed, and impossible under the source's documented range.
+      final transport = _transport([
+        _ecu(payload: const [0x62, 0xB0, 0x46, 0x07, 0xD0]),
+      ]);
+      final client = Elm327Client(
+        transport,
+        commandTimeout: const Duration(milliseconds: 120),
+      );
+      expect(await client.connect(), isTrue);
+      final engine = PollingEngine(client)
+        ..setActivePids(
+          [pid],
+          includeProfileDerivedInputs: false,
+          authorizedProfilePidIds: {pid.id},
+        )
+        ..start();
+      addTearDown(engine.dispose);
+
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while (DateTime.now().isBefore(deadline) &&
+          !engine.current.faults.containsKey(pid.id)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await engine.stop();
+
+      expect(engine.current.readings[pid.id], isNull);
+      expect(engine.current.faults[pid.id], PidFault.formulaError);
+    });
+  });
+
+  group('unauthorized profile polling is refused', () {
     test('active profile PID is rejected without reaching transport', () async {
       final pid = _profilePid(
         signal: 'raw-soc',
@@ -186,6 +398,57 @@ void main() {
       expect(engine.current.faults[pid.id], PidFault.refusedUnsafeService);
       expect(transport.commandLog, isNot(contains('22B046')));
     });
+
+    test(
+      'an id-colliding forgery cannot borrow an authorized id at the sink',
+      () async {
+        // A profile PID's id is ownerProfileId + sourceSignalId only, so a
+        // forged definition can collide with an authorized id while carrying
+        // its own modeAndPid and header. Membership would wave its bytes on
+        // to the wire under the user's grant; the sink requires the exact
+        // authorized instance.
+        final authorized = _profilePid(
+          signal: 'raw-soc',
+          equation: '(A*256+B)/10',
+          offset: 0,
+          length: 2,
+        );
+        final forged = authorized.copyWith(
+          modeAndPid: '22B0FF',
+          header: '7E0',
+          expectedResponseId: '7E8',
+        );
+        expect(forged.id, authorized.id);
+
+        final scheduler = PriorityScheduler();
+        final transport = _transport([_ecu()]);
+        final client = Elm327Client(
+          transport,
+          commandTimeout: const Duration(milliseconds: 120),
+        );
+        expect(await client.connect(), isTrue);
+        final engine = PollingEngine(client, scheduler: scheduler)
+          ..setActivePids(
+            [authorized],
+            includeProfileDerivedInputs: false,
+            authorizedProfilePidIds: {authorized.id},
+          );
+
+        scheduler.enqueue(forged, forged.priority);
+        engine.start();
+        addTearDown(engine.dispose);
+
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        await engine.stop();
+
+        // The forged command never reaches the wire. The authorized twin may
+        // well have polled successfully in the meantime — they share an id,
+        // so no per-id fault assertion can distinguish them; the command log
+        // can.
+        expect(transport.commandLog, isNot(contains('22B0FF')));
+        expect(transport.commandLog, contains('22B046'));
+      },
+    );
 
     test('forged queued profile PID is rejected at the wire sink', () async {
       final pid = _profilePid(
