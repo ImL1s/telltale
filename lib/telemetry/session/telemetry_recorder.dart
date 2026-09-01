@@ -229,7 +229,7 @@ class TelemetryRecorder {
       throw StateError('Recorder is not ready to complete');
     }
     final footer = TelemetrySessionFooter(
-      endedAtUtc: utcNow().toUtc(),
+      endedAtUtc: _endedAtUtc(),
       terminalReason: state.terminalReason!,
       valueCount: state.valueCount,
       statusCount: state.statusCount,
@@ -238,6 +238,17 @@ class TelemetryRecorder {
     );
     state = state.copyWith(phase: TelemetryRecorderPhase.completed);
     return footer;
+  }
+
+  /// Prefer wall clock, but never persist an end that precedes the header
+  /// start (NTP / manual clock steps during a short session). Fall back to
+  /// start + monotonic elapsed already observed in this recorder.
+  DateTime _endedAtUtc() {
+    final wall = utcNow().toUtc();
+    final started = _header?.startedAtUtc;
+    if (started == null || !wall.isBefore(started)) return wall;
+    final monoUs = _lastElapsedUs < 0 ? 0 : _lastElapsedUs;
+    return started.add(Duration(microseconds: monoUs));
   }
 
   void failStorage({bool restartRequired = false}) {

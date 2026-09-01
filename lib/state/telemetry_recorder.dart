@@ -301,6 +301,23 @@ final class RootTelemetryRecorder {
     );
   }
 
+  /// Prefer wall clock for the footer, but never persist an end that precedes
+  /// the header start after NTP / manual clock steps. Fall back to start plus
+  /// monotonic recording elapsed.
+  DateTime _endedAtUtcForFooter() {
+    final wall = utcNow().toUtc();
+    final started = _recorder.header?.startedAtUtc;
+    if (started == null || !wall.isBefore(started)) return wall;
+    final startedElapsed = _recordingStartedElapsedUs;
+    final endedElapsed = _recordingEndedElapsedUs ?? elapsedUs();
+    final monoUs = startedElapsed == null
+        ? 0
+        : (endedElapsed - startedElapsed < 0
+            ? 0
+            : endedElapsed - startedElapsed);
+    return started.add(Duration(microseconds: monoUs));
+  }
+
   /// Monotonic evidence for policies that must detect even a brief recorder
   /// transition between two asynchronous checkpoints.
   int get lifecycleEpoch => _lifecycleEpoch;
@@ -608,7 +625,7 @@ final class RootTelemetryRecorder {
 
     final state = _recorder.state;
     final footer = TelemetrySessionFooter(
-      endedAtUtc: utcNow().toUtc(),
+      endedAtUtc: _endedAtUtcForFooter(),
       terminalReason: state.terminalReason!,
       valueCount: state.valueCount,
       statusCount: state.statusCount,

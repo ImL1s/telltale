@@ -72,6 +72,28 @@ void main() {
     expect(footer.gapCount, 0);
   });
 
+  test('complete keeps endedAtUtc at or after startedAtUtc after clock skew', () {
+    final started = wall;
+    expect(recorder.prepare(_header(started)), isTrue);
+    expect(recorder.openAcceptance(), isTrue);
+    elapsed = 2_000_000;
+    wall = started.add(const Duration(seconds: 2));
+    recorder.ingest(
+      TelemetrySnapshot(
+        readings: {PidLibrary.engineRpm.id: _rpm(1726, wall)},
+        capturedAt: wall,
+      ),
+    );
+    recorder.stop();
+    wall = started.subtract(const Duration(minutes: 5));
+    final footer = recorder.complete(bytesBeforeFooter: 321);
+    expect(footer.endedAtUtc.isBefore(started), isFalse);
+    expect(
+      footer.endedAtUtc,
+      started.add(const Duration(microseconds: 2_000_000)),
+    );
+  });
+
   test('pre-start values are ignored and heartbeat duplicates deduplicate', () {
     final readingAt = wall;
     recorder.ingest(

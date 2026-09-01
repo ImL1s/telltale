@@ -78,8 +78,11 @@ response echo、exact payload length、有限公式結果與數值範圍檢查�
 Android 是裝置、UI 與 BLE rig 路徑的主要實體測試平台。iOS、macOS、Windows
 與 Linux 有公開編譯閘門與可執行的 Demo／Wi-Fi 路徑；BLE 在每個出貨主機都已
 接上（Linux 走 BlueZ／D-Bus）。它們尚無同等的實體轉接器或實車證據。
-Bluetooth Classic 在 UI 上仍僅 Android：iOS 永久不開放第三方 SPP，桌面 Classic
-在有實機驗證前維持 fail-closed。見
+Bluetooth Classic 在 UI 上對 Android、macOS、Windows、Linux 開放
+（`classicTransportAvailable`）：Android 為已實機驗證的 RFCOMM/SPP；macOS 走
+IOBluetooth RFCOMM；Windows／Linux 分別走藍牙 SPP COM 與 `/dev/rfcomm*`。
+iOS 永久不開放第三方 SPP，Classic 卡片維持灰色。桌面 Classic 已接線，但在
+有通電轉接器實機證據前仍不稱為成熟。見
 [平台支援說明](docs/platform-support.md)。
 
 ## 已實車連線的轉接器
