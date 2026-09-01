@@ -1,7 +1,9 @@
 # Remaining human-only steps (2026-09-01)
 
-Machine-checkable leftovers from the wrap-up goal. None of these
-were claimed done from this session.
+Machine-checkable wrap-up is on `origin/master` (`5b25bae`) and the
+public mirror `telltale` `origin/main` (`9d92848`). The app trees match
+(586 files, SHA-256 equal, publish-only `.github` / `store` / GitHub
+Pages excluded). None of the items below were claimed done.
 
 Attached hardware at check time:
 
@@ -27,8 +29,7 @@ on a real watch until a provisioning / Data Layer path exists.
 
 ## Google Play / store
 
-Preflight that does **not** need a Console click (this tree, after the
-Windows/Linux merge):
+Preflight that does **not** need a Console click (current `origin/master`):
 
 - `pubspec.yaml` `version: 1.0.7+8` (versionCode 8; 1 and 2 are already used)
 - `applicationId` = `com.cbstudio.telltale`
@@ -51,26 +52,31 @@ Still human-only, per `docs/maintainers/release.md` §5–5.5:
 
 Do not treat green `flutter test` / `flutter analyze` as Play-ready.
 
-## GitHub Actions billing (torque PR #3 merge blocker)
+## GitHub Actions billing (private `torque` CI)
 
 Private-repo CI for `feat/multiplatform-windows-linux` at `974a0ce`
 (run https://github.com/ImL1s/torque/actions/runs/33507389391 )
-did **not** execute any job steps. Every check-run annotation is:
+and the follow-up at `e75600f` did **not** execute any job steps.
+Every check-run annotation is:
 
 > The job was not started because recent account payments have failed
 > or your spending limit needs to be increased.
 
-This is not a Flutter failure. Local evidence on that commit:
-`flutter analyze` clean, `flutter test` `+1523 ~15`. Do not merge
-https://github.com/ImL1s/torque/pull/3 while those checks are red,
-and do not treat a billing skip as a green Windows/Linux CI run.
+That is not a Flutter failure. Local evidence on `974a0ce`:
+`flutter analyze` clean, `flutter test` `+1523 ~15`.
 
-Until a maintainer restores Actions billing / spending limit on the
-GitHub account that owns `ImL1s/torque`, PR #3 cannot get a real CI
-signal. Public `telltale` Actions may still run (public minutes).
+Public `telltale` CI on the same app tree (`b323dbe`, run
+https://github.com/ImL1s/telltale/actions/runs/33508166605 )
+was **8/8 green**, including Windows and Linux debug builds plus
+Demo functional smoke. torque PR #3 and telltale PR #2 were merged
+on that proxy. Restore Actions billing / spending limit on the
+GitHub account that owns `ImL1s/torque` before expecting private CI
+to start again. Do not treat a billing skip as a green private run.
 
 ## Dirty main worktree
 
 `/Users/iml1s/Documents/mine/torque` stays dirty at `2503abb` on purpose.
-Do not stash, checkout, or commit it. Telemetry on
-`feat/multiplatform-windows-linux` is the shipping path.
+Do not stash, checkout, or commit it. Shipping telemetry is
+`origin/master` (the Windows/Linux merge). The
+`.worktrees/telemetry-sessions` copy of that dirty tree is a backup
+of unshipped 2503abb WIP, not a second product branch.
