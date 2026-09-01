@@ -1,6 +1,10 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <sddl.h>
 #include <windows.h>
+
+#include <string>
+#include <vector>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -11,8 +15,44 @@ namespace {
 // ArtifactOperationGate alone cannot protect those stores across processes.
 // Use the Global\\ namespace so concurrent Windows terminal/RDS sessions for
 // the same profile cannot each hold a Local\\ mutex while sharing Documents.
-constexpr wchar_t kSingleInstanceMutexName[] =
-    L"Global\\com.cbstudio.telltale.single_instance";
+// The current-user SID is appended so distinct Windows accounts (independent
+// Documents trees) do not contend on one Global object or hit ACCESS_DENIED.
+constexpr wchar_t kSingleInstanceMutexPrefix[] =
+    L"Global\\com.cbstudio.telltale.single_instance.";
+
+std::wstring CurrentUserSidSuffix() {
+  HANDLE token = nullptr;
+  if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token)) {
+    return L"unknown";
+  }
+
+  DWORD bytes = 0;
+  ::GetTokenInformation(token, TokenUser, nullptr, 0, &bytes);
+  if (bytes == 0) {
+    ::CloseHandle(token);
+    return L"unknown";
+  }
+
+  std::vector<unsigned char> buffer(bytes);
+  if (!::GetTokenInformation(token, TokenUser, buffer.data(), bytes, &bytes)) {
+    ::CloseHandle(token);
+    return L"unknown";
+  }
+  ::CloseHandle(token);
+
+  const auto* user = reinterpret_cast<TOKEN_USER*>(buffer.data());
+  LPWSTR sid = nullptr;
+  if (!::ConvertSidToStringSidW(user->User.Sid, &sid) || sid == nullptr) {
+    return L"unknown";
+  }
+  std::wstring suffix(sid);
+  ::LocalFree(sid);
+  return suffix;
+}
+
+std::wstring SingleInstanceMutexName() {
+  return std::wstring(kSingleInstanceMutexPrefix) + CurrentUserSidSuffix();
+}
 
 BOOL CALLBACK FocusExistingTelltaleWindow(HWND hwnd, LPARAM) {
   wchar_t title[256];
@@ -38,8 +78,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     CreateAndAttachConsole();
   }
 
+  const std::wstring mutex_name = SingleInstanceMutexName();
   HANDLE single_instance =
-      ::CreateMutexW(nullptr, TRUE, kSingleInstanceMutexName);
+      ::CreateMutexW(nullptr, TRUE, mutex_name.c_str());
   if (single_instance == nullptr) {
     return EXIT_FAILURE;
   }

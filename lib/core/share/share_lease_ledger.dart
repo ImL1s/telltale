@@ -277,6 +277,7 @@ class ShareLeaseLedger {
     checkpoint?.call();
     final bytes = encode(record);
     final target = File('${root.path}/${record.ledgerFileName}');
+    final temp = File('${target.path}.tmp');
     final targetType = await FileSystemEntity.type(
       target.path,
       followLinks: false,
@@ -285,23 +286,50 @@ class ShareLeaseLedger {
     if (targetType != FileSystemEntityType.notFound) {
       throw const ShareLeaseCollisionException('share ledger collision');
     }
+    final tempType = await FileSystemEntity.type(temp.path, followLinks: false);
+    checkpoint?.call();
+    if (tempType != FileSystemEntityType.notFound) {
+      throw const FileSystemException('share ledger temp collision');
+    }
+    // Stage then rename: a crash after exclusive create but before a full
+    // flush must not leave a zero-length/partial installed `.lease.json`
+    // that reconstructAndClean treats as permanent corruption.
     try {
-      await target.create(exclusive: true);
+      await temp.create(exclusive: true);
     } on FileSystemException {
-      final racedType = await FileSystemEntity.type(
-        target.path,
+      final racedTemp = await FileSystemEntity.type(
+        temp.path,
         followLinks: false,
       );
       checkpoint?.call();
-      if (racedType != FileSystemEntityType.notFound) {
-        throw const ShareLeaseCollisionException('share ledger collision');
+      if (racedTemp != FileSystemEntityType.notFound) {
+        throw const FileSystemException('share ledger temp collision');
       }
       rethrow;
     }
     checkpoint?.call();
-    final sink = await target.open(mode: FileMode.writeOnly);
+    final sink = await temp.open(mode: FileMode.writeOnly);
     checkpoint?.call();
     await _writeFlushAndClose(sink, bytes, checkpoint: checkpoint);
+    final staged = await readFile(
+      temp,
+      expectedId: record.id,
+      checkpoint: checkpoint,
+    );
+    if (staged == null ||
+        jsonEncode(staged.toJson()) != jsonEncode(record.toJson())) {
+      throw const FileSystemException('share ledger verification failed');
+    }
+    final stillAbsent = await FileSystemEntity.type(
+      target.path,
+      followLinks: false,
+    );
+    checkpoint?.call();
+    if (stillAbsent != FileSystemEntityType.notFound) {
+      throw const ShareLeaseCollisionException('share ledger collision');
+    }
+    await temp.rename(target.path);
+    checkpoint?.call();
     final installed = await readFile(
       target,
       expectedId: record.id,

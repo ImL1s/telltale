@@ -617,11 +617,20 @@ bool _boolean(Map<String, Object?> map, String key) {
 }
 
 DateTime _utc(Map<String, Object?> map, String key) {
-  final value = DateTime.tryParse(_string(map, key));
+  final raw = _string(map, key);
+  final value = DateTime.tryParse(raw);
   if (value == null || !value.isUtc) {
     throw TelemetryValidationException('utcRequired', field: key);
   }
-  return value;
+  final utc = value.toUtc();
+  // Reject parseable-but-noncanonical forms (overflowed components that
+  // DateTime normalizes, missing millis, etc.) the same way share-lease
+  // decoding does — otherwise History/replay/export would silently adopt
+  // a different timestamp than the bytes on disk.
+  if (utc.toIso8601String() != raw) {
+    throw TelemetryValidationException('utcRequired', field: key);
+  }
+  return utc;
 }
 
 T _enumValue<T extends Enum>(List<T> values, String name) {

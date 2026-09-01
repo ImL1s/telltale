@@ -95,6 +95,15 @@ class AppShareCache {
               checkpoint: checkpoint,
             );
       if (group.ledger != null && main == null) {
+        // Source-less unreadable/partial `.lease.json` is the initial-install
+        // crash window (create before flush, or pre-atomic-install residue).
+        // Handed-off shares always have a source beside the ledger until
+        // cleanup, so keep fail-closed when a source is present.
+        if (group.source == null) {
+          await _deleteRegular(group.temp, checkpoint);
+          await _deleteRegular(group.ledger, checkpoint);
+          continue;
+        }
         throw const FileSystemException('corrupt share lease');
       }
       if (group.temp != null && temp == null) {

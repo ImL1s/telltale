@@ -35,11 +35,12 @@ void main() {
     },
   );
 
-  test('corrupt staging blocks reconstruction and admission', () async {
+  test('corrupt staging with a source still blocks reconstruction', () async {
     final dir = Directory.systemTemp.createTempSync('share-corrupt');
     addTearDown(() => dir.deleteSync(recursive: true));
-    File('${dir.path}/cccccccccccccccccccccccccccccccc.lease.json')
-        .writeAsStringSync('{bad');
+    const id = 'cccccccccccccccccccccccccccccccc';
+    File('${dir.path}/$id.lease.json').writeAsStringSync('{bad');
+    File('${dir.path}/$id.csv.share').writeAsBytesSync([1]);
     await expectLater(
       AppShareCache(dir).reconstructAndClean(DateTime.utc(2026)),
       throwsA(isA<FileSystemException>()),
@@ -297,5 +298,45 @@ void main() {
     );
     expect(resolved.resultAtUtc, handedAt);
     expect(ShareLeaseRecord.fromJson(resolved.toJson()), isNotNull);
+  });
+
+  test(
+    'source-less partial installed ledger is cleaned as pre-handoff residue',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('share-partial-main');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      const id = 'abababababababababababababababab';
+      // Crash after exclusive create / before flush under the old install path.
+      File('${dir.path}/$id.lease.json').writeAsBytesSync(const []);
+
+      expect(
+        await AppShareCache(dir).reconstructAndClean(DateTime.utc(2026)),
+        isEmpty,
+      );
+      expect(dir.listSync(), isEmpty);
+    },
+  );
+
+  test('install stages through temp before installing the ledger', () async {
+    final dir = Directory.systemTemp.createTempSync('share-atomic-install');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final ledger = ShareLeaseLedger(dir);
+    final allocated = ShareLeaseRecord.allocated(
+      id: 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',
+      sourceKind: ShareSourceKind.pidCsv,
+      createdAtUtc: DateTime.utc(2026),
+    );
+    var sawTemp = false;
+    await ledger.install(allocated, checkpoint: () {
+      if (File('${dir.path}/${allocated.ledgerFileName}.tmp').existsSync()) {
+        sawTemp = true;
+      }
+    });
+    expect(sawTemp, isTrue);
+    expect(File('${dir.path}/${allocated.ledgerFileName}.tmp').existsSync(), isFalse);
+    expect(
+      (await ledger.read(allocated.id))!.state,
+      ShareLeaseState.allocated,
+    );
   });
 }

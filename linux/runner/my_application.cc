@@ -242,6 +242,8 @@ MyApplication* my_application_new() {
   // a share; startup recovery then treated live .ndjson.part files as
   // interrupted sessions. Prefer DEFAULT_FLAGS: FLAGS_NONE is deprecated on
   // current GLib and fails Linux CI under -Werror=deprecated-declarations.
+  // main.cc also holds a user-data flock so distinct D-Bus sessions sharing
+  // $HOME cannot each become primary and race the same artifact stores.
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
                                      G_APPLICATION_DEFAULT_FLAGS, nullptr));

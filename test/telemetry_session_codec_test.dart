@@ -272,4 +272,25 @@ void main() {
       );
     },
   );
+
+  test('decoder rejects parseable but noncanonical UTC timestamps', () {
+    final lines = utf8
+        .decode(TelemetrySessionCodec.encode(fixture()))
+        .trimRight()
+        .split('\n');
+    final header = jsonDecode(lines.first) as Map<String, dynamic>;
+    // DateTime.tryParse normalizes day 32; canonical encoder would never
+    // emit this, so fail closed instead of rewriting History/export dates.
+    header['startedAtUtc'] = '2026-01-32T00:00:00.000Z';
+    lines[0] = jsonEncode(header);
+    final prefix = utf8.encode('${lines.take(3).join('\n')}\n');
+    final footer = jsonDecode(lines[3]) as Map<String, dynamic>;
+    footer['bytesBeforeFooter'] = prefix.length;
+    lines[3] = jsonEncode(footer);
+    final decoded = TelemetrySessionCodec.decode(
+      utf8.encode('${lines.take(4).join('\n')}\n'),
+    );
+    expect(decoded.isSuccess, isFalse);
+    expect(decoded.error!.code, 'utcRequired');
+  });
 }
