@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Watch artifact for the Play Wear OS track. required=true keeps this
+         APK off phones; the phone flavors carry no watch feature at all. -->
+    <uses-feature
+        android:name="android.hardware.type.watch"
+        android:required="true" />
+
+    <application>
+        <!-- Standalone: installs and runs with no phone companion. The watch
+             talks to the BLE adapter itself over the same engine the phone
+             uses. -->
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="true" />
+    </application>
+</manifest>

@@ -10,6 +10,19 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ### Added
 
+- A standalone Wear OS shell: the watch runs the same engine and
+  transports and gets glance-first pages — one large cycling dial
+  (speed/RPM/coolant, long-press to disconnect) and a four-number glance
+  grid. Demo connects in one tap; BLE adapters in two. Bluetooth Classic
+  and Wi-Fi are deliberately absent (a watch cannot open RFCOMM), all
+  write paths stay phone-only, and the screen holds awake while
+  connected. A battery page behind the same per-connection vehicle
+  confirmation as the phone is code-complete and widget-tested, but
+  profile installation is phone-only and the watch app is standalone, so
+  no provisioning path reaches it on a real watch yet — it is a
+  follow-up, not a shipped claim. Ships as a `wear` flavor whose
+  manifest declares the watch form factor for the Play Wear OS track;
+  see docs/wearos.md for the verified/unverified boundary.
 - Opened a gated installation path for reviewed battery profiles: `community`
   is a new cross-corroborated tier whose every formula and byte window must
   agree across at least two mutually independent, license-pinned sources
