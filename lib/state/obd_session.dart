@@ -296,6 +296,12 @@ class ObdSession extends Notifier<ObdConnectionState> {
   /// as opposed to by the user or a failure.
   bool _pausedByLifecycle = false;
 
+  /// True between a lifecycle resume edge and a successful ATRV (or an
+  /// explicit abort). Keeps [isForeground] closed so driving-safety cannot
+  /// authorize record/share/history on pre-pause telemetry while `_pauseNow`
+  /// is still draining or the link probe has not finished.
+  bool _awaitingResumeValidation = false;
+
   /// Whether the app is in the foreground *now*.
   ///
   /// Tracked separately from [_pausedByLifecycle] and from whether an engine
@@ -362,7 +368,11 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // Android/iOS commonly emit hidden followed by paused. Desktop may emit
     // hidden without paused. One synchronous edge must cover both without
     // double-counting the same suspension.
-    if (!_foreground) return;
+    //
+    // Also count a suspension that arrives while resume validation still has
+    // the safety gate closed (`_awaitingResumeValidation`): foreground is
+    // already false there, but the user did leave again mid-ATRV.
+    if (!_foreground && !_awaitingResumeValidation) return;
     // Snapshot first, before anything else this method does.
     //
     // `onPause` is the last callback Android reliably delivers before it is
@@ -375,9 +385,13 @@ class ObdSession extends Notifier<ObdConnectionState> {
     _client?.transcript.recordNote('App 進入背景');
     unawaited(_saveTranscriptSnapshot());
     _pauseEpoch++;
+    _awaitingResumeValidation = false;
+    final wasForeground = _foreground;
     _foreground = false;
     ref.read(powertrainExperimentalProbeConsentsProvider.notifier).revokeAll();
-    if (!_foregroundChanges.isClosed) _foregroundChanges.add(false);
+    if (wasForeground && !_foregroundChanges.isClosed) {
+      _foregroundChanges.add(false);
+    }
     // Synchronously, and before anything is queued. The freeze can start at
     // any moment after this callback returns, and the watchdog's next tick
     // will be delivered after it against a wall clock that moved on — so the
@@ -417,15 +431,24 @@ class ObdSession extends Notifier<ObdConnectionState> {
 
   Future<void> _onAppResumed() {
     if (_foreground) return Future<void>.value();
-    _foreground = true;
-    if (!_foregroundChanges.isClosed) _foregroundChanges.add(true);
     _client?.transcript.recordNote('App 回到前景');
     // First thing, and unconditionally. Timers that came due while the process
     // was frozen are delivered now, in expiry order, and the watchdog's is
     // among them; `_resumeNow` is queued behind the pause still unwinding and
     // is far too late to beat it.
     _client?.markAlive();
-    if (!_pausedByLifecycle) return Future<void>.value();
+    if (!_pausedByLifecycle) {
+      _openForegroundAfterResumeValidation();
+      return Future<void>.value();
+    }
+    // Keep the safety/foreground gate closed until ATRV revalidates the link.
+    // Opening it here while `_pauseNow` was still awaiting `engine.stop()`
+    // left pre-pause stopped-speed readings authoritative for 2–10s, so
+    // record/share/history could mint permits on stale authority. Clear the
+    // retained snapshot immediately; `_pauseNow` will also emit empty when it
+    // finishes because foreground is still closed.
+    _awaitingResumeValidation = true;
+    if (!_telemetry.isClosed) _telemetry.add(const TelemetrySnapshot());
     // Queued behind whatever pause is still unwinding.
     _lifecycleChain = _lifecycleChain.then((_) => _resumeNow());
     return _lifecycleChain;
@@ -436,6 +459,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     final engine = _engine;
     if (client == null || engine == null) {
       _pausedByLifecycle = false;
+      _openForegroundAfterResumeValidation();
       return;
     }
 
@@ -454,23 +478,36 @@ class ObdSession extends Notifier<ObdConnectionState> {
         'ATRV',
         timeout: const Duration(seconds: 3),
       );
-      if (_superseded(generation)) return;
+      if (_superseded(generation)) {
+        _awaitingResumeValidation = false;
+        return;
+      }
       if (!probe.isSuccess) {
+        _openForegroundAfterResumeValidation();
         _handleConnectionLost(generation);
         return;
       }
     } on Object {
+      if (_superseded(generation)) {
+        _awaitingResumeValidation = false;
+        return;
+      }
+      _openForegroundAfterResumeValidation();
       _handleConnectionLost(generation);
       return;
     }
 
-    if (_superseded(generation)) return;
+    if (_superseded(generation)) {
+      _awaitingResumeValidation = false;
+      return;
+    }
     // Backgrounded again while the probe was in flight. Starting here would
     // poll the vehicle from the background — and because the flag used to be
     // cleared on entry rather than here, the next resume would see nothing to
     // recover and skip the link check altogether.
-    if (!_foreground) return;
+    if (!_awaitingResumeValidation) return;
 
+    _openForegroundAfterResumeValidation();
     _pausedByLifecycle = false;
     engine.start();
 
@@ -490,6 +527,15 @@ class ObdSession extends Notifier<ObdConnectionState> {
         engine.discoverResponders(deadline: DateTime.now().add(censusBudget)),
       );
     }
+  }
+
+  /// Opens the foreground/safety gate only after resume validation completes
+  /// (or when no lifecycle-paused engine needs an ATRV check).
+  void _openForegroundAfterResumeValidation() {
+    _awaitingResumeValidation = false;
+    if (_foreground) return;
+    _foreground = true;
+    if (!_foregroundChanges.isClosed) _foregroundChanges.add(true);
   }
 
   Stream<TelemetrySnapshot> get telemetryStream => _telemetry.stream;
@@ -1281,7 +1327,12 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // pause epoch only ever advances, so a lease taken before the pause can
     // never match after it.
     client.mayTransmit = (owner) {
-      if (!_foreground || _superseded(generation)) return false;
+      if (_superseded(generation)) return false;
+      // Resume ATRV must run while the safety/foreground gate is still closed.
+      // Only the unleased probe may talk in that window — leased Mode 04 and
+      // similar work stay refused until validation opens the gate.
+      if (_awaitingResumeValidation) return owner == null;
+      if (!_foreground) return false;
       return switch (owner) {
         null => true,
         int epoch => epoch == _pauseEpoch,

@@ -9,8 +9,10 @@ namespace {
 // Named mutex so a second telltale.exe cannot open the same documents/cache
 // directories while the first is recording or staging a share. Process-local
 // ArtifactOperationGate alone cannot protect those stores across processes.
+// Use the Global\\ namespace so concurrent Windows terminal/RDS sessions for
+// the same profile cannot each hold a Local\\ mutex while sharing Documents.
 constexpr wchar_t kSingleInstanceMutexName[] =
-    L"Local\\com.cbstudio.telltale.single_instance";
+    L"Global\\com.cbstudio.telltale.single_instance";
 
 BOOL CALLBACK FocusExistingTelltaleWindow(HWND hwnd, LPARAM) {
   wchar_t title[256];

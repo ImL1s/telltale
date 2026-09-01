@@ -343,6 +343,12 @@ final class TelemetrySessionReader {
         if (canonicalFooter == null) {
           return const _Decoded.failure(TelemetryReadFailure.schemaViolation);
         }
+        // Producers clamp endedAtUtc ≥ startedAtUtc; reject on-disk regressions
+        // / corruption that would otherwise present a negative duration.
+        if (header != null &&
+            canonicalFooter.endedAtUtc.isBefore(header.startedAtUtc)) {
+          return const _Decoded.failure(TelemetryReadFailure.schemaViolation);
+        }
     }
     return _Decoded.line(
       TelemetryDecodedLine(

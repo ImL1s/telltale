@@ -279,4 +279,23 @@ void main() {
     );
     expect(file.readAsBytesSync(), before);
   });
+
+  test('withResult clamps resultAtUtc to handedOffAtUtc on clock skew', () {
+    final handedAt = DateTime.utc(2026, 1, 1, 0, 1);
+    final handed = ShareLeaseRecord.allocated(
+      id: '56565656565656565656565656565656',
+      sourceKind: ShareSourceKind.pidCsv,
+      createdAtUtc: DateTime.utc(2026),
+    ).handedOff(
+      bytes: 4,
+      fingerprint: 'fnv1a64:af63bc4c8601b62c',
+      atUtc: handedAt,
+    );
+    final resolved = handed.withResult(
+      'dismissed',
+      DateTime.utc(2025, 12, 31),
+    );
+    expect(resolved.resultAtUtc, handedAt);
+    expect(ShareLeaseRecord.fromJson(resolved.toJson()), isNotNull);
+  });
 }

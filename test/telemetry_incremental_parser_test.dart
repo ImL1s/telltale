@@ -167,6 +167,34 @@ void main() {
     expect(result.lines, hasLength(64));
     expect(result.footer?.kind, TelemetryRecordLineKind.footer);
   });
+
+  test('rejects footers whose endedAtUtc precedes the header start', () async {
+    final header = _header('e' * 32);
+    final event = _value(1);
+    final prefix = <int>[
+      ...TelemetrySessionCodec.encodeHeaderLine(header),
+      ...TelemetrySessionCodec.encodeEventLine(event),
+    ];
+    // Bypass the session Footer constructor path used by encodeFooterLine by
+    // hand-building a footer JSON line with an earlier wall clock.
+    final badFooter = utf8.encode(
+      '${jsonEncode(<String, Object?>{
+        'type': 'footer',
+        'endedAtUtc': DateTime.utc(2025, 12, 31).toIso8601String(),
+        'terminalReason': 'user',
+        'valueCount': 1,
+        'statusCount': 0,
+        'gapCount': 0,
+        'bytesBeforeFooter': prefix.length,
+      })}\n',
+    );
+    final result = await const TelemetrySessionReader().read(
+      _SpySource(<int>[...prefix, ...badFooter]),
+    );
+
+    expect(result.failure, TelemetryReadFailure.schemaViolation);
+    expect(result.isValid, isFalse);
+  });
 }
 
 TelemetrySessionHeader _header(String id) => TelemetrySessionHeader(

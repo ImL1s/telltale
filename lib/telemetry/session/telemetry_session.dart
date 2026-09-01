@@ -360,6 +360,14 @@ final class TelemetryEvent {
         throw const TelemetryValidationException('invalidValueEvent');
       }
       _requireUtc(sourceTimestampUtc!, 'sourceTimestampUtc');
+      // Same fail-closed rule as TelemetryRecorder.ingest: a source stamp
+      // after observation makes sample age negative and looks "fresh".
+      if (sourceTimestampUtc!.isAfter(observedAtUtc)) {
+        throw const TelemetryValidationException(
+          'futureDatedSource',
+          field: 'sourceTimestampUtc',
+        );
+      }
       if (status != null) {
         throw const TelemetryValidationException('mixedEvent');
       }

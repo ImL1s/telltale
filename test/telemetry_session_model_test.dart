@@ -253,6 +253,22 @@ void main() {
         throwsA(isA<TelemetryValidationException>()),
       );
       expect(
+        () => TelemetryEvent.value(
+          observedAtUtc: observed,
+          sourceTimestampUtc: observed.add(const Duration(milliseconds: 1)),
+          elapsedUs: 1,
+          pidId: 'rpm',
+          value: 1,
+        ),
+        throwsA(
+          isA<TelemetryValidationException>().having(
+            (e) => e.code,
+            'code',
+            'futureDatedSource',
+          ),
+        ),
+      );
+      expect(
         TelemetryEvent.status(
           observedAtUtc: observed,
           elapsedUs: 2,

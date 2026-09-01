@@ -106,19 +106,29 @@ class ShareLeaseRecord {
     );
   }
 
-  ShareLeaseRecord withResult(String value, DateTime atUtc) => ShareLeaseRecord(
-    id: id,
-    sourceKind: sourceKind,
-    state: state,
-    createdAtUtc: createdAtUtc,
-    bytes: bytes,
-    fingerprint: fingerprint,
-    handedOffAtUtc: handedOffAtUtc,
-    cleanupEligibleAtUtc: cleanupEligibleAtUtc,
-    cleanupDueAtUtc: cleanupDueAtUtc,
-    result: value,
-    resultAtUtc: atUtc.toUtc(),
-  );
+  ShareLeaseRecord withResult(String value, DateTime atUtc) {
+    final handed = handedOffAtUtc?.toUtc();
+    var resultAt = atUtc.toUtc();
+    // Wall-clock steps backward while the share sheet is open must not make
+    // resultAtUtc precede handedOffAtUtc — fromJson rejects that ordering and
+    // the ledger transition would then fail after the UI already opened.
+    if (handed != null && resultAt.isBefore(handed)) {
+      resultAt = handed;
+    }
+    return ShareLeaseRecord(
+      id: id,
+      sourceKind: sourceKind,
+      state: state,
+      createdAtUtc: createdAtUtc,
+      bytes: bytes,
+      fingerprint: fingerprint,
+      handedOffAtUtc: handedOffAtUtc,
+      cleanupEligibleAtUtc: cleanupEligibleAtUtc,
+      cleanupDueAtUtc: cleanupDueAtUtc,
+      result: value,
+      resultAtUtc: resultAt,
+    );
+  }
 
   Map<String, Object?> toJson() => {
     'version': 1,
