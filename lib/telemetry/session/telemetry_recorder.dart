@@ -158,11 +158,12 @@ class TelemetryRecorder {
 
     final started = _header!.startedAtUtc.toUtc();
     final elapsed = _nextElapsed();
+    final derivedObserved = started.add(Duration(microseconds: elapsed));
     var observedAt = utcNow().toUtc();
-    // Wall clock can step backward after the header is written; keep event
-    // timestamps inside the session interval using start + monotonic elapsed.
-    if (observedAt.isBefore(started)) {
-      observedAt = started.add(Duration(microseconds: elapsed));
+    // Any backward wall-clock step (before start or mid-session) must not
+    // emit earlier timestamps than the monotonic session axis.
+    if (observedAt.isBefore(derivedObserved)) {
+      observedAt = derivedObserved;
     }
     for (final entry in _frozen.entries) {
       if (!isAccepting) return;
@@ -174,17 +175,19 @@ class TelemetryRecorder {
           !reading.timestamp.toUtc().isAfter(observedAt) &&
           !reading.isStaleAt(observedAt);
       if (isFresh) {
-        var sourceUtc = reading.timestamp.toUtc();
+        final rawSourceUtc = reading.timestamp.toUtc();
+        // Dedup by the raw sample identity so clamping to session start does
+        // not freeze the lane while polling still produces new readings.
+        final sourceUs = rawSourceUtc.microsecondsSinceEpoch;
+        if (_lastSourceTimestampUs[id] == sourceUs) continue;
+        _lastSourceTimestampUs[id] = sourceUs;
+        var sourceUtc = rawSourceUtc;
         if (sourceUtc.isBefore(started)) {
           sourceUtc = started;
         }
-        final sourceUs = sourceUtc.microsecondsSinceEpoch;
-        // Do not reopen an unavailable lane without a new value line. Wall
-        // clocks can jump backward so an already-recorded sample looks fresh
-        // again; marking available here would invent a second gap when it
-        // ages out, and the strict reader rejects that footer mismatch.
-        if (_lastSourceTimestampUs[id] == sourceUs) continue;
-        _lastSourceTimestampUs[id] = sourceUs;
+        if (sourceUtc.isAfter(observedAt)) {
+          sourceUtc = observedAt;
+        }
         _available[id] = true;
         _lastStatus.remove(id);
         onEvent(

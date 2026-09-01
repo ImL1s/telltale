@@ -87,10 +87,17 @@ class SerialTransport extends BaseObdTransport {
     if (_aborted) throw const TransportException('連線已取消。');
     // Listen before open so a native disconnect/error that races the open
     // await is not dropped on the broadcast inbound controller.
+    var sawTerminalDuringOpen = false;
     _inboundSub = _session.inbound.listen(
       emitBytes,
-      onError: (Object _) => setConnected(false),
-      onDone: () => setConnected(false),
+      onError: (Object _) {
+        sawTerminalDuringOpen = true;
+        setConnected(false);
+      },
+      onDone: () {
+        sawTerminalDuringOpen = true;
+        setConnected(false);
+      },
       cancelOnError: false,
     );
     try {
@@ -105,11 +112,13 @@ class SerialTransport extends BaseObdTransport {
         e,
       );
     }
-    if (_aborted) {
+    if (_aborted || sawTerminalDuringOpen) {
       await _inboundSub?.cancel();
       _inboundSub = null;
       await _session.close();
-      throw const TransportException('連線已取消。');
+      throw TransportException(
+        sawTerminalDuringOpen ? '序列埠在開啟後立即中斷。' : '連線已取消。',
+      );
     }
     setConnected(true);
   }
