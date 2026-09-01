@@ -12,11 +12,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart'
-    show FlutterClassicBluetooth;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/ble_scan_permissions.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../obd/elm327_client.dart';
 import '../../../state/pid_registry.dart' show sharedPreferencesProvider;
@@ -129,68 +128,18 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   /// permanently denied Bluetooth one: it returned true, the plugin failed
   /// later with something unhelpful, and the settings-recovery affordance was
   /// never offered because nothing had recorded the denial.
+  /// The version-aware rule itself lives in [ensureBluetoothPermissions] so
+  /// the wear shell shares it instead of growing a weaker copy; this wrapper
+  /// only maps the outcome onto this screen's recovery affordances.
   Future<bool> _ensurePermissions({required bool forScanning}) async {
-    if (!Platform.isAndroid) return true;
     _permissionPermanentlyDenied = false;
     _deniedPermissionLabel = null;
-
-    final modern = await _bluetoothRuntimePermissionsExist();
-
-    if (modern) {
-      final results = await <Permission>[
-        Permission.bluetoothConnect,
-        if (forScanning) Permission.bluetoothScan,
-      ].request();
-      if (results.values.every((s) => s.isGranted)) return true;
-
-      // The user said no. Location is a different permission for a different
-      // purpose and cannot substitute for this one.
-      _permissionPermanentlyDenied = results.values.any(
-        (s) => s.isPermanentlyDenied,
-      );
-      _deniedPermissionLabel = '藍牙';
-      return false;
-    }
-
-    // Android 11 or below: `BLUETOOTH` and `BLUETOOTH_ADMIN` are install-time,
-    // so a bonded adapter needs nothing further.
-    if (!forScanning) return true;
-
-    // Only discovery is gated on location here, and declaring it in the
-    // manifest is not enough — it is a runtime permission like any other.
-    // Skipping the request makes the scan return an empty list with no error,
-    // which looks exactly like "no adapters nearby".
-    final location = await Permission.locationWhenInUse.request();
-    if (location.isGranted || location.isLimited) return true;
-    _permissionPermanentlyDenied = location.isPermanentlyDenied;
-    _deniedPermissionLabel = '位置';
+    final result = await ensureBluetoothPermissions(forScanning: forScanning);
+    if (result.granted) return true;
+    _permissionPermanentlyDenied =
+        result.outcome == BlePermissionOutcome.permanentlyDenied;
+    _deniedPermissionLabel = result.deniedLabel;
     return false;
-  }
-
-  /// The first Android release with `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`.
-  static const int _androidS = 31;
-
-  /// Whether this Android version defines the runtime Bluetooth permissions.
-  ///
-  /// Asked of the platform, because the previous attempt inferred it from how
-  /// a permission request behaved and the inference was simply wrong. It
-  /// claimed — with a citation — that `permission_handler` reports a request
-  /// for a permission the OS does not define as *denied*. It reports it as
-  /// **granted**: `requestPermissions` consults `determinePermissionStatus`
-  /// first and `continue`s when that says granted, so the denied branch the
-  /// comment pointed at is unreachable.
-  ///
-  /// The consequence was that everything below Android 12 took the "already
-  /// granted" path and the location request was dead code. Listing a bonded
-  /// adapter was fine — it needs no location on any version — but BLE scanning
-  /// there *is* gated behind location, so the scan returned an empty list with
-  /// no error, which looks exactly like no adapters nearby.
-  Future<bool> _bluetoothRuntimePermissionsExist() async {
-    final sdk = await FlutterClassicBluetooth().androidSdkInt();
-    // Unknown means an Android where the plugin could not answer; assume the
-    // modern behaviour rather than asking for location on a device that
-    // declares `neverForLocation`.
-    return sdk == null || sdk >= _androidS;
   }
 
   /// Set when the user has chosen "don't ask again". Every later request is

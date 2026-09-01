@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/field_evidence/platform_metadata.dart';
+import 'core/form_factor.dart';
 import 'core/licenses/powertrain_battery_licenses.dart';
 import 'state/pid_registry.dart';
 
@@ -23,6 +24,11 @@ Future<void> main() async {
   // fallback cannot prove field-versus-rig identity, so evidence then fails
   // closed as simulated rather than claiming physical provenance.
   await prefetchPlatformMetadata();
+
+  // The shell decision (phone router vs wear shell) is made before the first
+  // frame from the platform's own watch-feature answer; geometry never
+  // decides it, because a narrow window is not a wrist.
+  await FormFactor.prefetch();
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
