@@ -174,9 +174,16 @@ class BleTransport extends BaseObdTransport {
   ///
   /// Each advertisement arrives as its own event, including repeats from an
   /// adapter already seen, so a consumer must upsert by id rather than append.
+  ///
+  /// Only the newest scan generation may call the global `stopScan` — an
+  /// older cancelled startup that loses the race after `startScan` must not
+  /// tear down a newer screen's radio session.
+  static int _scanGeneration = 0;
+
   static Stream<(String, String, int?)> scanEntries({
     Duration timeout = const Duration(seconds: 12),
   }) {
+    final generation = ++_scanGeneration;
     final controller = StreamController<(String, String, int?)>();
     StreamSubscription<BleDevice>? resultsSub;
     Timer? deadline;
@@ -186,10 +193,12 @@ class BleTransport extends BaseObdTransport {
       cancelled = true;
       deadline?.cancel();
       await resultsSub?.cancel();
-      try {
-        if (await UniversalBle.isScanning()) await UniversalBle.stopScan();
-      } on Object {
-        // Radio already stopped or turned off; nothing to unwind.
+      if (generation == _scanGeneration) {
+        try {
+          if (await UniversalBle.isScanning()) await UniversalBle.stopScan();
+        } on Object {
+          // Radio already stopped or turned off; nothing to unwind.
+        }
       }
       if (!controller.isClosed) await controller.close();
     }

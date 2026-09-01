@@ -1,8 +1,11 @@
 #include "my_application.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/statvfs.h>
+#include <unistd.h>
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -17,7 +20,30 @@ struct _MyApplication {
   char** dart_entrypoint_arguments;
   FlMethodChannel* capacity_channel;
   SppSerialChannel* spp_serial_channel;
+  // Held only by the D-Bus primary so cross-session secondaries sharing
+  // $HOME cannot race Documents/cache recovery. Remotes must not take it —
+  // they need to reach g_application_run activation forwarding first.
+  int single_instance_lock_fd;
 };
+
+static int acquire_single_instance_lock() {
+  g_autofree gchar* dir =
+      g_build_filename(g_get_user_data_dir(), APPLICATION_ID, nullptr);
+  if (g_mkdir_with_parents(dir, 0700) != 0 && errno != EEXIST) {
+    return -1;
+  }
+  g_autofree gchar* path =
+      g_build_filename(dir, "single_instance.lock", nullptr);
+  const int fd = open(path, O_RDWR | O_CREAT, 0600);
+  if (fd < 0) {
+    return -1;
+  }
+  if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+    close(fd);
+    return -1;
+  }
+  return fd;
+}
 
 static void app_storage_capacity_method_call_cb(FlMethodChannel* channel,
                                                 FlMethodCall* method_call,
@@ -181,6 +207,25 @@ static gboolean my_application_local_command_line(GApplication* application,
     return TRUE;
   }
 
+  // Same-session relaunches are remotes: let GApplication forward activate so
+  // my_application_activate can present the existing window. Only the primary
+  // takes the user-data flock that blocks a second session-bus primary on the
+  // same $HOME from racing artifact recovery.
+  if (!g_application_get_is_remote(application)) {
+    if (self->single_instance_lock_fd >= 0) {
+      close(self->single_instance_lock_fd);
+      self->single_instance_lock_fd = -1;
+    }
+    self->single_instance_lock_fd = acquire_single_instance_lock();
+    if (self->single_instance_lock_fd < 0) {
+      g_warning(
+          "Another Telltale process already owns the artifact stores for "
+          "this account");
+      *exit_status = 0;
+      return TRUE;
+    }
+  }
+
   g_application_activate(application);
   *exit_status = 0;
 
@@ -214,6 +259,10 @@ static void my_application_dispose(GObject* object) {
     spp_serial_channel_destroy(self->spp_serial_channel);
     self->spp_serial_channel = nullptr;
   }
+  if (self->single_instance_lock_fd >= 0) {
+    close(self->single_instance_lock_fd);
+    self->single_instance_lock_fd = -1;
+  }
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
 
@@ -228,6 +277,7 @@ static void my_application_class_init(MyApplicationClass* klass) {
 
 static void my_application_init(MyApplication* self) {
   self->spp_serial_channel = nullptr;
+  self->single_instance_lock_fd = -1;
 }
 
 MyApplication* my_application_new() {
@@ -242,8 +292,9 @@ MyApplication* my_application_new() {
   // a share; startup recovery then treated live .ndjson.part files as
   // interrupted sessions. Prefer DEFAULT_FLAGS: FLAGS_NONE is deprecated on
   // current GLib and fails Linux CI under -Werror=deprecated-declarations.
-  // main.cc also holds a user-data flock so distinct D-Bus sessions sharing
-  // $HOME cannot each become primary and race the same artifact stores.
+  // The primary also holds a user-data flock (see local_command_line) so
+  // distinct D-Bus sessions sharing $HOME cannot each become primary and race
+  // the same artifact stores — remotes still forward activate first.
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
                                      G_APPLICATION_DEFAULT_FLAGS, nullptr));

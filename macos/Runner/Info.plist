@@ -28,6 +28,8 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Telltale 需要區域網路權限，才能連接以 Wi-Fi 熱點運作的 ELM327 轉接器。</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
