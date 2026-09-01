@@ -85,9 +85,19 @@ class SerialTransport extends BaseObdTransport {
   @override
   Future<void> connect() async {
     if (_aborted) throw const TransportException('連線已取消。');
+    // Listen before open so a native disconnect/error that races the open
+    // await is not dropped on the broadcast inbound controller.
+    _inboundSub = _session.inbound.listen(
+      emitBytes,
+      onError: (Object _) => setConnected(false),
+      onDone: () => setConnected(false),
+      cancelOnError: false,
+    );
     try {
       await _session.open(portName: portName, baudRate: baudRate);
     } on Object catch (e) {
+      await _inboundSub?.cancel();
+      _inboundSub = null;
       throw TransportException(
         '無法開啟 $displayName（$portName）。'
         '請確認系統已為該藍牙轉接器建立序列埠'
@@ -96,15 +106,11 @@ class SerialTransport extends BaseObdTransport {
       );
     }
     if (_aborted) {
+      await _inboundSub?.cancel();
+      _inboundSub = null;
       await _session.close();
       throw const TransportException('連線已取消。');
     }
-    _inboundSub = _session.inbound.listen(
-      emitBytes,
-      onError: (Object _) => setConnected(false),
-      onDone: () => setConnected(false),
-      cancelOnError: false,
-    );
     setConnected(true);
   }
 

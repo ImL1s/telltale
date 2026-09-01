@@ -156,8 +156,14 @@ class TelemetryRecorder {
       }
     }
 
-    final observedAt = utcNow().toUtc();
+    final started = _header!.startedAtUtc.toUtc();
     final elapsed = _nextElapsed();
+    var observedAt = utcNow().toUtc();
+    // Wall clock can step backward after the header is written; keep event
+    // timestamps inside the session interval using start + monotonic elapsed.
+    if (observedAt.isBefore(started)) {
+      observedAt = started.add(Duration(microseconds: elapsed));
+    }
     for (final entry in _frozen.entries) {
       if (!isAccepting) return;
       final id = entry.key;
@@ -168,7 +174,10 @@ class TelemetryRecorder {
           !reading.timestamp.toUtc().isAfter(observedAt) &&
           !reading.isStaleAt(observedAt);
       if (isFresh) {
-        final sourceUtc = reading.timestamp.toUtc();
+        var sourceUtc = reading.timestamp.toUtc();
+        if (sourceUtc.isBefore(started)) {
+          sourceUtc = started;
+        }
         final sourceUs = sourceUtc.microsecondsSinceEpoch;
         // Do not reopen an unavailable lane without a new value line. Wall
         // clocks can jump backward so an already-recorded sample looks fresh

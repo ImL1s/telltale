@@ -304,6 +304,14 @@ class SppSerialChannel::Impl {
     dcb.Parity = NOPARITY;
     dcb.StopBits = ONESTOPBIT;
     dcb.fBinary = TRUE;
+    // ELM327 SPP links are raw 38400 8N1. Inherited CTS/DSR/XON settings from a
+    // previous Windows COM config can stall writes even when baud looks right.
+    dcb.fOutxCtsFlow = FALSE;
+    dcb.fOutxDsrFlow = FALSE;
+    dcb.fDsrSensitivity = FALSE;
+    dcb.fTXContinueOnXoff = FALSE;
+    dcb.fOutX = FALSE;
+    dcb.fInX = FALSE;
     dcb.fDtrControl = DTR_CONTROL_ENABLE;
     dcb.fRtsControl = RTS_CONTROL_ENABLE;
     if (!SetCommState(handle, &dcb)) {

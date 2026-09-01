@@ -1025,6 +1025,7 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
   if (!result.isValid ||
       header == null ||
       footer == null ||
+      header!.sessionId != sessionId ||
       invalidSelection ||
       afterType != FileSystemEntityType.file ||
       before.size != after.size ||
