@@ -126,6 +126,7 @@ final class TelemetryRecoveryInspectionItem {
     required this.valueCount,
     required this.statusCount,
     required this.gapCount,
+    this.startedAtUtc,
   });
 
   final String id;
@@ -135,6 +136,9 @@ final class TelemetryRecoveryInspectionItem {
   final int valueCount;
   final int statusCount;
   final int gapCount;
+  /// Present for recover-and-install plans so recovery can clamp footer end
+  /// times that would otherwise precede the durable header start.
+  final DateTime? startedAtUtc;
 }
 
 final class TelemetryRecoveryInspection {
@@ -858,6 +862,10 @@ final class TelemetrySessionStore {
           valueCount: parsed.valueCount,
           statusCount: parsed.statusCount,
           gapCount: parsed.gapCount,
+          startedAtUtc: classification ==
+                  TelemetryRecoveryClassification.recoverAndInstall
+              ? parsed.sessionHeader?.startedAtUtc
+              : null,
         ),
       );
     }
@@ -943,9 +951,14 @@ final class TelemetrySessionStore {
       }
       if (item.classification ==
           TelemetryRecoveryClassification.recoverAndInstall) {
+        final wall = _nowUtc();
+        final started = item.startedAtUtc;
+        final endedAtUtc = started == null || !wall.isBefore(started)
+            ? wall
+            : started;
         final footer = TelemetrySessionCodec.encodeFooterLine(
           TelemetrySessionFooter(
-            endedAtUtc: _nowUtc(),
+            endedAtUtc: endedAtUtc,
             terminalReason: TelemetryTerminalReason.recoveredAfterInterruption,
             valueCount: item.valueCount,
             statusCount: item.statusCount,

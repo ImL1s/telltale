@@ -452,7 +452,7 @@ class AppShareCoordinator {
         final handedOffRecord = record!.handedOff(
           bytes: written.bytes,
           fingerprint: written.fingerprint,
-          atUtc: nowUtc(),
+          atUtc: _leaseTimestampAtOrAfter(record!.createdAtUtc, nowUtc()),
         );
         _check(permit);
         final allocatedRecord = record!;
@@ -518,7 +518,10 @@ class AppShareCoordinator {
         try {
           await ledger.transition(
             expected: record!,
-            next: record!.withResult(result.name, nowUtc()),
+            next: record!.withResult(
+              result.name,
+              _leaseTimestampAtOrAfter(record!.handedOffAtUtc, nowUtc()),
+            ),
           );
         } on ShareResourceUncontainedException {
           rethrow;
@@ -556,7 +559,7 @@ class AppShareCoordinator {
                   expected: record!,
                   next: record!.withResult(
                     'notInvokedSafetyChanged.${error.cause.name}',
-                    nowUtc(),
+                    _leaseTimestampAtOrAfter(record!.handedOffAtUtc, nowUtc()),
                   ),
                 );
           } on ShareResourceUncontainedException {
@@ -616,6 +619,15 @@ class AppShareCoordinator {
   void _check(SharePreparationPermit permit) {
     final validation = policy.validate(permit);
     if (!validation.isValid) throw _SharePermitException(validation.cause!);
+  }
+
+  /// Prefer wall clock for lease transitions, but never persist a timestamp
+  /// earlier than the preceding durable lease timestamp (NTP / clock steps).
+  static DateTime _leaseTimestampAtOrAfter(DateTime? earlier, DateTime wall) {
+    final candidate = wall.toUtc();
+    if (earlier == null) return candidate;
+    final floor = earlier.toUtc();
+    return candidate.isBefore(floor) ? floor : candidate;
   }
 
   static ShareError _errorFor(SharePermitCause cause) => switch (cause) {
