@@ -157,6 +157,9 @@ class TelemetryRecorder {
     }
 
     final started = _header!.startedAtUtc.toUtc();
+    // [elapsedUs] must be session-relative (µs since acceptance), not a wall
+    // or epoch clock. Absolute clocks make derivedObserved jump decades ahead
+    // and every reading looks stale under isStaleAt.
     final elapsed = _nextElapsed();
     final derivedObserved = started.add(Duration(microseconds: elapsed));
     var observedAt = utcNow().toUtc();

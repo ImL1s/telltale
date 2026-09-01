@@ -713,9 +713,20 @@ final class RootTelemetryRecorder {
 
   TelemetryRecorder _newRecorder() => TelemetryRecorder(
     utcNow: utcNow,
-    elapsedUs: elapsedUs,
+    // Wall/epoch clocks are fine for duration limits and progress, but the
+    // session recorder treats elapsedUs as microseconds since acceptance —
+    // adding an absolute epoch timestamp onto startedAtUtc invents a future
+    // observation time and marks every live reading stale.
+    elapsedUs: _sessionElapsedUs,
     onEvent: _appendEventSynchronously,
   );
+
+  int _sessionElapsedUs() {
+    final started = _recordingStartedElapsedUs;
+    if (started == null) return 0;
+    final delta = elapsedUs() - started;
+    return delta < 0 ? 0 : delta;
+  }
 
   void _appendEventSynchronously(TelemetryEvent event) {
     final result = _writer!.tryAppendEvent(
