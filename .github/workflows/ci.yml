@@ -166,7 +166,10 @@ jobs:
             test/wifi_transport_test.dart \
             test/telemetry_heartbeat_test.dart \
             test/app_wakelock_test.dart \
-            test/remembered_adapter_navigation_test.dart
+            test/remembered_adapter_navigation_test.dart \
+            test/macos_classic_iobluetooth_contract_test.dart \
+            test/serial_transport_test.dart \
+            test/harness_catalog_test.dart
 
       # Unsigned desktop archive from the debug tree already built above.
       # Release DMG + notarization need Apple secrets — see tool/packaging/.
@@ -212,7 +215,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -y
           # libbluetooth-dev: flutter_classic_bluetooth's Linux CMake hard-requires
-          # BlueZ headers even though Classic SPP remains Android-only in the UI.
+          # BlueZ headers at configure time (product Classic path is RFCOMM TTY).
           sudo apt-get install -y \
             clang cmake ninja-build pkg-config \
             libgtk-3-dev liblzma-dev libstdc++-12-dev \
@@ -238,7 +241,10 @@ jobs:
             test/wifi_transport_test.dart \
             test/telemetry_heartbeat_test.dart \
             test/app_wakelock_test.dart \
-            test/remembered_adapter_navigation_test.dart
+            test/remembered_adapter_navigation_test.dart \
+            test/macos_classic_iobluetooth_contract_test.dart \
+            test/serial_transport_test.dart \
+            test/harness_catalog_test.dart
 
       - name: Package unsigned Linux debug tarball
         run: |
@@ -299,7 +305,10 @@ jobs:
             test/wifi_transport_test.dart \
             test/telemetry_heartbeat_test.dart \
             test/app_wakelock_test.dart \
-            test/remembered_adapter_navigation_test.dart
+            test/remembered_adapter_navigation_test.dart \
+            test/macos_classic_iobluetooth_contract_test.dart \
+            test/serial_transport_test.dart \
+            test/harness_catalog_test.dart
 
       - name: Package unsigned Windows debug zip
         shell: pwsh
@@ -437,7 +446,11 @@ jobs:
             tool/ble_test_rig/test_process_identity.py \
             tool/ble_test_rig/test_run_controller.py \
             tool/obd_test_rig/chaos_proxy.py \
-            tool/obd_test_rig/test_chaos_proxy.py
+            tool/obd_test_rig/test_chaos_proxy.py \
+            tool/field_bt_verify/probe_acl.py \
+            tool/field_bt_verify/test_probe_acl.py \
+            tool/desktop_bt_probe/probe.py \
+            tool/desktop_bt_probe/test_probe.py
 
       - name: Unit tests
         env:
@@ -447,6 +460,10 @@ jobs:
             -s tool/ble_test_rig -p 'test_*.py' -v
           python3 -m unittest discover \
             -s tool/obd_test_rig -p 'test_*.py' -v
+          python3 -m unittest discover \
+            -s tool/field_bt_verify -p 'test_*.py' -v
+          python3 -m unittest discover \
+            -s tool/desktop_bt_probe -p 'test_*.py' -v
 
   oracle:
     name: third-party ELM327 simulator
