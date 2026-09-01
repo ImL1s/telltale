@@ -35,7 +35,8 @@
       "description": "Searchable BEV research entry for BMW i3 BEV 60 Ah.",
       "limitations": [
         "OBDb coverage is retained as attribution/search metadata; arbitrary bit-packed or protocol-specific commands are not imported.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): every SME battery poll requires ISO 15765-2 extended addressing — target address 0x07 as the first data byte of request 0x6F1, tester address 0xF1 leading every 0x607 response frame, and a flow-control frame that itself carries the 0x07 prefix. Three independent pinned implementations agree (OVMS vehicle_bmwi3 @ 587a91d7, dala Battery-Emulator @ 8e63222e, WiCAN i3 profile @ bc3ae6d4 — the last marked PRO-hardware-only), and none shows an 11-bit standard ISO-TP alternative. Telltale’s ELM327 stack has no ATCEA/ATFCSM support, so these commands cannot be sent correctly. The DID layer itself (0xDDBC SoC, 0xDD68 pack V, 0xDD69 pack A, 0xDDC0 temps, 0x6335 SoH) is cross-corroborated and recorded for a future stack that gains extended addressing."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -62,7 +63,8 @@
       "description": "Searchable BEV research entry for BMW i3 BEV 94 Ah.",
       "limitations": [
         "OBDb coverage is retained as attribution/search metadata; arbitrary bit-packed or protocol-specific commands are not imported.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): every SME battery poll requires ISO 15765-2 extended addressing — target address 0x07 as the first data byte of request 0x6F1, tester address 0xF1 leading every 0x607 response frame, and a flow-control frame that itself carries the 0x07 prefix. Three independent pinned implementations agree (OVMS vehicle_bmwi3 @ 587a91d7, dala Battery-Emulator @ 8e63222e, WiCAN i3 profile @ bc3ae6d4 — the last marked PRO-hardware-only), and none shows an 11-bit standard ISO-TP alternative. Telltale’s ELM327 stack has no ATCEA/ATFCSM support, so these commands cannot be sent correctly. The DID layer itself (0xDDBC SoC, 0xDD68 pack V, 0xDD69 pack A, 0xDDC0 temps, 0x6335 SoH) is cross-corroborated and recorded for a future stack that gains extended addressing."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -89,7 +91,8 @@
       "description": "Searchable BEV research entry for BMW i3 BEV 120 Ah.",
       "limitations": [
         "OBDb coverage is retained as attribution/search metadata; arbitrary bit-packed or protocol-specific commands are not imported.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): every SME battery poll requires ISO 15765-2 extended addressing — target address 0x07 as the first data byte of request 0x6F1, tester address 0xF1 leading every 0x607 response frame, and a flow-control frame that itself carries the 0x07 prefix. Three independent pinned implementations agree (OVMS vehicle_bmwi3 @ 587a91d7, dala Battery-Emulator @ 8e63222e, WiCAN i3 profile @ bc3ae6d4 — the last marked PRO-hardware-only), and none shows an 11-bit standard ISO-TP alternative. Telltale’s ELM327 stack has no ATCEA/ATFCSM support, so these commands cannot be sent correctly. The DID layer itself (0xDDBC SoC, 0xDD68 pack V, 0xDD69 pack A, 0xDDC0 temps, 0x6335 SoH) is cross-corroborated and recorded for a future stack that gains extended addressing."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -1180,7 +1183,8 @@
       "limitations": [
         "Source applicability uses broad aliases or an upstream profile without Telltale physical-vehicle proof.",
         "The source requires session-control, raw-CAN, TP2.0, custom initialization, or another protocol path outside the installable catalog safety subset.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): every consulted source addresses the Ph2/ZE50 LBC and EVC exclusively through 29-bit extended CAN identifiers (18DADBF1 -> 18DAF1DB), outside the profile transport contract, and the Ph1 EVC DID map does not carry over. Recorded so the Ph1 community profile is never inherited by a Ph2."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -1376,7 +1380,8 @@
       "limitations": [
         "Source applicability uses broad aliases or an upstream profile without Telltale physical-vehicle proof.",
         "The source requires session-control, raw-CAN, TP2.0, custom initialization, or another protocol path outside the installable catalog safety subset.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "2026-09 review: OBDb e-Golf captures pin exact payload lengths (028C=1, 1E3B=2, 1E3D=2 bytes) and substantiate the pack-current zero point at raw 2044, but the display/BMS SoC has three sources with three different formulas and pack current has a single credible source, so no signal clears cross-corroboration. The OVMS vwegolf module listens on the comfort CAN and issues no UDS polls, so it cannot corroborate DID work."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -1462,7 +1467,8 @@
         "Source applicability uses broad aliases or an upstream profile without Telltale physical-vehicle proof.",
         "The source requires session-control, raw-CAN, TP2.0, custom initialization, or another protocol path outside the installable catalog safety subset.",
         "The source does not establish a final production year; 2026 is this catalog snapshot ceiling, not a documented production end.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): three independent sources (WiCAN MEB profile, OBDb Volkswagen-ID.4, iternio ev-obd-pids) agree the MEB BMS answers only through the 29-bit gateway pair 0x17FC007B/0x17FE007B with ATCP17-style addressing and custom flow control; the 11-bit endpoints (0x710/0x746) expose no pack telemetry. The three sources also disagree with one another on the display-SoC formula, so nothing would clear cross-corroboration even if the transport worked."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -1491,7 +1497,8 @@
         "Source applicability uses broad aliases or an upstream profile without Telltale physical-vehicle proof.",
         "The source requires session-control, raw-CAN, TP2.0, custom initialization, or another protocol path outside the installable catalog safety subset.",
         "The source does not establish a final production year; 2026 is this catalog snapshot ceiling, not a documented production end.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): three independent sources (WiCAN MEB profile, OBDb Volkswagen-ID.4, iternio ev-obd-pids) agree the MEB BMS answers only through the 29-bit gateway pair 0x17FC007B/0x17FE007B with ATCP17-style addressing and custom flow control; the 11-bit endpoints (0x710/0x746) expose no pack telemetry. The three sources also disagree with one another on the display-SoC formula, so nothing would clear cross-corroboration even if the transport worked."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -3698,7 +3705,8 @@
       "description": "Searchable REEV research entry for BMW i3 REx 60 Ah.",
       "limitations": [
         "The generation metadata covers i3 variants but does not establish a safe REx-specific battery command set.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): every SME battery poll requires ISO 15765-2 extended addressing — target address 0x07 as the first data byte of request 0x6F1, tester address 0xF1 leading every 0x607 response frame, and a flow-control frame that itself carries the 0x07 prefix. Three independent pinned implementations agree (OVMS vehicle_bmwi3 @ 587a91d7, dala Battery-Emulator @ 8e63222e, WiCAN i3 profile @ bc3ae6d4 — the last marked PRO-hardware-only), and none shows an 11-bit standard ISO-TP alternative. Telltale’s ELM327 stack has no ATCEA/ATFCSM support, so these commands cannot be sent correctly. The DID layer itself (0xDDBC SoC, 0xDD68 pack V, 0xDD69 pack A, 0xDDC0 temps, 0x6335 SoH) is cross-corroborated and recorded for a future stack that gains extended addressing."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -3725,7 +3733,8 @@
       "description": "Searchable REEV research entry for BMW i3 REx 94 Ah.",
       "limitations": [
         "The generation metadata covers i3 variants but does not establish a safe REx-specific battery command set.",
-        "Research index only; no command from this entry is installed by Telltale."
+        "Research index only; no command from this entry is installed by Telltale.",
+        "Actively excluded from executable tiers (2026-09 review): every SME battery poll requires ISO 15765-2 extended addressing — target address 0x07 as the first data byte of request 0x6F1, tester address 0xF1 leading every 0x607 response frame, and a flow-control frame that itself carries the 0x07 prefix. Three independent pinned implementations agree (OVMS vehicle_bmwi3 @ 587a91d7, dala Battery-Emulator @ 8e63222e, WiCAN i3 profile @ bc3ae6d4 — the last marked PRO-hardware-only), and none shows an 11-bit standard ISO-TP alternative. Telltale’s ELM327 stack has no ATCEA/ATFCSM support, so these commands cannot be sent correctly. The DID layer itself (0xDDBC SoC, 0xDD68 pack V, 0xDD69 pack A, 0xDDC0 temps, 0x6335 SoH) is cross-corroborated and recorded for a future stack that gains extended addressing."
       ],
       "status": "researchOnly",
       "evidence": "sourceBacked",
@@ -7328,6 +7337,1229 @@
           ]
         }
       ]
+    },
+    {
+      "id": "volkswagen-eup-gen2-2020-2023-community",
+      "display_name": "Volkswagen e-up! (2020+)",
+      "description": "Community-corroborated read-only BMS map for the 32.3 kWh (usable) gen2 e-up!: SoC agreed by OVMS and WiCAN, pack voltage by OVMS and iternio, each replayed against pinned e-Golf same-BMS captures.",
+      "limitations": [
+        "Per-signal source matrix: SoC 028C is agreed by OVMS vehicle_vweup and the WiCAN e-up profile (iternio dissents, recorded); pack voltage 1E3B is agreed by OVMS and iternio (WiCAN corroborates the DID via its MEB profile only). No single pair covers both installed signals; each signal names its own two counted sources. Telltale has not physically validated this vehicle.",
+        "payload_length evidence is sourcePartial: exact 1-byte (028C) and 2-byte (1E3B) payloads are proven by real captures of the same DIDs on the e-Golf's same-supplier BMS and by ISO-TP single-frame math, not by an e-Up capture. The exact-length contract fails closed on any other shape.",
+        "SoC here is the BMS absolute SoC (raw/2.5; the byte scale's ceiling is 255/2.5 = ~102, an encoding bound, not a reachable reading): expect it to differ from the instrument-cluster display by a few percent — the one pinned real-car point (wican-fw discussion #190) shows 95.6 published at a dash-indicated 100%. The display SoC (DID 1DD0 on 765->7CF, raw/2) is known from OVMS only and is therefore not installed.",
+        "Pack current (1E3D) is excluded: OVMS decodes (raw-2044)/4 while iternio's eUP file says (raw-2048)/10 — a slope and zero-point conflict with no second e-Up source to break the tie. (e-Golf captures prove 2044//4 on that model's BMS, but that is cross-model evidence.)",
+        "iternio's eUP file scales 028C as /2.55; OVMS and WiCAN agree on /2.5 (and iternio's own MEB file uses /2.5 as its base). The 2-of-3 agreement is installed; the dissent is recorded.",
+        "Pack voltage bounds derive from cell-count physics sourced from OVMS code (gen2 = 84 cells in series): 2.8 V x 84 = 235.2 to 4.2 V x 84 = 352.8. An out-of-range reading is refused, not shown.",
+        "Vehicle production ended in 2023; year_to is public knowledge, not source-pinned (sources say '2020 onwards').",
+        "Market scope: the gen2 e-up! was sold in Europe only; the two fleet-serving implementations (OVMS vehicle_vweup, the WiCAN e-up profile) serve European fleets — iternio, counted only for the 1E3B scale, is a global service and neither supports nor weakens the market scope, matching the platform-scoped market treatment of the E-GMP community entries.",
+        "Independence audit for the SoC pair: the WiCAN e-up profile entered wican-fw in original commit af008049d18276ea15e418f660892a3a125aa730 (2024-09-02) with no OVMS attribution and a different representation (PCI-offset B4 convention against OVMS FromUint8), and wican-fw discussion #190 shows an e-up! owner's real-car 22028C response decoding through this profile (WiCAN reported SOC 93.2 and the maintainer and owner both confirmed the profile works), with issue #235 as later same-platform usage. A shared ancestry in community wiki knowledge cannot be positively excluded and is recorded here; the MG ZS EV community entry rests on the same OVMS-and-WiCAN pairing precedent."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Europe",
+      "make": "Volkswagen",
+      "model": "e-up!",
+      "year_from": 2020,
+      "year_to": 2023,
+      "variant": "gen2 36.8 kWh gross / 32.3 kWh usable, 84s",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "exact"
+      },
+      "source": {
+        "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+        "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+        "license": "MIT",
+        "path": "vehicle/OVMS.V3/components/vehicle_vweup/src/vweup_obd.h",
+        "locator": "VWUP_BAT_MGMT_TX 0x7E5 / RX 0x7ED (ECU 8C hybrid battery management); DIDs 028C/1E3B/1E3D/2A0B/74CB",
+        "artifact_sha256": "c088a5b773f2024ff7ea46a4f8ccbb31188d4668553f5f9898ad7e02fd195252"
+      },
+      "secondary_sources": [
+        {
+          "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+          "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "license": "MIT",
+          "path": "vehicle/OVMS.V3/components/vehicle_vweup/src/vweup_obd.cpp",
+          "locator": "poll table (all BAT_MGMT entries UDS_READ + ISOTP_STD, no session control) and decodes: 1E3B FromUint16 /4.0; 1E3D FromUint16 (raw-2044)/4 with sign flip; 028C FromUint8 /2.5; 2A0B FromInt16 /64; 74CB SoH; gen2 cell count 84 (line 371), gen split modelyear>2019",
+          "artifact_sha256": "ea42639fd2fc423b448169724778aec52364720125cf5b27798f0764658b5ccb"
+        },
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/vw/e-up.json",
+          "locator": "init ATSP6 (11-bit); SOC = B4/2.5 on 22 028C (B-index includes PCI byte, so B4 = payload offset 0); physical ATSH7E5 used for its 02BD odometer PID",
+          "artifact_sha256": "2e80a451e2723b3b87687019d9a95c785ea66a900e452efcf80265bc1e02e236"
+        },
+        {
+          "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+          "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "license": "MIT",
+          "path": "vehicle/OVMS.V3/components/vehicle_vweup/docs/index.rst",
+          "locator": "identity: 'supports the VW e-UP (2013-, 2020-), Skoda Citigo E IV and the Seat MII electric (2020-)'; gen2 pack 36.8 kWh gross / 32.3 kWh usable / 120 Ah (index_obd.rst line 198, sha256 3e749d04accb9671c7bd82dad74e2d431a5a34689f4d162bec38f26f53586c89)",
+          "artifact_sha256": "400977548ec30cfe450ade396589ca677c8c1be05ed7e2897a3ebcbec7eb90e1"
+        },
+        {
+          "name": "iternio/ev-obd-pids",
+          "url": "https://github.com/iternio/ev-obd-pids/tree/c45a018b60b3341d2d8bfb22cf0491c4e878165a",
+          "revision": "c45a018b60b3341d2d8bfb22cf0491c4e878165a",
+          "license": "Apache-2.0",
+          "path": "volkswagen/eUP.json",
+          "locator": "corroborates 1E3B voltage ((A*256)+B)/4 and DID set only; its 028C /2.55 and 1E3D (raw-2048)/10 are recorded dissents (see reference_only_sources rationale); its published init sequence (ATSP7/ATCP17 gateway-style addressing) sits outside Telltale's transport safety subset and is not used — formula-level corroboration only, the same treatment as on the Zoe Ph1 entry",
+          "artifact_sha256": "6aea9dec552f0e29219db57696c08cd29dc62b0d3e6f1fd35a80192cff243917"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E5",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "028C",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge (absolute)",
+              "offset": 0,
+              "width": 1,
+              "equation": "A/2.5",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 102,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        },
+        {
+          "request_header": "7E5",
+          "expected_responder": "7ED",
+          "mode": "22",
+          "identifier": "1E3B",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 0,
+              "width": 2,
+              "equation": "(A*256+B)/4",
+              "unit": "V",
+              "min_value": 235.2,
+              "max_value": 352.8,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "renault-zoe-ph1-2012-2019-community",
+      "display_name": "Renault Zoe Ph1",
+      "description": "Community-corroborated read-only EVC battery map for Renault Zoe phase 1 (Q210/Q90/R240/R90/R110), cross-confirmed between CanZE and WiCAN with OVMS and ABRP as supporting sources.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte between CanZE (operative ZOE/_Fields.csv) and WiCAN (Renault Zoe R110.json); Telltale has not physically validated it on this vehicle.",
+        "All installed commands are single-frame UDS Mode 22 reads from the EVC (7E4 -> 7EC, 11-bit): no diagnostic session, no flow-control override, no extended addressing is required. CanZE polls these same DIDs with per-ECU 'Session required = 0' and WiCAN polls them with a plain ATSP6 init.",
+        "Pack voltage is NOT installed, for independence, not disagreement: DID 223203 (LBC voltage, (A*256+B)*0.5) has CanZE as its only independent source — the OVMS Zoe mapping embeds CanZE's CSV verbatim and therefore cannot count as a second source — and the alternative DID 222004 is corroborated only by a WiCAN window whose byte indexing would fold the DID echo into the value (a constant >=512 V on a 400 V pack). One clean source is not two; the profile ships SOC, pack current, SOH and battery rack temperature only.",
+        "SOC DID 222002 is the BMS/'real' HV-battery SOC (CanZE equates it to free-frame 0x42e SOC). The dashboard 'user SOC' is not exposed through any Mode 22 DID in any source; expect readings a few percent different from the instrument cluster.",
+        "Pack current sign: offset-binary (raw-32768)*0.25; positive while discharging per OVMS StandardMetrics usage.",
+        "payload_length values are inferred (sourcePartial): max field extent per DID in Renault-DDT-derived CanZE ZOE/EVC_Fields.csv plus WiCAN reading exactly those bytes; no pinned raw response capture was available.",
+        "The battery temperature DID 222001 exists on two ECUs: on EVC 7E4->7EC it is battery rack temperature (A-40); on BCB 792->793 the same DID number is mains phase current. The command pins request header 7E4 and responder 7EC, so the collision is inert.",
+        "The DID map is EVC firmware (phase 1) specific; Zoe Ph2 / ZE50 uses a completely different, 29-bit-only DID set (see the Ph2 candidate) and must never inherit this profile.",
+        "Market scope: nearly the entire Ph1 fleet and both counted implementations (CanZE, WiCAN) are European; the treatment mirrors the platform-scoped market handling of the other community entries.",
+        "Year-range evidence: the 2012-2019 span is not a public-knowledge guess — the pinned CanZE application code routes every Ph1 variant (Q210, R240, Q90, R90/R110) to the single ZOE/ field table these commands are built from, while Ph2/ZE50 gets a separate table, so the installed contract is pinned to the whole Ph1 generation."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Europe",
+      "make": "Renault",
+      "model": "Zoe",
+      "year_from": 2012,
+      "year_to": 2019,
+      "variant": "Ph1 (Q210/Q90/R240/R90/R110, 22/41 kWh)",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "fesch/CanZE",
+        "url": "https://github.com/fesch/CanZE/tree/e9554a6081187b034ff79d032e2eaeb94c1206b1",
+        "revision": "e9554a6081187b034ff79d032e2eaeb94c1206b1",
+        "license": "GPL-3.0-or-later",
+        "path": "app/src/main/assets/ZOE/_Fields.csv",
+        "locator": "operative default field list: 7ec 222002 (.02 %), 223204 (.25, offset 32768, A), 223206 (1 %), 223203 (.5 V); value formula (raw-offset)*resolution per actors/Field.java getValue()",
+        "artifact_sha256": "4480fac01f96eb93f7339a610f61a30cb50bb5774d1993b7e1dbccf34a99f172"
+      },
+      "secondary_sources": [
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/renault/Renault Zoe R110.json",
+          "locator": "SOC [B4:B5]*0.02 on 222002, HV_A [B4:B5]*0.25-8192 on 223204, SOH B4 on 223206, BATT_TEMP B4-40 on 222001; plain ATSP6 init, no session, no flow-control override",
+          "artifact_sha256": "9491485cba0698cdd3f5e5a5849734043e51277827ba13998401a1d9dc9d9865"
+        },
+        {
+          "name": "fesch/CanZE (_FieldsAlt)",
+          "url": "https://github.com/fesch/CanZE/tree/e9554a6081187b034ff79d032e2eaeb94c1206b1",
+          "revision": "e9554a6081187b034ff79d032e2eaeb94c1206b1",
+          "license": "GPL-3.0-or-later",
+          "path": "app/src/main/assets/ZOE/_FieldsAlt.csv",
+          "locator": "42e.44 -> 7ec 222001 (1,40 -> A-40 degC HV Battery Temp) and 42e.0 -> 7ec 222002 (0.02 %% State of Charge): CanZE's own statement that DID 222002 is the real/HV SOC and 222001 the HV battery temperature",
+          "artifact_sha256": "a03d481fbdd0ce0441e07d764081e837e67905903e6bf828cccfa384ebf28159"
+        },
+        {
+          "name": "openvehicles/Open-Vehicle-Monitoring-System-3 (SUPPORTING ONLY - NOT independent)",
+          "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "license": "MIT",
+          "path": "vehicle/OVMS.V3/components/vehicle_renaultzoe/src/vehicle_renaultzoe.cpp",
+          "locator": "actively polls 7e4/7ec 22 3204 ISOTP_STD and decodes (CAN_UINT(0)-32768)*0.25; 2002 decode *2/100 present but commented out. Mapping is DERIVED from CanZE (embeds verbatim CanZE CSV lines as comments), so it corroborates real-vehicle operation but does not count as an independent source.",
+          "artifact_sha256": "0fd2e35247080c4926be25bea3a9baaa62edac60bade4834fcdd8ef7327785c9"
+        },
+        {
+          "name": "iternio/ev-obd-pids (SUPPORTING ONLY - init outside safety subset)",
+          "url": "https://github.com/iternio/ev-obd-pids/tree/c45a018b60b3341d2d8bfb22cf0491c4e878165a",
+          "revision": "c45a018b60b3341d2d8bfb22cf0491c4e878165a",
+          "license": "Apache-2.0",
+          "path": "renault/zoe.json",
+          "locator": "soc 222002 = 0.02*(A*256+B) agrees byte-for-byte; but its init sends 10C0 + ATFCSM1/ATFCSD300000 + ATCP18 and the file mixes Ph1 EVC DIDs with Ph2 LBC DIDs (229003/2291C8, ecu DADBF1), so it is cited as agreement evidence only.",
+          "artifact_sha256": "05db2b32229d79152efa011f01ee131994791e85601c39f4b16adf747aa72b07"
+        },
+        {
+          "name": "fesch/CanZE (Ph1 variant routing - year-range evidence)",
+          "url": "https://github.com/fesch/CanZE/tree/e9554a6081187b034ff79d032e2eaeb94c1206b1",
+          "revision": "e9554a6081187b034ff79d032e2eaeb94c1206b1",
+          "license": "GPL-3.0-or-later",
+          "path": "app/src/main/java/lu/fisch/canze/activities/MainActivity.java",
+          "locator": "CAR_ZOE_Q210/CAR_ZOE_R240/CAR_ZOE_Q90/CAR_ZOE_R90 constants; the non-Ph2 predicate groups exactly these four variants and the asset router serves them all from the single ZOE/ field table this profile is built from (Ph2/ZE50 gets a separate ZOE_Ph2/ table) - pinning that one wire contract covers the whole Ph1 fleet, launch Q210 through the final R-models",
+          "artifact_sha256": "355eee9d07ad67e213a9df57adb91bd46f0b1c98f9d0039679a7ce156601989f"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "2002",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "soc_real",
+              "name": "HV battery state of charge (BMS)",
+              "offset": 0,
+              "width": 2,
+              "equation": "(A*256+B)/50",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true,
+              "agreement": "CanZE _Fields.csv (.02) == WiCAN ([B4:B5]*0.02) == iternio (0.02*(A*256+B)); OVMS commented decode *2/100 also identical"
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "3204",
+          "payload_length": 2,
+          "signals": [
+            {
+              "id": "pack_current",
+              "name": "HV battery pack current (LBC measure via EVC)",
+              "offset": 0,
+              "width": 2,
+              "equation": "((A*256+B)-32768)/4",
+              "unit": "A",
+              "min_value": -300,
+              "max_value": 300,
+              "semantic_kind": "packCurrent",
+              "recommended": true,
+              "agreement": "CanZE _Fields.csv (.25, offset 32768) == WiCAN ([B4:B5]*0.25-8192, PID corrected 2004->3204 in commit f9ff401) == OVMS ACTIVE poll+decode (CAN_UINT(0)-32768)*0.25 (OVMS derived from CanZE). NOTE CanZE's DDT-export EVC_Fields.csv carries an internally inconsistent (raw-131070)*0.0625 for the same DID - impossible for a 16-bit raw and overridden by the operative _Fields.csv; recorded here so nobody 'fixes' the profile toward it."
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "3206",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "HV battery state of health",
+              "offset": 0,
+              "width": 1,
+              "equation": "A",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true,
+              "agreement": "CanZE _Fields.csv (1 %) == WiCAN (B4). OVMS lists 0x3206 'Battery SOH' but commented out, no decode."
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "2001",
+          "payload_length": 1,
+          "signals": [
+            {
+              "id": "batt_temp",
+              "name": "HV battery rack temperature",
+              "offset": 0,
+              "width": 1,
+              "equation": "A-40",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true,
+              "agreement": "CanZE _FieldsAlt.csv 42e.44 line and EVC_Fields.csv (1,40 -> A-40) == WiCAN (B4-40) == OVMS commented decode CAN_BYTE(0)-40. Not present in CanZE _Fields.csv default list (only in Alt list + DDT export)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hyundai-ioniq6-egmp-2022-2024-community",
+      "display_name": "Hyundai Ioniq 6 (E-GMP)",
+      "description": "Community-corroborated read-only E-GMP BMS map for the Ioniq 6, confirmed across OBDb real-vehicle captures, WiCAN and the OVMS E-GMP implementation.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (OBDb, WiCAN, OVMS E-GMP map) and decodes pinned real Ioniq 6 response captures to physically plausible values. Telltale has not physically validated it on this vehicle.",
+        "Exact-length contract: the profile accepts only a 59-byte 220101 and 43-byte 220105 payload from responder 7EC (verified against the first-frame declared lengths 0x3E/0x2E in the pinned MY2023 and MY2024 captures). A firmware answering with a different shape fails closed - a dark gauge, never a guessed number.",
+        "Responses are multi-frame ISO 15765-2; an adapter or clone that mishandles flow control will time out rather than corrupt values.",
+        "Pack current is signed: positive while discharging, negative while charging or regenerating (WiCAN encodes it as S17 two's complement; OVMS E-GMP map agrees).",
+        "Evidence structure: the OBDb Ioniq 6 signalset itself maps only SOC/SOH/SOC-display; the remaining signal positions rest on WiCAN (which lists Ioniq 6 explicitly), the OVMS E-GMP map, and byte-level plausible decode of the pinned Ioniq 6 captures at the contract offsets.",
+        "Bit-packed status flags (charging, relay, ignition) and cumulative operating time are not imported; the formula engine installs numeric gauges only.",
+        "Pack voltage bounds are derived from cell-count physics (2.8 V x 144s to 4.2 V x 192s) covering both the 53 kWh and 77.4 kWh packs; an out-of-range reading is refused, not shown. The pinned captures include a long-range car (735 V) and a standard-range car (0105 remaining-energy 47.3 kWh at 92.5%).",
+        "Battery inlet temperature is excluded on E-GMP: OVMS and OBDb disagree on its decode (signed vs offset-40), and a disagreement means exclusion."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Hyundai",
+      "model": "Ioniq 6",
+      "year_from": 2022,
+      "year_to": 2024,
+      "variant": "E-GMP 53/77.4 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "OBDb/Hyundai-IONIQ-6",
+        "url": "https://github.com/OBDb/Hyundai-IONIQ-6/tree/4f41d2314164c46aed9f84de6b83862c5b05135d",
+        "revision": "4f41d2314164c46aed9f84de6b83862c5b05135d",
+        "license": "CC-BY-SA-4.0",
+        "path": "signalsets/v3/default.json",
+        "locator": "signalset SOC/SOH/SOC-display positions for 220101/220105 plus real-vehicle captures under tests/test_cases/{2023,2024}/commands/",
+        "artifact_sha256": "e78cb5631fc5422af55381afb663a42b48833f6ec59eb977cf3e95dcd5ac6b22",
+        "capture_artifacts": [
+          {
+            "path": "tests/test_cases/2023/commands/7E4.7EC.220101|fc=1.yaml",
+            "sha256": "636a4d1d380cac33b8dbb1b93c277e9b86a581ae1cafa9caff8bdc0106178ea7"
+          },
+          {
+            "path": "tests/test_cases/2023/commands/7E4.7EC.220105|fc=1.yaml",
+            "sha256": "5d3cb3aee8b97910dbedd3c4df379f32025f135e23de7f752b58f05202a7f5c1"
+          },
+          {
+            "path": "tests/test_cases/2024/commands/7E4.7EC.220101|fc=1.yaml",
+            "sha256": "fa4d5a495c65b77c0e3b283406da7868fac04e98ee07f8ae33be3a53994b4383"
+          },
+          {
+            "path": "tests/test_cases/2024/commands/7E4.7EC.220105|fc=1.yaml",
+            "sha256": "1e9e0612829750abcfa64c652aa05513b804ad2fed4d802929e7004165011674"
+          },
+          {
+            "path": "generations.yaml",
+            "sha256": "408c80453c5ba0b1a349df4cddbad6a54f531d5d750b5c6d23c17da4771ad22f"
+          }
+        ]
+      },
+      "secondary_sources": [
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/hyundai/ioniq5-6.json",
+          "locator": "car_model 'Hyundai: Ioniq5/Ioniq6 (2021-2024)'; 220101/220105 windows and scales incl. signed current S17",
+          "artifact_sha256": "7ca3dadb99590a9377c688d73b6291440d1eea942b18b3dcc3a9ab538775c507"
+        },
+        {
+          "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+          "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "license": "MIT",
+          "path": "vehicle/OVMS.V3/components/vehicle_hyundai_ioniq5/src/hif_can_poll.cpp",
+          "locator": "E-GMP BMS poll table and decode for 220101/220105 on 7E4/7EC (map corroboration; component lists Ioniq 5/EV6, not Ioniq 6)",
+          "artifact_sha256": "e5ffbdadd1725cbc672249fd6c2ca4d475e8d68661abdcb0a4551d95289d89b2"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0101",
+          "payload_length": 59,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge",
+              "offset": 4,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 10,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -230,
+              "max_value": 230,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            },
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 12,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "V",
+              "min_value": 403.2,
+              "max_value": 806.4,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_max",
+              "name": "Battery max module temperature",
+              "offset": 14,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_min",
+              "name": "Battery min module temperature",
+              "offset": 15,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max",
+              "name": "Max cell voltage",
+              "offset": 23,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMax",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max_no",
+              "name": "Max voltage cell number",
+              "offset": 24,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min",
+              "name": "Min cell voltage",
+              "offset": 25,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMin",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min_no",
+              "name": "Min voltage cell number",
+              "offset": 26,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "aux_batt_voltage",
+              "name": "12V auxiliary battery voltage",
+              "offset": 29,
+              "width": 1,
+              "equation": "A/10",
+              "unit": "V",
+              "min_value": 9,
+              "max_value": 16,
+              "semantic_kind": "auxBatteryVoltage",
+              "recommended": false
+            },
+            {
+              "id": "cum_charge_ah",
+              "name": "Cumulative charge",
+              "offset": 30,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeCharge",
+              "recommended": false
+            },
+            {
+              "id": "cum_discharge_ah",
+              "name": "Cumulative discharge",
+              "offset": 34,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeDischarge",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_charged",
+              "name": "Cumulative energy charged",
+              "offset": 38,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeChargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_discharged",
+              "name": "Cumulative energy discharged",
+              "offset": 42,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeDischargeEnergy",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0105",
+          "payload_length": 43,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "Battery state of health",
+              "offset": 25,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            },
+            {
+              "id": "soc_display",
+              "name": "Displayed state of charge",
+              "offset": 31,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kia-soul-ev-sk3-2020-community",
+      "display_name": "Kia Soul EV (SK3)",
+      "description": "Community-corroborated read-only BMS map for the third-generation (SK3) e-Soul, confirmed across SoulEVSpy and WiCAN on the byte-identical Kona OS layout.",
+      "limitations": [
+        "Cross-source community mapping: every installed formula agrees byte-for-byte across independent implementations (SoulEVSpy, WiCAN) on the byte-identical Kona OS layout. Telltale has not physically validated it on this vehicle.",
+        "Exact-length contract: the profile accepts only a 59-byte 220101 and 43-byte 220105 payload from responder 7EC. No SK3-specific raw capture existed at the pinned revisions; the exact payload lengths inherit from the byte-identical Kona OS layout (as the Niro EV profile does), corroborated by WiCAN's 9/7-frame pid suffixes and SoulEVSpy's parser requiring consecutive frames 21-28 / 21-26.",
+        "Responses are multi-frame ISO 15765-2; an adapter or clone that mishandles flow control will time out rather than corrupt values.",
+        "Pack current is signed: positive while discharging, negative while charging or regenerating. SoulEVSpy decodes it as explicit two's complement, independently confirming the OS-family sign convention; WiCAN decodes with an inverted sign for this family (documented quirk), so the installed convention follows SoulEVSpy signedness at the family byte positions.",
+        "The SK3 e-Soul was not sold in North America; the profile is global for the markets that received it (Korea, Europe and others).",
+        "Bit-packed status flags (charging, relay, ignition) and cumulative operating time are not imported; the formula engine installs numeric gauges only.",
+        "Year scope is narrowed to 2020, the single model year the primary source (SoulEVSpy) attests on a real e-Soul; WiCAN records no year. SK3 production spans 2019-2023 and the BMS contract is expected to match across it, but that extension is uncorroborated, so later years stay outside the installable identity until attested.",
+        "Battery temperatures (max, min, inlet) are excluded: both model-explicit sources decode them with an unsigned simplification, so the signed semantics every sub-zero reading depends on has no second e-Soul source. Positions agree across sources; the semantics do not clear the community bar, and a winter number shown on family convention alone is exactly the plausible-wrong-number this catalog exists to refuse."
+      ],
+      "status": "community",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Kia",
+      "model": "Soul EV",
+      "year_from": 2020,
+      "year_to": 2020,
+      "variant": "SK3 39.2/64 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "langemand/SoulEVSpy",
+        "url": "https://github.com/langemand/SoulEVSpy/tree/0a1cafb93a65d17e0c7e1bb3ad2bc9cb965d02a7",
+        "revision": "0a1cafb93a65d17e0c7e1bb3ad2bc9cb965d02a7",
+        "license": "Apache-2.0",
+        "path": "app/src/main/java/com/evranger/soulevspy/util/BMS2019Parser.java",
+        "locator": "BMS2019 line/byte decode for 220101/220105 on 7E4/7EC, selected for eSoul/Kona/eNiro by ModelSpecificCommands",
+        "artifact_sha256": "78a0048699e9c0d701b7373ef22bd0b1ec50452a43b76733c66141e3842738c0",
+        "supporting_artifacts": [
+          {
+            "path": "README.md (lists 'Kia eSoul 2020')",
+            "sha256": "fbf9ff7f07f9cb915a8586861dd6e712611f7d9782ba5988eebff75527c49aba"
+          },
+          {
+            "path": "app/src/main/java/com/evranger/soulevspy/obd/commands/BMS2019Command.java",
+            "sha256": "75f1fad77d22f94ec1ba08c72ba11f614cd6251a51def56a507159aed9331002"
+          },
+          {
+            "path": "app/src/main/java/com/evranger/soulevspy/car_model/ModelSpecificCommands.java",
+            "sha256": "442febbde1553594f8ff9ef880f0b9b808b25aa21131d1de793aef41f639fcdd"
+          },
+          {
+            "path": "app/src/main/java/com/evranger/soulevspy/util/KiaVinParser.java (e-Soul VIN branch)",
+            "sha256": "919d9b27995f284d8a98801ad26a123203a91f2a0a3ef0359b90e62197907c5d"
+          },
+          {
+            "path": "LICENSE (Apache-2.0)",
+            "sha256": "49bbe9114e49214df2ccc324cb3ac8d1d1aa1c3a0947f94c286765e86647b32e"
+          }
+        ]
+      },
+      "secondary_sources": [
+        {
+          "name": "meatpiHQ/wican-fw",
+          "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+          "license": "GPL-3.0",
+          "path": "vehicle_profiles/kia/nirosoulkona-ev.json",
+          "locator": "car_model 'Kia: Niro/Soul'; 2201019/2201057 (9/7-frame) windows and scales",
+          "artifact_sha256": "fcb59badaf765eb1eb1522c356bc31b378510d1797c3ff23c62e5b1570ea4f9e"
+        },
+        {
+          "name": "openvehicles/Open-Vehicle-Monitoring-System-3",
+          "url": "https://github.com/openvehicles/Open-Vehicle-Monitoring-System-3/tree/587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "revision": "587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740",
+          "license": "MIT",
+          "path": "vehicle/OVMS.V3/components/vehicle_kianiroev/src/kn_can_poll.cpp",
+          "locator": "byte-identical Kona/e-Niro OS map corroboration (component docs list e-Niro/Kona/Ioniq FL, not e-Soul; map-level evidence only)",
+          "artifact_sha256": "537242c15478e1fbd4b11d50877e28677229e7564c611a59bcf14cb64666cffb"
+        }
+      ],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0101",
+          "payload_length": 59,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge",
+              "offset": 4,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 10,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -230,
+              "max_value": 230,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            },
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 12,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "V",
+              "min_value": 240,
+              "max_value": 420,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "cell_volt_max",
+              "name": "Max cell voltage",
+              "offset": 23,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMax",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max_no",
+              "name": "Max voltage cell number",
+              "offset": 24,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min",
+              "name": "Min cell voltage",
+              "offset": 25,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMin",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min_no",
+              "name": "Min voltage cell number",
+              "offset": 26,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "aux_batt_voltage",
+              "name": "12V auxiliary battery voltage",
+              "offset": 29,
+              "width": 1,
+              "equation": "A/10",
+              "unit": "V",
+              "min_value": 9,
+              "max_value": 16,
+              "semantic_kind": "auxBatteryVoltage",
+              "recommended": false
+            },
+            {
+              "id": "cum_charge_ah",
+              "name": "Cumulative charge",
+              "offset": 30,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeCharge",
+              "recommended": false
+            },
+            {
+              "id": "cum_discharge_ah",
+              "name": "Cumulative discharge",
+              "offset": 34,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeDischarge",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_charged",
+              "name": "Cumulative energy charged",
+              "offset": 38,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeChargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_discharged",
+              "name": "Cumulative energy discharged",
+              "offset": 42,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeDischargeEnergy",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0105",
+          "payload_length": 43,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "Battery state of health",
+              "offset": 25,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            },
+            {
+              "id": "soc_display",
+              "name": "Displayed state of charge",
+              "offset": 31,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            },
+            {
+              "id": "cell_deterioration_min",
+              "name": "Min cell deterioration",
+              "offset": 28,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kia-ev9-egmp-2024-2025-experimental",
+      "display_name": "Kia EV9 (E-GMP)",
+      "description": "Experimental read-only E-GMP BMS map for the EV9: real captures confirm the 59/43-byte contract byte-for-byte, but only one independent source family (OBDb) lists the model.",
+      "limitations": [
+        "Single source family: only OBDb explicitly lists the EV9. WiCAN, OVMS, iternio, EVNotify and SoulEVSpy have no EV9 coverage at their pinned revisions (WiCAN and OVMS pinned == HEAD at research time). The community bar of two independent families is not met.",
+        "Exact-length contract verified against pinned MY2024/MY2025 captures: 220101 declares 0x3E (59-byte payload), 220105 declares 0x2E (43-byte payload) from responder 7EC.",
+        "Pack current is installed as SIGNED against the OBDb signalset's unsigned marking: the signalset's own capture expectation of 6540.2 A on frame FF 7A is physically absurd, while signed gives -13.4 A. Promotion to community must re-verify the sign against an independent source.",
+        "Pack voltage bounds inherit the E-GMP family physics limits; the EV9 pack topology (99.8 kWh, ~552 V nominal) is not pinned by the source. Captures observed 534.5-611.1 V, comfortably inside the bounds.",
+        "Battery inlet temperature and the 0105 offset-28 deterioration signal are excluded (family decode disagreement / intra-OBDb semantic contradiction)."
+      ],
+      "status": "experimental",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Kia",
+      "model": "EV9",
+      "year_from": 2024,
+      "year_to": 2025,
+      "variant": "E-GMP 76.1/99.8 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "exact",
+        "year": "exact",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "OBDb/Kia-EV9",
+        "url": "https://github.com/OBDb/Kia-EV9/tree/85d8cff25e849a6e421cda20cbadfd4630fe85e7",
+        "revision": "85d8cff25e849a6e421cda20cbadfd4630fe85e7",
+        "license": "CC-BY-SA-4.0",
+        "path": "signalsets/v3/default.json",
+        "locator": "signalset byte positions and scales for 220101/220105 plus real-vehicle captures under tests/test_cases/{2024,2025}/commands/",
+        "artifact_sha256": "dd9e4c5c5009f96bfcc9711ea49aab7e0a7fa3aaf7f693b37f2cdcd8c7bfb975",
+        "capture_artifacts": [
+          {
+            "path": "tests/test_cases/2024/commands/7E4.7EC.220101|fc=1.yaml",
+            "sha256": "4f9f9dc234749313a119630219cb1208a62b86792c03b6bb364172ba7f273538"
+          },
+          {
+            "path": "tests/test_cases/2024/commands/7E4.7EC.220105|fc=1.yaml",
+            "sha256": "1ca0d53a21c12613033b8dc0f535dbefd75799e89395c766ef4f916d44a026b1"
+          },
+          {
+            "path": "tests/test_cases/2025/commands/7E4.7EC.220101|fc=1.yaml",
+            "sha256": "0c3679bd49a3caf5e0c1d20472244970e301aabf0948042c3b8eb3a623528df7"
+          },
+          {
+            "path": "tests/test_cases/2025/commands/7E4.7EC.220105|fc=1.yaml",
+            "sha256": "0ebd4ee425214f5e3a45190d7c2c8b6eeec42d3cdf329f77729cac18241d6aff"
+          },
+          {
+            "path": "generations.yaml",
+            "sha256": "4ac04ffbd255d96181b0899a848352c2212c558669a78e5fafd46f3611a2c209"
+          }
+        ]
+      },
+      "secondary_sources": [],
+      "commands": [
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0101",
+          "payload_length": 59,
+          "signals": [
+            {
+              "id": "soc_bms",
+              "name": "BMS state of charge",
+              "offset": 4,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": false
+            },
+            {
+              "id": "pack_current",
+              "name": "Battery pack current",
+              "offset": 10,
+              "width": 2,
+              "equation": "(SIGNED(A)*256+B)/10",
+              "unit": "A",
+              "min_value": -230,
+              "max_value": 230,
+              "semantic_kind": "packCurrent",
+              "recommended": true
+            },
+            {
+              "id": "pack_voltage",
+              "name": "Battery pack voltage",
+              "offset": 12,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "V",
+              "min_value": 403.2,
+              "max_value": 806.4,
+              "semantic_kind": "packVoltage",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_max",
+              "name": "Battery max module temperature",
+              "offset": 14,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": true
+            },
+            {
+              "id": "batt_temp_min",
+              "name": "Battery min module temperature",
+              "offset": 15,
+              "width": 1,
+              "equation": "SIGNED(A)",
+              "unit": "C",
+              "min_value": -40,
+              "max_value": 80,
+              "semantic_kind": "batteryTemperature",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max",
+              "name": "Max cell voltage",
+              "offset": 23,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMax",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_max_no",
+              "name": "Max voltage cell number",
+              "offset": 24,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min",
+              "name": "Min cell voltage",
+              "offset": 25,
+              "width": 1,
+              "equation": "A/50",
+              "unit": "V",
+              "min_value": 2.5,
+              "max_value": 4.3,
+              "semantic_kind": "cellVoltageMin",
+              "recommended": false
+            },
+            {
+              "id": "cell_volt_min_no",
+              "name": "Min voltage cell number",
+              "offset": 26,
+              "width": 1,
+              "equation": "A",
+              "unit": "",
+              "min_value": 0,
+              "max_value": 255,
+              "semantic_kind": "cellNumber",
+              "recommended": false
+            },
+            {
+              "id": "aux_batt_voltage",
+              "name": "12V auxiliary battery voltage",
+              "offset": 29,
+              "width": 1,
+              "equation": "A/10",
+              "unit": "V",
+              "min_value": 9,
+              "max_value": 16,
+              "semantic_kind": "auxBatteryVoltage",
+              "recommended": false
+            },
+            {
+              "id": "cum_charge_ah",
+              "name": "Cumulative charge",
+              "offset": 30,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeCharge",
+              "recommended": false
+            },
+            {
+              "id": "cum_discharge_ah",
+              "name": "Cumulative discharge",
+              "offset": 34,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "Ah",
+              "min_value": 0,
+              "max_value": 10000000,
+              "semantic_kind": "cumulativeDischarge",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_charged",
+              "name": "Cumulative energy charged",
+              "offset": 38,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeChargeEnergy",
+              "recommended": false
+            },
+            {
+              "id": "cum_energy_discharged",
+              "name": "Cumulative energy discharged",
+              "offset": 42,
+              "width": 4,
+              "equation": "(A*16777216+B*65536+C*256+D)/10",
+              "unit": "kWh",
+              "min_value": 0,
+              "max_value": 1000000,
+              "semantic_kind": "cumulativeDischargeEnergy",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "request_header": "7E4",
+          "expected_responder": "7EC",
+          "mode": "22",
+          "identifier": "0105",
+          "payload_length": 43,
+          "signals": [
+            {
+              "id": "soh",
+              "name": "Battery state of health",
+              "offset": 25,
+              "width": 2,
+              "equation": "(A*256+B)/10",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfHealth",
+              "recommended": true
+            },
+            {
+              "id": "soc_display",
+              "name": "Displayed state of charge",
+              "offset": 31,
+              "width": 1,
+              "equation": "A/2",
+              "unit": "%",
+              "min_value": 0,
+              "max_value": 100,
+              "semantic_kind": "stateOfCharge",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "genesis-gv60-egmp-research",
+      "display_name": "Genesis GV60 (E-GMP BMS map)",
+      "description": "Research-only candidate BMS map for the Genesis GV60: a single source family (WiCAN) lists the model with an E-GMP-identical byte map; no independent corroboration exists yet.",
+      "limitations": [
+        "Single source family: only WiCAN's genesis profile lists this model. OBDb has no GV60/GV70-EV repos (its Genesis and Genesis-G80 signalsets are empty), OVMS has no Genesis component, and iternio/EVNotify/SoulEVSpy have no coverage.",
+        "The source carries no model years; the year range below is production-based context, not source-attested identity.",
+        "Payload lengths 59/43 rest on WiCAN's 9/7-frame pid suffixes and the byte-identical E-GMP layout; no Genesis-specific raw capture existed at the pinned revision.",
+        "Only signals present in the WiCAN profile are drafted; Ah counters and discharged energy are excluded.",
+        "Pack current sign follows the family SIGNED convention against WiCAN's inverted-sign quirk; unverifiable cross-family until a second source appears.",
+        "Demoted from experimental candidacy at review (2026-09): the only source is a single WiCAN profile whose byte map matches the E-GMP 0101/0105 contract exactly, but it attests no model year and no second family corroborates the model, so under the catalog gate (experimental model and year evidence cannot be unknown) this stays a research index with no executable command until a year-attested source appears."
+      ],
+      "status": "researchOnly",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Genesis",
+      "model": "GV60",
+      "year_from": 2022,
+      "year_to": 2024,
+      "variant": "E-GMP 77.4 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "unknown",
+        "year": "unknown",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "meatpiHQ/wican-fw",
+        "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+        "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+        "license": "GPL-3.0",
+        "path": "vehicle_profiles/genesis/genesis.json",
+        "locator": "car_model 'Genesis: GV60/GV70 EV/G80 Electrified'; 2201019/2201057 (9/7-frame) windows and scales",
+        "artifact_sha256": "6ae0ef3b03ec8f579518d1d053ca677e070b3c0b80839abf965237f15261bea6"
+      },
+      "secondary_sources": [],
+      "commands": []
+    },
+    {
+      "id": "genesis-electrified-gv70-egmp-research",
+      "display_name": "Genesis Electrified GV70 (E-GMP BMS map)",
+      "description": "Research-only candidate BMS map for the Genesis Electrified GV70: a single source family (WiCAN) lists the model with an E-GMP-identical byte map; no independent corroboration exists yet.",
+      "limitations": [
+        "Single source family: only WiCAN's genesis profile lists this model. OBDb has no GV60/GV70-EV repos (its Genesis and Genesis-G80 signalsets are empty), OVMS has no Genesis component, and iternio/EVNotify/SoulEVSpy have no coverage.",
+        "The source carries no model years; the year range below is production-based context, not source-attested identity.",
+        "Payload lengths 59/43 rest on WiCAN's 9/7-frame pid suffixes and the byte-identical E-GMP layout; no Genesis-specific raw capture existed at the pinned revision.",
+        "Only signals present in the WiCAN profile are drafted; Ah counters and discharged energy are excluded.",
+        "Pack current sign follows the family SIGNED convention against WiCAN's inverted-sign quirk; unverifiable cross-family until a second source appears.",
+        "Demoted from experimental candidacy at review (2026-09): the only source is a single WiCAN profile whose byte map matches the E-GMP 0101/0105 contract exactly, but it attests no model year and no second family corroborates the model, so under the catalog gate (experimental model and year evidence cannot be unknown) this stays a research index with no executable command until a year-attested source appears."
+      ],
+      "status": "researchOnly",
+      "evidence": "sourceBacked",
+      "market": "Global",
+      "make": "Genesis",
+      "model": "Electrified GV70",
+      "year_from": 2023,
+      "year_to": 2024,
+      "variant": "E-GMP powertrain on GV70 body, 77.4 kWh",
+      "powertrain": "BEV",
+      "identity_evidence": {
+        "market": "unknown",
+        "year": "unknown",
+        "model": "exact",
+        "variant": "sourcePartial"
+      },
+      "source": {
+        "name": "meatpiHQ/wican-fw",
+        "url": "https://github.com/meatpiHQ/wican-fw/tree/bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+        "revision": "bc3ae6d4ad09f32b96ca101b31950e4fbf56b825",
+        "license": "GPL-3.0",
+        "path": "vehicle_profiles/genesis/genesis.json",
+        "locator": "car_model 'Genesis: GV60/GV70 EV/G80 Electrified'; 2201019/2201057 (9/7-frame) windows and scales",
+        "artifact_sha256": "6ae0ef3b03ec8f579518d1d053ca677e070b3c0b80839abf965237f15261bea6"
+      },
+      "secondary_sources": [],
+      "commands": []
     }
   ]
 }
