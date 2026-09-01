@@ -1,9 +1,9 @@
 # Powertrain battery catalog third-party notices
 
-The bundled schema-v3 powertrain battery catalog is a curated index of **210
-source-backed profiles**: 203 metadata-only `researchOnly` entries, five
-cross-corroborated installable `community` entries, and two one-shot
-`experimental` entries. The executable subset contains 88 bounded signals.
+The bundled schema-v3 powertrain battery catalog is a curated index of **217
+source-backed profiles**: 205 metadata-only `researchOnly` entries, nine
+cross-corroborated installable `community` entries, and three one-shot
+`experimental` entries. The executable subset contains 141 bounded signals.
 The current snapshot has no `ready` profile.
 
 Telltale does not claim that any entry is supported. Community entries are
@@ -66,6 +66,16 @@ traceable discovery metadata but no executable Bolt command because the
 available provenance/licensing chain, raw response evidence, and exact responder
 proof do not pass the executable gates.
 
+### VW and Renault corroboration roles
+
+- `iternio/ev-obd-pids` (same pin as above) additionally corroborates the
+  e-up! gen2 pack-voltage scale and the OVMS identity scope. Its dissenting
+  e-up! SoC scale (`/2.55` against the installed two-source `/2.5`) and its
+  conflicting pack-current formula are recorded on the entry as exclusions
+  or dissents, not installed. On the Zoe Ph1 entry it is supporting
+  material only, because its published init sequence sits outside
+  Telltale's transport safety subset.
+
 The catalog normalizes source formulas where retained, adds exact headers,
 payload bounds, status/evidence/identity metadata, and explicit limitations.
 These are Telltale modifications; the upstream authors do not endorse them.
@@ -86,11 +96,14 @@ and data licences.
   `587a91d7b46bd7ce6d092e5acb7c2d3b7c5d7740` (MIT, full text packaged at
   `assets/licenses/ovms-MIT.txt`).
 
-OVMS vehicle components corroborate — and for the Ioniq 5, Kona Electric and
-Niro EV community profiles, provide the primary decode formulas for — the
-installed BMS signals (`vehicle_mgev`, `vehicle_hyundai_ioniq5`,
-`vehicle_kianiroev`). Per-file artifact SHA-256 digests are recorded on the
-affected catalog entries. Telltale reimplements the decodes in its own
+OVMS vehicle components corroborate — and for the Ioniq 5, Kona Electric,
+Niro EV and e-up! gen2 community profiles, provide the primary decode
+formulas for — the installed BMS signals (`vehicle_mgev`,
+`vehicle_hyundai_ioniq5`, `vehicle_kianiroev`, `vehicle_vweup`). Per-file
+artifact SHA-256 digests are recorded on the affected catalog entries. The
+`vehicle_renaultzoe` component is recorded on the Zoe Ph1 entry as supporting
+material only: its mapping embeds CanZE's CSV verbatim, so it is not counted
+as independent corroboration. Telltale reimplements the decodes in its own
 formula dialect; no OVMS code is copied.
 
 ## GPL-3.0 sources — WiCAN vehicle profiles
@@ -99,11 +112,34 @@ formula dialect; no OVMS code is copied.
   `bc3ae6d4ad09f32b96ca101b31950e4fbf56b825` (GPL-3.0, full text packaged at
   `assets/licenses/GPL-3.0.txt`).
 
-WiCAN vehicle-profile JSON corroborates DID positions and scales for the MG
-and Hyundai/Kia community profiles. The adapted data (byte windows and
-scales, re-expressed in Telltale's formula dialect) is attributed here and on
-each entry; Telltale's app code is GPL-3.0 so redistribution terms are
-compatible.
+WiCAN vehicle-profile JSON corroborates DID positions and scales for the MG,
+Hyundai/Kia, VW e-up! gen2 and Renault Zoe Ph1 community profiles. The
+adapted data (byte windows and scales, re-expressed in Telltale's formula
+dialect) is attributed here and on each entry; Telltale's app code is
+GPL-3.0 so redistribution terms are compatible.
+
+## Apache-2.0 sources — SoulEVSpy
+
+- `langemand/SoulEVSpy`, pinned at
+  `0a1cafb93a65d17e0c7e1bb3ad2bc9cb965d02a7` (Apache-2.0, full text packaged at
+  `assets/licenses/Apache-2.0.txt`); decode source `app/src/main/java/com/evranger/soulevspy/util/BMS2019Parser.java`.
+
+SoulEVSpy's `BMS2019Parser` provides the primary decode positions for the
+Kia Soul EV (SK3) community profile and independently confirms the
+Kona-family signed pack-current convention through its explicit
+two's-complement handling. Telltale re-expresses the byte windows and scales
+in its own formula dialect; no SoulEVSpy code is copied.
+
+## GPL-3.0 sources — CanZE
+
+- `fesch/CanZE`, pinned at
+  `e9554a6081187b034ff79d032e2eaeb94c1206b1` (GPL-3.0-or-later, full text
+  packaged at `assets/licenses/GPL-3.0.txt`).
+
+CanZE's Renault-DDT-derived field tables (`ZOE/_Fields.csv`,
+`ZOE/_FieldsAlt.csv`) provide the primary decode formulas for the Renault
+Zoe Ph1 community profile's EVC signals. Telltale re-expresses the byte
+windows and scales in its own formula dialect; no CanZE code is copied.
 
 ## OBDb data — CC BY-SA 4.0
 

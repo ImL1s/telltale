@@ -28,7 +28,7 @@ void main() {
         .map((profile) => profile.id)
         .toSet();
 
-    expect(snapshot.profileCount, 210);
+    expect(snapshot.profileCount, 217);
     expect(probeable, {
       'mg-zs-ev-au-2021',
       'lexus-rx450hl-2020-source-vehicle',
@@ -37,6 +37,11 @@ void main() {
       'kia-ev6-egmp-2022-2024-community',
       'hyundai-kona-electric-os-2019-2023-community',
       'kia-niro-ev-de-2019-2022-community',
+      'volkswagen-eup-gen2-2020-2023-community',
+      'renault-zoe-ph1-2012-2019-community',
+      'hyundai-ioniq6-egmp-2022-2024-community',
+      'kia-soul-ev-sk3-2020-community',
+      'kia-ev9-egmp-2024-2025-experimental',
     });
     expect(
       snapshot.catalog.profiles
@@ -55,9 +60,13 @@ void main() {
         'kia-ev6-egmp-2022-2024-community',
         'hyundai-kona-electric-os-2019-2023-community',
         'kia-niro-ev-de-2019-2022-community',
+        'volkswagen-eup-gen2-2020-2023-community',
+        'renault-zoe-ph1-2012-2019-community',
+        'hyundai-ioniq6-egmp-2022-2024-community',
+        'kia-soul-ev-sk3-2020-community',
       ],
       reason:
-          'only the cross-corroborated community entry may reach the '
+          'only the cross-corroborated community entries may reach the '
           'installer; the experimental entry stays probe-only',
     );
   });

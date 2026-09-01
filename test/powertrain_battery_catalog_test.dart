@@ -16,10 +16,10 @@ void main() {
 
       expect(profiles.length, greaterThanOrEqualTo(60));
       expect(snapshot.profileCount, profiles.length);
-      expect(snapshot.profileCount, 210);
-      expect(snapshot.signalCount, 88);
+      expect(snapshot.profileCount, 217);
+      expect(snapshot.signalCount, 141);
       expect(snapshot.countsByPowertrain, {
-        'BEV': 78,
+        'BEV': 85,
         'FCEV': 5,
         'HEV': 48,
         'MHEV': 7,
@@ -71,13 +71,13 @@ void main() {
                 ),
               )
               .toSet(),
-          hasLength(50),
+          hasLength(56),
         );
         expect(
           snapshot.catalog.profiles
               .map((profile) => (profile.source.name, profile.source.revision))
               .toSet(),
-          hasLength(28),
+          hasLength(33),
         );
         expect(
           snapshot.catalog.profiles
@@ -86,7 +86,7 @@ void main() {
                     profile.status == PowertrainProfileStatus.researchOnly,
               )
               .length,
-          203,
+          205,
         );
         expect(
           snapshot.catalog.profiles
@@ -95,7 +95,7 @@ void main() {
                     profile.status == PowertrainProfileStatus.community,
               )
               .length,
-          5,
+          9,
         );
         expect(
           snapshot.catalog.profiles
@@ -104,7 +104,7 @@ void main() {
                     profile.status == PowertrainProfileStatus.experimental,
               )
               .length,
-          2,
+          3,
         );
         for (final profile in snapshot.catalog.profiles) {
           expect(
@@ -150,6 +150,10 @@ void main() {
             'kia-ev6-egmp-2022-2024-community',
             'hyundai-kona-electric-os-2019-2023-community',
             'kia-niro-ev-de-2019-2022-community',
+            'volkswagen-eup-gen2-2020-2023-community',
+            'renault-zoe-ph1-2012-2019-community',
+            'hyundai-ioniq6-egmp-2022-2024-community',
+            'kia-soul-ev-sk3-2020-community',
           },
         );
         final metadataOnlyMappings = snapshot.catalog.profiles.where(

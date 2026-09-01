@@ -10,6 +10,34 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ### Added
 
+- Four more installable community battery profiles, each cross-corroborated
+  by two mutually independent, license-pinned implementations: Hyundai
+  Ioniq 6 (the proven E-GMP 59/43-byte contract, verified byte-for-byte
+  against a pinned real capture), Kia Soul EV (SK3, narrowed to its
+  attested 2020 model year, adding dual-source minimum cell deterioration;
+  its three battery temperatures are excluded because both model-explicit
+  sources decode them unsigned, leaving signed sub-zero semantics without
+  a second source), Renault Zoe Ph1 (CanZE × WiCAN; pack
+  voltage deliberately excluded because it never cleared the two-source
+  independence bar — one DID has a single independent source, the other
+  only a WiCAN window with a recorded indexing bug), and
+  VW e-up! gen2 (OVMS × WiCAN; pack current excluded — two sources, two
+  formulas, no tiebreaker).
+- A Kia EV9 experimental profile for the one-shot laboratory: the only
+  evidence family is OBDb, whose signalset labels pack current unsigned
+  while its own capture then reads an absurd 6540 A; the entry ships the
+  physically coherent signed decode and records the upstream flaw.
+- Recorded honest transport-level exclusions on the affected research
+  entries — BMW i3 (extended addressing), VW ID.3/ID.4 (29-bit gateway),
+  Renault Zoe Ph2 (29-bit-only DIDs) — plus the e-Golf's
+  three-sources-three-formulas SoC and the year-unattested Genesis pair,
+  so the next reviewer starts from evidence instead of a blank map.
+- A wire-contract regression suite for the new profiles: synthetic
+  source-agreed responses driven through catalog → installer → engine,
+  including a charging (negative) Zoe current, an out-of-physics e-up!
+  voltage that must be refused, and the Ioniq 5 capture replayed
+  identically through the separate Ioniq 6 entry.
+
 - A standalone Wear OS shell: the watch runs the same engine and
   transports and gets glance-first pages — one large cycling dial
   (speed/RPM/coolant, long-press to disconnect) and a four-number glance

@@ -10,32 +10,45 @@ Telltale supports that vehicle or has verified its battery-management system
 
 ## Current catalog snapshot
 
-The bundled **schema v3** snapshot contains **210 source-backed profiles**:
+The bundled **schema v3** snapshot contains **217 source-backed profiles**:
 
 | Powertrain | Profiles | Research-only | Experimental | Installable (community) |
 | --- | ---: | ---: | ---: | ---: |
-| BEV | 78 | 73 | 0 | 5 |
+| BEV | 85 | 75 | 1 | 9 |
 | FCEV | 5 | 5 | 0 | 0 |
 | HEV | 48 | 46 | 2 | 0 |
 | MHEV | 7 | 7 | 0 | 0 |
 | PHEV | 69 | 69 | 0 | 0 |
 | REEV | 3 | 3 | 0 | 0 |
-| **Total** | **210** | **203** | **2** | **5** |
+| **Total** | **217** | **205** | **3** | **9** |
 
-The **203 `researchOnly` profiles are metadata indexes with no commands**.
+The **205 `researchOnly` profiles are metadata indexes with no commands**.
 They cover identity and discovery evidence but cannot query a vehicle.
 
-The **5 `community` profiles are installable**: MG ZS EV Mk1, Hyundai
-Ioniq 5 (E-GMP), Kia EV6 (E-GMP), Hyundai Kona Electric (OS), and Kia Niro
-EV / e-Niro (DE). Community is the cross-corroborated tier — every installed
-byte window and formula agrees across at least two mutually independent,
-license-pinned implementations, and the runtime still requires a
-per-connection vehicle confirmation before a single request is sent.
+The **9 `community` profiles are installable**: MG ZS EV Mk1, Hyundai
+Ioniq 5 and Ioniq 6 (E-GMP), Kia EV6 (E-GMP), Hyundai Kona Electric (OS),
+Kia Niro EV / e-Niro (DE), Kia Soul EV (SK3, 2020 attested year), Renault
+Zoe Ph1, and VW e-up! gen2. Community is the cross-corroborated tier —
+every installed byte window and formula agrees across at least two mutually
+independent, license-pinned implementations, and the runtime still requires
+a per-connection vehicle confirmation before a single request is sent.
 
-The **2 `experimental` profiles** (Lexus RX450hL 2020 source vehicle, Toyota
-Prius TNGA) carry pinned read-only commands usable only through the opt-in
-one-shot laboratory. Experimental commands cannot be installed, enabled for
-polling, or added to the dashboard.
+The **3 `experimental` profiles** (Lexus RX450hL 2020 source vehicle, Toyota
+Prius TNGA, Kia EV9) carry pinned read-only commands usable only through the
+opt-in one-shot laboratory. Experimental commands cannot be installed,
+enabled for polling, or added to the dashboard. The EV9's only evidence
+family is OBDb, whose signalset marks the pack current unsigned even though
+its own capture then decodes to an absurd 6540 A; the entry ships the
+physically coherent signed decode and records the upstream disagreement.
+
+The 2026-09 review also recorded **transport-level exclusions** directly on
+the affected research entries: BMW i3 (every SME poll needs ISO 15765-2
+extended addressing), VW ID.3/ID.4 (BMS answers only through the 29-bit
+gateway pair), and Renault Zoe Ph2 (29-bit-only DID set) — in all three the
+data is well corroborated and the transport is the blocker. Genesis GV60 and
+Electrified GV70 stay research-only because their single WiCAN source
+attests no model year, and Hyundai Casper/Inster has no usable source at
+all.
 
 ## Status and evidence are separate
 
@@ -44,9 +57,9 @@ polling, or added to the dashboard.
 | Status | Meaning |
 | --- | --- |
 | `ready` | Reserved for a profile that completed the project's installable acceptance process with a physical-vehicle run. The current snapshot contains none. |
-| `community` | A source-backed read-only mapping whose every formula and byte window is confirmed by at least one source independent of the primary, with pinned artifact hashes. Installable after an install-time identity acknowledgement and a fresh per-connection vehicle confirmation; also eligible for one-shot lab reads. The current snapshot contains five. |
-| `experimental` | A pinned, bounded candidate eligible only for the opt-in one-shot laboratory. It cannot be installed, polled, persisted as telemetry, or shown on the dashboard. The current snapshot contains two. |
-| `researchOnly` | A source or identity index with no executable commands. It cannot be installed or query a vehicle. The current snapshot contains 203. |
+| `community` | A source-backed read-only mapping whose every formula and byte window is confirmed by at least one source independent of the primary, with pinned artifact hashes. Installable after an install-time identity acknowledgement and a fresh per-connection vehicle confirmation; also eligible for one-shot lab reads. The current snapshot contains nine. |
+| `experimental` | A pinned, bounded candidate eligible only for the opt-in one-shot laboratory. It cannot be installed, polled, persisted as telemetry, or shown on the dashboard. The current snapshot contains three. |
+| `researchOnly` | A source or identity index with no executable commands. It cannot be installed or query a vehicle. The current snapshot contains 205. |
 
 `evidence` records where an entry's evidence came from; it never overrides the
 status gate:
@@ -57,7 +70,7 @@ status gate:
 | `syntheticRig` | A project-owned deterministic simulator exercised the mapping or transport path. This does not establish real ECU or BMS behaviour. |
 | `physicalVehicle` | A retained physical-vehicle run supports the stated scope. It still applies only to the recorded market, generation, variant, adapter, ECU software, and test conditions. |
 
-All 210 current entries are `sourceBacked`. Running a synthetic ELM327 rig
+All 217 current entries are `sourceBacked`. Running a synthetic ELM327 rig
 through a phone can validate the app, parser, UI, and transport path, but it
 does not turn a profile into `physicalVehicle` evidence and does not prove a
 real PID or formula.
@@ -161,12 +174,19 @@ MG5 disagreement.
 
 ### Hyundai / Kia BMS family — community
 
-Four profiles share the 7E4/7EC `220101`/`220105` contract with exact 59- and
-43-byte payloads: Ioniq 5 and EV6 (E-GMP), Kona Electric (OS), Niro EV (DE).
-Corroborated across OVMS, WiCAN and OBDb. The Ioniq 5, EV6 and Kona
-contracts additionally decode pinned real-vehicle response captures to the
-independently-agreed values — the Ioniq 5 capture is wired through the full
-production path as a repo test (`powertrain_capture_regression_test.dart`).
+Six profiles share the 7E4/7EC `220101`/`220105` contract with exact 59- and
+43-byte payloads: Ioniq 5, Ioniq 6 and EV6 (E-GMP), Kona Electric (OS),
+Niro EV (DE), and Soul EV (SK3, attested 2020). Corroborated across OVMS,
+WiCAN, OBDb and — for the Soul — SoulEVSpy, whose explicit two's-complement
+parser independently confirms the family's signed pack current. The Ioniq 5,
+Ioniq 6, EV6 and Kona contracts additionally decode pinned real-vehicle
+response captures to the independently-agreed values — the Ioniq 5 capture
+is wired through the full production path as a repo test
+(`powertrain_capture_regression_test.dart`), and the same capture replays
+identically through the separate Ioniq 6 entry
+(`powertrain_wave2_wire_contract_test.dart`). The Soul entry excludes the
+three battery temperatures: its model-explicit sources decode them unsigned,
+so the signed semantics sub-zero readings depend on has no second source.
 No Niro-specific raw capture exists at the pinned revisions: its exact
 payload lengths are inherited from the byte-identical Kona OS layout, and
 its entry says so. Recorded exclusions: E-GMP battery inlet
