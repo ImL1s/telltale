@@ -58,6 +58,7 @@ List<BleService> _nordicProfile() => [
 
 class _FakeBlePlatform extends UniversalBlePlatform {
   AvailabilityState availability = AvailabilityState.poweredOn;
+  Duration? availabilityDelay;
 
   /// What `discoverServices` reports.
   List<BleService> services = _nordicProfile();
@@ -94,8 +95,11 @@ class _FakeBlePlatform extends UniversalBlePlatform {
   }
 
   @override
-  Future<AvailabilityState> getBluetoothAvailabilityState() async =>
-      availability;
+  Future<AvailabilityState> getBluetoothAvailabilityState() async {
+    final delay = availabilityDelay;
+    if (delay != null) await Future<void>.delayed(delay);
+    return availability;
+  }
 
   @override
   Future<bool> enableBluetooth() async => true;
@@ -547,6 +551,19 @@ void main() {
         ),
       );
       expect(fake.startScanCalled, isFalse);
+    });
+
+    test('cancelling during availability does not start a global scan',
+        () async {
+      fake.availabilityDelay = const Duration(milliseconds: 40);
+      final subscription = BleTransport.scanEntries(
+        timeout: const Duration(seconds: 2),
+      ).listen((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await subscription.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(fake.startScanCalled, isFalse);
+      expect(fake.scanning, isFalse);
     });
 
     test('unauthorized radio maps to permission guidance', () async {

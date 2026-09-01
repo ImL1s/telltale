@@ -180,8 +180,10 @@ class BleTransport extends BaseObdTransport {
     final controller = StreamController<(String, String, int?)>();
     StreamSubscription<BleDevice>? resultsSub;
     Timer? deadline;
+    var cancelled = false;
 
     Future<void> close() async {
+      cancelled = true;
       deadline?.cancel();
       await resultsSub?.cancel();
       try {
@@ -197,19 +199,22 @@ class BleTransport extends BaseObdTransport {
     Future<void> start() async {
       try {
         final current = await UniversalBle.getBluetoothAvailabilityState();
+        // User may have cancelled while availability was awaited — do not arm a
+        // global radio scan that close() can no longer associate with this start.
+        if (cancelled || controller.isClosed) return;
         if (current != AvailabilityState.poweredOn) {
           throw BleRadioUnavailableException(current);
         }
 
         resultsSub = UniversalBle.scanStream.listen((device) {
-          if (controller.isClosed) return;
+          if (cancelled || controller.isClosed) return;
           controller.add((
             device.deviceId,
             _displayNameFor(device),
             device.rssi,
           ));
         }, onError: (Object error, StackTrace stack) {
-          if (!controller.isClosed) {
+          if (!cancelled && !controller.isClosed) {
             controller.addError(
               BleRadioUnavailableException.fromScanError(error),
               stack,
@@ -217,14 +222,24 @@ class BleTransport extends BaseObdTransport {
           }
         });
 
+        if (cancelled || controller.isClosed) {
+          await resultsSub?.cancel();
+          resultsSub = null;
+          return;
+        }
+
         await UniversalBle.startScan();
+        if (cancelled || controller.isClosed) {
+          await close();
+          return;
+        }
         // The scan itself takes no duration — unlike the previous package,
         // there is no plugin-side timer to stop the radio and no "is scanning"
         // stream to observe it stopping. This deadline is the only thing that
         // ends the scan, so it must be armed unconditionally.
         deadline = Timer(timeout, () => unawaited(close()));
       } on Object catch (e) {
-        if (!controller.isClosed) {
+        if (!cancelled && !controller.isClosed) {
           controller.addError(
             e is BleRadioUnavailableException
                 ? e
