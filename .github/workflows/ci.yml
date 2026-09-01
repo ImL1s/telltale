@@ -485,6 +485,8 @@ jobs:
 
           report, expected = sys.argv[1], int(sys.argv[2])
           passed = skipped = failed = 0
+          failures = []
+          errors_by_id = {}
           with open(report, encoding="utf-8", errors="replace") as fh:
               for line in fh:
                   line = line.strip()
@@ -494,16 +496,30 @@ jobs:
                       event = json.loads(line)
                   except ValueError:
                       continue
-                  if event.get("type") != "testDone" or event.get("hidden"):
+                  etype = event.get("type")
+                  if etype == "error":
+                      tid = event.get("testID")
+                      if tid is not None:
+                          errors_by_id.setdefault(tid, []).append(
+                              event.get("error", event)
+                          )
                       continue
+                  if etype != "testDone" or event.get("hidden"):
+                      continue
+                  name = event.get("test", {}).get("name") or event.get("testID")
                   if event.get("skipped"):
                       skipped += 1
                   elif event.get("result") == "success":
                       passed += 1
                   else:
                       failed += 1
+                      failures.append((name, errors_by_id.get(event.get("testID"), [])))
 
           print(f"oracle results: passed={passed} skipped={skipped} failed={failed}")
+          for name, errs in failures:
+              print(f"FAILED: {name}")
+              for err in errs[:3]:
+                  print(f"  {err}")
           if failed:
               sys.exit("FAIL: an oracle test failed.")
           if skipped:
