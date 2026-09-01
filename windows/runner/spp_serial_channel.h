@@ -1,10 +1,7 @@
 #ifndef RUNNER_SPP_SERIAL_CHANNEL_H_
 #define RUNNER_SPP_SERIAL_CHANNEL_H_
 
-#include <flutter/binary_messenger.h>
-#include <flutter/encodable_value.h>
-#include <flutter/event_channel.h>
-#include <flutter/method_channel.h>
+#include <flutter/flutter_engine.h>
 
 #include <memory>
 
@@ -12,7 +9,9 @@
 // Lifetime is owned by FlutterWindow.
 class SppSerialChannel {
  public:
-  explicit SppSerialChannel(flutter::BinaryMessenger* messenger);
+  // |engine| must outlive this channel; EventSink traffic is posted onto its
+  // platform thread via PostPlatformThreadTask.
+  explicit SppSerialChannel(flutter::FlutterEngine* engine);
   ~SppSerialChannel();
 
   SppSerialChannel(const SppSerialChannel&) = delete;

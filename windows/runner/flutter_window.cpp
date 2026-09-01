@@ -103,8 +103,8 @@ bool FlutterWindow::OnCreate() {
             static_cast<int64_t>(available.QuadPart)));
       });
 
-  spp_serial_channel_ = std::make_unique<SppSerialChannel>(
-      flutter_controller_->engine()->messenger());
+  spp_serial_channel_ =
+      std::make_unique<SppSerialChannel>(flutter_controller_->engine());
 
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 

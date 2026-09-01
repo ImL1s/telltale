@@ -9,6 +9,7 @@
 #include <flutter/standard_method_codec.h>
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -164,7 +165,8 @@ flutter::EncodableList EnumerateBluetoothSppPorts() {
 
 class SppSerialChannel::Impl {
  public:
-  explicit Impl(flutter::BinaryMessenger* messenger) {
+  explicit Impl(flutter::FlutterEngine* engine) : engine_(engine) {
+    auto* messenger = engine_->messenger();
     method_channel_ =
         std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
             messenger, kMethodChannel,
@@ -302,8 +304,12 @@ class SppSerialChannel::Impl {
       std::lock_guard<std::mutex> lock(mutex_);
       handle_ = handle;
       reading_ = true;
+      // New open invalidates any platform-thread posts still queued from a
+      // prior ReadLoop so they cannot touch the EventSink after reopen.
+      open_generation_.fetch_add(1);
     }
-    read_thread_ = std::thread([this]() { ReadLoop(); });
+    const uint64_t generation = open_generation_.load();
+    read_thread_ = std::thread([this, generation]() { ReadLoop(generation); });
     result->Success();
   }
 
@@ -357,6 +363,9 @@ class SppSerialChannel::Impl {
   }
 
   void ClosePort() {
+    // Bump generation before joining so any already-queued platform tasks from
+    // this open are dropped, mirroring Linux RFCOMM open_generation.
+    open_generation_.fetch_add(1);
     {
       std::lock_guard<std::mutex> lock(mutex_);
       reading_ = false;
@@ -371,7 +380,31 @@ class SppSerialChannel::Impl {
     }
   }
 
-  void ReadLoop() {
+  void PostBytes(uint64_t generation, std::vector<uint8_t> chunk) {
+    engine_->PostPlatformThreadTask(
+        [this, generation, chunk = std::move(chunk)]() mutable {
+          std::lock_guard<std::mutex> lock(mutex_);
+          if (generation != open_generation_.load() || sink_ == nullptr) {
+            return;
+          }
+          sink_->Success(flutter::EncodableValue(chunk));
+        });
+  }
+
+  void PostReadError(uint64_t generation, DWORD err) {
+    engine_->PostPlatformThreadTask([this, generation, err]() {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (generation != open_generation_.load() || sink_ == nullptr) {
+        return;
+      }
+      // EventSink::Error takes const T&, not a pointer (unlike
+      // MethodResult::Error's optional details overload).
+      sink_->Error("read_failed", "ReadFile failed",
+                   flutter::EncodableValue(static_cast<int64_t>(err)));
+    });
+  }
+
+  void ReadLoop(uint64_t generation) {
     std::vector<uint8_t> buffer(512);
     while (true) {
       HANDLE handle = INVALID_HANDLE_VALUE;
@@ -399,26 +432,20 @@ class SppSerialChannel::Impl {
         {
           std::lock_guard<std::mutex> lock(mutex_);
           reading_ = false;
-          if (sink_ != nullptr) {
-            // EventSink::Error takes const T&, not a pointer (unlike
-            // MethodResult::Error's optional details overload).
-            sink_->Error("read_failed", "ReadFile failed",
-                         flutter::EncodableValue(static_cast<int64_t>(err)));
-          }
         }
+        PostReadError(generation, err);
         break;
       }
       if (read == 0) continue;
 
-      std::vector<uint8_t> chunk(buffer.begin(),
-                                 buffer.begin() + static_cast<std::ptrdiff_t>(read));
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (sink_ != nullptr) {
-        sink_->Success(flutter::EncodableValue(chunk));
-      }
+      std::vector<uint8_t> chunk(
+          buffer.begin(),
+          buffer.begin() + static_cast<std::ptrdiff_t>(read));
+      PostBytes(generation, std::move(chunk));
     }
   }
 
+  flutter::FlutterEngine* engine_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       method_channel_;
   std::unique_ptr<flutter::EventChannel<flutter::EncodableValue>>
@@ -428,9 +455,12 @@ class SppSerialChannel::Impl {
   HANDLE handle_ = INVALID_HANDLE_VALUE;
   std::thread read_thread_;
   bool reading_ = false;
+  // Bumped on close/reopen so platform-thread EventSink posts from a prior
+  // ReadLoop cannot deliver after the port is gone.
+  std::atomic<uint64_t> open_generation_{0};
 };
 
-SppSerialChannel::SppSerialChannel(flutter::BinaryMessenger* messenger)
-    : impl_(std::make_unique<Impl>(messenger)) {}
+SppSerialChannel::SppSerialChannel(flutter::FlutterEngine* engine)
+    : impl_(std::make_unique<Impl>(engine)) {}
 
 SppSerialChannel::~SppSerialChannel() = default;
