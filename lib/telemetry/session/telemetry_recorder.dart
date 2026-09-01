@@ -173,10 +173,7 @@ class TelemetryRecorder {
       final id = entry.key;
       final reading = snapshot.readings[id];
       final isFresh =
-          reading != null &&
-          reading.value.isFinite &&
-          !reading.timestamp.toUtc().isAfter(observedAt) &&
-          !reading.isStaleAt(observedAt);
+          reading != null && _isFreshReading(reading, observedAt, started);
       if (isFresh) {
         final rawSourceUtc = reading.timestamp.toUtc();
         // Dedup by the raw sample identity so clamping to session start does
@@ -255,15 +252,28 @@ class TelemetryRecorder {
     return footer;
   }
 
-  /// Prefer wall clock, but never persist an end that precedes the header
-  /// start (NTP / manual clock steps during a short session). Fall back to
-  /// start + monotonic elapsed already observed in this recorder.
+  /// Prefer wall clock, but never persist an end before the header start or
+  /// before the monotonic recording end already observed in event lines.
   DateTime _endedAtUtc() {
     final wall = utcNow().toUtc();
     final started = _header?.startedAtUtc;
-    if (started == null || !wall.isBefore(started)) return wall;
+    if (started == null) return wall;
     final monoUs = _lastElapsedUs < 0 ? 0 : _lastElapsedUs;
-    return started.add(Duration(microseconds: monoUs));
+    final monoEnd = started.add(Duration(microseconds: monoUs));
+    if (wall.isBefore(started) || wall.isBefore(monoEnd)) return monoEnd;
+    return wall;
+  }
+
+  bool _isFreshReading(Reading reading, DateTime observedAt, DateTime started) {
+    if (!reading.value.isFinite) return false;
+    final rawUtc = reading.timestamp.toUtc();
+    if (rawUtc.isAfter(observedAt)) return false;
+    var sampleUtc = rawUtc;
+    // Measure sample age on the same axis as [observedAt]. After a backward
+    // wall step, observedAt advances to start + elapsed while the reading may
+    // still carry the pre-step wall timestamp.
+    if (sampleUtc.isBefore(started)) sampleUtc = started;
+    return observedAt.difference(sampleUtc) <= reading.maxAge;
   }
 
   void failStorage({bool restartRequired = false}) {

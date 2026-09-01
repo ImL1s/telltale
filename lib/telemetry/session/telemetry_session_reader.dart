@@ -331,6 +331,9 @@ final class TelemetrySessionReader {
         if (canonicalEvent == null) {
           return const _Decoded.failure(TelemetryReadFailure.schemaViolation);
         }
+        if (canonicalEvent.observedAtUtc.isBefore(header.startedAtUtc)) {
+          return const _Decoded.failure(TelemetryReadFailure.schemaViolation);
+        }
       case TelemetryRecordLineKind.footer:
         final result = canonical.TelemetrySessionCodec.decodeFooterObject(
           decoded,

@@ -301,13 +301,13 @@ final class RootTelemetryRecorder {
     );
   }
 
-  /// Prefer wall clock for the footer, but never persist an end that precedes
-  /// the header start after NTP / manual clock steps. Fall back to start plus
-  /// monotonic recording elapsed.
+  /// Prefer wall clock for the footer, but never persist an end before the
+  /// header start or before the monotonic recording end already written in
+  /// event lines.
   DateTime _endedAtUtcForFooter() {
     final wall = utcNow().toUtc();
     final started = _recorder.header?.startedAtUtc;
-    if (started == null || !wall.isBefore(started)) return wall;
+    if (started == null) return wall;
     final startedElapsed = _recordingStartedElapsedUs;
     final endedElapsed = _recordingEndedElapsedUs ?? elapsedUs();
     final monoUs = startedElapsed == null
@@ -315,7 +315,9 @@ final class RootTelemetryRecorder {
         : (endedElapsed - startedElapsed < 0
             ? 0
             : endedElapsed - startedElapsed);
-    return started.add(Duration(microseconds: monoUs));
+    final monoEnd = started.add(Duration(microseconds: monoUs));
+    if (wall.isBefore(started) || wall.isBefore(monoEnd)) return monoEnd;
+    return wall;
   }
 
   /// Monotonic evidence for policies that must detect even a brief recorder
