@@ -110,6 +110,10 @@ flutter_launcher_icons:
     image_path: assets/icon/icon.png
 
 flutter:
+  # A command without --flavor must build/install the real field package, not
+  # both field and synthetic rig variants (which leaves Flutter unable to pick
+  # a single output APK). Rig automation always opts in explicitly.
+  default-flavor: field
   uses-material-design: true
 
   assets:

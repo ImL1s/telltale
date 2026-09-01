@@ -47,6 +47,30 @@ import 'package:torque_obd/obd/transport/obd_transport.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(() {
+    // Force the Android three-tier cascade on macOS CI hosts so these tests
+    // pin abort / note / ordering behaviour rather than the single-tier
+    // IOBluetooth path.
+    ClassicTransport.attemptsForTest = ClassicTransport.androidAttempts;
+  });
+
+  tearDown(() {
+    ClassicTransport.attemptsForTest = null;
+  });
+
+  test('macOS host uses a single-tier cascade without channel connect',
+      () async {
+    ClassicTransport.attemptsForTest = ClassicTransport.macOsAttempts;
+    final wired = _wire((_) async => throw const BtcConnectionException('refused'));
+    await expectLater(
+      wired.transport.connect(),
+      throwsA(isA<TransportException>()),
+    );
+    expect(wired.tiers, hasLength(1));
+    expect(wired.tiers.single, contains('加密'));
+    expect(wired.tiers.single, isNot(contains('通道')));
+  });
+
   test('every tier is tried when each one fails on its own', () async {
     // The baseline the rules below are departures from. Three tiers, in order,
     // and the third is the whole reason this app runs a forked plugin.

@@ -1,0 +1,16 @@
+timestamp_utc=20260831T223755Z
+serial=R5CX10VFFBA
+bluetooth_on=1
+bluetooth_manager.enabled=true
+bluetooth_manager.state=ON
+
+OBDBLE (XX:XX:XX:XX:22:33):
+  ACL BR/EDR:N LE:N
+  Encryption status(BR/EDR): null LE: null
+  name=OBDBLE / OBDII
+  BR/EDR UUIDs: SPP
+  Packages: com.android.settings, com.cbstudio.telltale, org.kde.kdeconnect_tp
+
+Verdict: bonded but unpowered / out of range ? cannot claim a fresh
+connect?PID?record pass this session. Same as 20260831T222101Z and
+20260831T212448Z.

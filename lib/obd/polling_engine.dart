@@ -147,6 +147,119 @@ class MilStatus {
   String toString() => 'MilStatus($bySource)';
 }
 
+enum ObdCapabilityDiscoveryPhase {
+  notStarted,
+  running,
+  attemptFinished,
+  interrupted,
+}
+
+enum PidCapabilityStatus { positive, unsupported, unknown }
+
+/// Immutable evidence snapshot for one connection's Mode 01 capability scan.
+///
+/// A mask answer proves only the engine controller's wire PID. A direct value
+/// answer may additionally prove the exact definition that produced it, but it
+/// never extends support-block coverage.
+final class ObdCapabilitySummary {
+  ObdCapabilitySummary({
+    required this.phase,
+    required Iterable<String> verifiedBlockIds,
+    required Iterable<String> supportedMode01Requests,
+    required Iterable<String> directlyAnsweredDefinitionIds,
+  }) : verifiedBlockIds = Set<String>.unmodifiable(
+         verifiedBlockIds.map((value) => value.toUpperCase()),
+       ),
+       _supportedMode01Requests = Set<String>.unmodifiable(
+         supportedMode01Requests.map((value) => value.toUpperCase()),
+       ),
+       _directlyAnsweredDefinitionIds = Set<String>.unmodifiable(
+         directlyAnsweredDefinitionIds.map(Pid.canonicalId),
+       );
+
+  factory ObdCapabilitySummary.notStarted() => ObdCapabilitySummary(
+    phase: ObdCapabilityDiscoveryPhase.notStarted,
+    verifiedBlockIds: const <String>{},
+    supportedMode01Requests: const <String>{},
+    directlyAnsweredDefinitionIds: const <String>{},
+  );
+
+  final ObdCapabilityDiscoveryPhase phase;
+  final Set<String> verifiedBlockIds;
+  final Set<String> _supportedMode01Requests;
+  final Set<String> _directlyAnsweredDefinitionIds;
+
+  int get unknownOrUnverifiedBlockCount {
+    var unknown = 0;
+    for (final query in PidLibrary.supportQueries) {
+      if (!verifiedBlockIds.contains(query)) {
+        unknown++;
+        continue;
+      }
+      final base = int.parse(query.substring(2), radix: 16);
+      final continuation =
+          '01${(base + 0x20).toRadixString(16).toUpperCase().padLeft(2, '0')}';
+      if (!_supportedMode01Requests.contains(continuation)) break;
+    }
+    return unknown;
+  }
+
+  List<String> get contiguousVerifiedBlockIds {
+    final result = <String>[];
+    for (final query in PidLibrary.supportQueries) {
+      if (!verifiedBlockIds.contains(query)) break;
+      result.add(query);
+      final base = int.parse(query.substring(2), radix: 16);
+      final continuation =
+          '01${(base + 0x20).toRadixString(16).toUpperCase().padLeft(2, '0')}';
+      if (!_supportedMode01Requests.contains(continuation)) break;
+    }
+    return List<String>.unmodifiable(result);
+  }
+
+  int? get contiguousCoverageThroughPid {
+    final blocks = contiguousVerifiedBlockIds;
+    if (blocks.isEmpty) return null;
+    return int.parse(blocks.last.substring(2), radix: 16) + 0x20;
+  }
+
+  bool get contiguousCoverageReachedVerifiedTerminal {
+    final blocks = contiguousVerifiedBlockIds;
+    if (blocks.isEmpty) return false;
+    final base = int.parse(blocks.last.substring(2), radix: 16);
+    final continuation =
+        '01${(base + 0x20).toRadixString(16).toUpperCase().padLeft(2, '0')}';
+    return !_supportedMode01Requests.contains(continuation);
+  }
+
+  PidCapabilityStatus statusFor(Pid pid) {
+    if (_directlyAnsweredDefinitionIds.contains(Pid.canonicalId(pid.id))) {
+      return PidCapabilityStatus.positive;
+    }
+    if (!pid.isMode01 || !BusAddressing.isAppDefault(pid.header)) {
+      return PidCapabilityStatus.unknown;
+    }
+    final block = PidLibrary.supportBlockFor(pid.modeAndPid);
+    if (block == null || !verifiedBlockIds.contains(block)) {
+      return PidCapabilityStatus.unknown;
+    }
+    return _supportedMode01Requests.contains(pid.modeAndPid.toUpperCase())
+        ? PidCapabilityStatus.positive
+        : PidCapabilityStatus.unsupported;
+  }
+
+  List<Pid> get positivelyConfirmedShippedDirectPids => List<Pid>.unmodifiable(
+    PidLibrary.all.where(
+      (pid) =>
+          !pid.isCustom &&
+          pid.isMode01 &&
+          pid.header == kDefaultHeader &&
+          pid.variant == null &&
+          statusFor(pid) == PidCapabilityStatus.positive,
+    ),
+  );
+}
+
 class PollingEngine {
   PollingEngine(
     this.client, {
@@ -160,11 +273,17 @@ class PollingEngine {
   final PriorityScheduler scheduler;
 
   final _snapshots = StreamController<TelemetrySnapshot>.broadcast();
+  final _capabilitySummaries = StreamController<ObdCapabilitySummary>.broadcast(
+    sync: true,
+  );
   final Map<String, Reading> _readings = {};
   final Map<String, PidFault> _faults = {};
 
   List<Pid> _active = const [];
   Set<String>? _supported;
+  ObdCapabilityDiscoveryPhase _capabilityPhase =
+      ObdCapabilityDiscoveryPhase.notStarted;
+  int _capabilityDiscoveryEpoch = 0;
   bool _running = false;
 
   Stream<TelemetrySnapshot> get snapshots => _snapshots.stream;
@@ -278,6 +397,22 @@ class PollingEngine {
 
   /// PIDs the ECU reported as supported, or null before discovery has run.
   Set<String>? get supportedPids => _supported;
+
+  ObdCapabilitySummary get capabilitySummary => ObdCapabilitySummary(
+    phase: _capabilityPhase,
+    verifiedBlockIds: _verifiedSupportBlocks,
+    supportedMode01Requests: _supported ?? const <String>{},
+    directlyAnsweredDefinitionIds: _answeredAtLeastOnce,
+  );
+
+  Stream<ObdCapabilitySummary> get capabilitySummaries =>
+      _capabilitySummaries.stream;
+
+  void _publishCapabilitySummary() {
+    if (!_capabilitySummaries.isClosed) {
+      _capabilitySummaries.add(capabilitySummary);
+    }
+  }
 
   /// Replaces the polling set. Safe to call while running.
   ///
@@ -651,13 +786,21 @@ class PollingEngine {
   }
 
   Future<Set<String>> _discoverSupportedPidsOnce() async {
+    final attemptEpoch = ++_capabilityDiscoveryEpoch;
+    _capabilityPhase = ObdCapabilityDiscoveryPhase.running;
+    _publishCapabilitySummary();
     // One policy, every consumer. J1939 was refused here and an *unidentified*
     // bus was not, so a protocol B slot whose PP 2C could not be read had its
     // fault-code reads refused while these probes went on sending `0100` — and
     // the poll loop went on publishing whatever came back. PP 2C format `000`
     // means no formatting at all, so those bytes can look like a J1979 reply
     // and become a plausible 1726 rpm.
-    if (!client.addressing.supportsObd2) return _supported ??= <String>{};
+    if (!client.addressing.supportsObd2) {
+      _capabilityPhase = ObdCapabilityDiscoveryPhase.attemptFinished;
+      _discoveryAttempted = true;
+      _publishCapabilitySummary();
+      return _supported ??= <String>{};
+    }
 
     // Accumulated, not reset. Clearing up front and then breaking out —
     // which a pause does — left the verified set permanently empty, so
@@ -678,9 +821,17 @@ class PollingEngine {
       // the background. Interrupting it is a pause, not an answer.
       if (!(shouldContinue?.call() ?? true)) {
         completed = false;
+        if (attemptEpoch == _capabilityDiscoveryEpoch) {
+          _capabilityPhase = ObdCapabilityDiscoveryPhase.interrupted;
+          _publishCapabilitySummary();
+        }
         break;
       }
       final raw = await _readSupportBlock(query);
+      if (attemptEpoch != _capabilityDiscoveryEpoch) {
+        completed = false;
+        break;
+      }
       if (raw == null) {
         // One transient timeout used to `break`, storing whatever partial set
         // existed as though it were the vehicle's full capability — every PID
@@ -692,13 +843,30 @@ class PollingEngine {
       }
       _verifiedSupportBlocks.add(query);
       supported.addAll(PidLibrary.decodeSupportMask(query, raw.sublist(2)));
+      _publishCapabilitySummary();
       // Bit 0 of the mask says whether a further block exists.
       if ((raw[5] & 0x01) == 0) break;
     }
     // Never cleared by an interrupted run: "discovery finished once" is a
     // fact about the past that a later pause cannot undo.
-    if (completed) _discoveryAttempted = true;
+    if (completed && attemptEpoch == _capabilityDiscoveryEpoch) {
+      _discoveryAttempted = true;
+      _capabilityPhase = ObdCapabilityDiscoveryPhase.attemptFinished;
+      _publishCapabilitySummary();
+    }
     return supported;
+  }
+
+  /// Synchronously retires capability work at a connection boundary.
+  void interruptCapabilityDiscovery() {
+    if (_capabilityPhase != ObdCapabilityDiscoveryPhase.running) return;
+    _capabilityDiscoveryEpoch++;
+    _capabilityPhase = ObdCapabilityDiscoveryPhase.interrupted;
+    // Drop the coalescer slot so a resume can start a fresh scan instead of
+    // joining the retired in-flight future that is about to exit on epoch
+    // mismatch and leave discovery incomplete for the rest of the connection.
+    _discoveryInFlight = null;
+    _publishCapabilitySummary();
   }
 
   /// Blocks whose mask this session positively verified.
@@ -3328,6 +3496,7 @@ class PollingEngine {
   }
 
   Future<void> stop() async {
+    interruptCapabilityDiscovery();
     if (!_running) return;
     _running = false;
     final epoch = _epoch;
@@ -3357,6 +3526,7 @@ class PollingEngine {
   Future<void> dispose() async {
     await stop();
     await _snapshots.close();
+    await _capabilitySummaries.close();
   }
 
   Future<void> _loop(int epoch) async {
@@ -3753,7 +3923,9 @@ class PollingEngine {
         // Before `_answeredAtLeastOnce`, so the next `_refillQueue` sees a PID
         // with no fault and a vehicle that has just answered it.
 
-        _answeredAtLeastOnce.add(request.pid.id);
+        if (_answeredAtLeastOnce.add(request.pid.id)) {
+          _publishCapabilitySummary();
+        }
         completed++;
       } on FormulaException {
         _invalidate(request.pid.id, PidFault.formulaError);

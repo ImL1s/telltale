@@ -8,12 +8,14 @@ library;
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../../core/serial/spp_serial_platform.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/ble_scan_permissions.dart';
 import '../../../core/theme/app_theme.dart';
@@ -22,10 +24,14 @@ import '../../../state/pid_registry.dart' show sharedPreferencesProvider;
 import '../../../obd/transport/ble_transport.dart';
 import '../../../obd/transport/classic_transport.dart';
 import '../../../obd/transport/obd_transport.dart';
+import '../../../obd/transport/serial_transport.dart';
 import '../../../obd/transport/wifi_transport.dart';
 import '../../../state/obd_session.dart';
 import '../../../state/settings.dart';
 import '../../widgets/panel.dart';
+import '../../widgets/telemetry/telemetry_connect_recorder_status.dart';
+import '../../widgets/telemetry/telemetry_history_entry.dart';
+import '../../widgets/telemetry/telemetry_startup_recovery_notice.dart';
 import '../../widgets/transcript_export.dart';
 import '../dashboard/dashboard_screen.dart';
 
@@ -99,7 +105,11 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
 
   bool get _classicAvailable => classicTransportAvailable;
 
+  bool get _bleAvailable => bleTransportAvailable;
+
   Future<void> _select(TransportKind kind) async {
+    if (kind == TransportKind.bluetoothClassic && !_classicAvailable) return;
+    if (kind == TransportKind.bluetoothLe && !_bleAvailable) return;
     setState(() {
       _expanded = _expanded == kind ? null : kind;
       _devices = const [];
@@ -156,6 +166,16 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       _scanError = null;
     });
     try {
+      // Windows/Linux Classic is Bluetooth SPP serial (COM / rfcomm).
+      // Android / macOS list bonded Classic devices via ClassicTransport.
+      // Empty enumeration is an emptyHint (not _scanError): showing both used
+      // to stack two paragraphs that said the same thing in different words.
+      if (sppSerialHostSupported) {
+        final devices = await SerialTransport.bluetoothSppDevices();
+        if (!mounted) return;
+        setState(() => _devices = _likelyAdaptersFirst(devices));
+        return;
+      }
       // Each of these awaits can outlive the screen — the permission dialog in
       // particular sits in front of the app for as long as the user ignores it.
       // Listing bonded devices is not a scan, and must not ask as if it were.
@@ -290,6 +310,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _Header(connection: connection)),
+            const SliverToBoxAdapter(child: TelemetryConnectRecorderStatus()),
+            const SliverToBoxAdapter(child: TelemetryStartupRecoveryNotice()),
+            if (!connection.isBusy)
+              const SliverToBoxAdapter(child: TelemetryHistoryEntry()),
             // Above the transport list, because on the second and every later
             // visit this is the only row that matters. The list below is a
             // phone's bonded devices — mostly headphones — and finding the one
@@ -376,14 +400,23 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                 separatorBuilder: (_, _) => const SizedBox(height: Spacing.md),
                 itemBuilder: (context, index) {
                   final kind = TransportKind.values[index];
-                  final unavailable = kind.isAndroidOnly && !_classicAvailable;
+                  final unavailable = switch (kind) {
+                    TransportKind.bluetoothClassic => !_classicAvailable,
+                    TransportKind.bluetoothLe => !_bleAvailable,
+                    _ => false,
+                  };
+                  final disabledReason = switch (kind) {
+                    TransportKind.bluetoothClassic when unavailable =>
+                      classicUnavailableReason,
+                    TransportKind.bluetoothLe when unavailable =>
+                      bleUnavailableReason,
+                    _ => null,
+                  };
                   return _TransportCard(
                     kind: kind,
                     isExpanded: _expanded == kind,
                     isDisabled: unavailable || connection.isBusy,
-                    disabledReason: unavailable
-                        ? 'iOS 不開放第三方 App 使用藍牙 SPP'
-                        : null,
+                    disabledReason: disabledReason,
                     onTap: () => _select(kind),
                     child: _bodyFor(kind, palette),
                   );
@@ -412,19 +445,14 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         devices: _devices,
         scanning: _scanning,
         error: _scanError,
-        emptyHint: '找不到已配對的轉接器。請先到系統藍牙設定完成配對（多數 ELM327 的配對碼為 1234 或 0000）。',
-        // The last sentence used to read 選錯裝置要等約半分鐘才會失敗, which
-        // was true and is the wrong thing to tell somebody. It described the
-        // wait as unavoidable, so the only advice it gave was to sit through
-        // it — and while they did, every other device in this list was
-        // untappable. Cancelling stops the attempt at the end of the step
-        // it is on, and the next tap works immediately after; saying so is
-        // the difference between a wrong tap costing ten seconds and
-        // costing half a minute of believing the app is broken.
-        listHint:
-            '這裡列出手機上所有已配對的裝置 — 耳機、喇叭也會在內，'
-            '看起來像轉接器的排在前面。選錯了就按「取消」，'
-            '不必等它自己失敗，取消後可以馬上改選別的。',
+        emptyHint: classicDeviceListEmptyHint(
+          serialHost: sppSerialHostSupported,
+        ),
+        // Bonded-device hosts (Android/macOS): cancel-early copy matters
+        // because a wrong headphone row burns connection cascade time.
+        // SPP serial hosts (Windows/Linux): the list is COM/rfcomm nodes —
+        // never claim headphones appear here.
+        listHint: classicDeviceListHint(serialHost: sppSerialHostSupported),
         showSettingsAction: _permissionPermanentlyDenied,
         onRefresh: _loadPairedDevices,
         onSelect: (device) => _connect(() {
@@ -680,10 +708,7 @@ class _WifiBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '請先將手機連上轉接器發出的 Wi-Fi 熱點，再輸入其位址。'
-          '系統若問「此 Wi-Fi 無法連上網際網路，是否繼續使用」，選繼續使用。'
-          '在 Android 上，App 連線時會嘗試把流量固定在 Wi-Fi 路由，'
-          '避免被行動數據搶走。',
+          wifiConnectInstructions(),
           style: context.texts.bodyMedium,
         ),
         const SizedBox(height: Spacing.lg),
@@ -950,7 +975,9 @@ class _BleBodyState extends State<_BleBody> {
           });
         },
         onError: (Object e) {
-          if (mounted) setState(() => _error = '$e');
+          if (mounted) {
+            setState(() => _error = BleTransport.userFacingScanFailure(e));
+          }
         },
         onDone: () {
           if (mounted) {
@@ -964,7 +991,7 @@ class _BleBodyState extends State<_BleBody> {
     } on Object catch (e) {
       if (mounted) {
         setState(() {
-          _error = '$e';
+          _error = BleTransport.userFacingScanFailure(e);
           _scanning = false;
           _scanned = true;
         });
@@ -1000,7 +1027,10 @@ class _BleBodyState extends State<_BleBody> {
         ],
         if (_scanned && !_scanning && _found.isEmpty) ...[
           const SizedBox(height: Spacing.md),
-          Text(bleEmptyScanGuidance, style: context.texts.bodyMedium),
+          Text(
+            bleEmptyScanGuidance(classicAvailable: classicTransportAvailable),
+            style: context.texts.bodyMedium,
+          ),
         ],
         if (_found.isNotEmpty) ...[
           const SizedBox(height: Spacing.md),
@@ -1296,7 +1326,9 @@ class _LastAdapterCard extends ConsumerWidget {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: () => _reconnect(context, ref, last),
+                    onPressed: _reconnectAllowed(last)
+                        ? () => _reconnect(context, ref, last)
+                        : null,
                     icon: const Icon(Icons.link, size: 18),
                     label: const Text('直接連線'),
                   ),
@@ -1309,17 +1341,36 @@ class _LastAdapterCard extends ConsumerWidget {
                 ),
               ],
             ),
+            if (!_reconnectAllowed(last)) ...[
+              const SizedBox(height: Spacing.xs),
+              Text(
+                last.kind == TransportKind.bluetoothClassic
+                    ? classicUnavailableReason
+                    : bleUnavailableReason,
+                style: context.texts.labelSmall,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
+  /// Same host gates as the transport cards — a remembered Classic/BLE
+  /// adapter must not offer reconnect on a host where that transport is
+  /// disabled in the UI.
+  bool _reconnectAllowed(LastAdapter last) => switch (last.kind) {
+        TransportKind.bluetoothClassic => classicTransportAvailable,
+        TransportKind.bluetoothLe => bleTransportAvailable,
+        TransportKind.wifi || TransportKind.demo => true,
+      };
+
   Future<void> _reconnect(
     BuildContext context,
     WidgetRef ref,
     LastAdapter last,
   ) async {
+    if (!_reconnectAllowed(last)) return;
     // Taken before the first await, because this card does not survive its
     // own tap: the wizard hides it for the whole busy phase, so by the time
     // the connect resolves this context is unmounted and a mounted-check
@@ -1469,30 +1520,114 @@ typedef TransportQuestion = ({
 /// disagree, so the card was greyed out saying Classic is unavailable while
 /// four lines above it a question told you to pick it. That is the same defect
 /// as the iOS wording it replaced, in the platform nobody checked.
-bool get classicTransportAvailable => Platform.isAndroid;
+///
+/// Hosts with a real Classic path:
+/// - **Android:** RFCOMM three-tier cascade (`ClassicTransport`).
+/// - **macOS:** IOBluetooth RFCOMM via `flutter_classic_bluetooth`
+///   (`openRFCOMMChannelAsync`, SDP → channel else channel 1). macOS does
+///   **not** expose paired SPP as a general POSIX TTY the way Windows COM /
+///   Linux `/dev/rfcomm*` do (`/dev/cu.Bluetooth-Incoming-Port` is the host
+///   incoming serial profile, not remote-ELM327 enumeration), so the product
+///   path is the plugin — not `SerialTransport`.
+/// - **Windows / Linux:** Bluetooth SPP serial (38400 8N1) via
+///   `SerialTransport` + `com.cbstudio.telltale/spp_serial`.
+/// - **iOS:** permanent OS/API host limit — no generic third-party SPP.
+///
+/// Empty paired/port lists fail closed in the wizard (no fake adapters).
+///
+/// [classicIoBluetoothHostOverride] is a test seam — do not mock
+/// [Platform.isMacOS] globally. Production leaves it null.
+@visibleForTesting
+bool? classicIoBluetoothHostOverride;
+
+bool get classicIoBluetoothHostSupported =>
+    classicIoBluetoothHostOverride ?? Platform.isMacOS;
+
+bool get classicTransportAvailable =>
+    Platform.isAndroid ||
+    classicIoBluetoothHostSupported ||
+    sppSerialHostSupported;
+
+/// Why the Classic transport card is greyed out on hosts without a path.
+///
+/// The old copy always said "iOS", which was true for iPhone and false for
+/// every other platform that already builds this app. Desktop and iOS share
+/// the same gate (`classicTransportAvailable`) but not the same reason.
+String get classicUnavailableReason {
+  if (Platform.isIOS) {
+    return 'iOS 不開放第三方 App 使用藍牙 SPP';
+  }
+  return 'Bluetooth Classic（SPP）目前在 Android、macOS（IOBluetooth RFCOMM）、'
+      'Windows（COM）與 Linux（/dev/rfcomm*）可用';
+}
+
+/// Whether Bluetooth LE scanning/connect is usable on this host.
+///
+/// Every shipping host has a path:
+/// - Android / iOS / macOS / Windows: `universal_ble` native pigeon plugins
+/// - Linux: Dart BlueZ backend inside `universal_ble` (`bluez` → D-Bus). No
+///   Flutter plugin registrant is expected — `linux/flutter/generated_plugins.cmake`
+///   correctly omits it. The earlier Linux UI gate assumed
+///   `MissingPluginException`; that was a misread of the package layout.
+bool get bleTransportAvailable => true;
+
+/// Why the BLE transport card is greyed out when [bleTransportAvailable] is
+/// false. Kept for UI wiring; every current host returns true above.
+String get bleUnavailableReason => 'Bluetooth LE 在此主機尚不可用';
+
+/// Wi-Fi body copy. Phone hosts keep cellular-handoff guidance; desktop hosts
+/// talk about the computer joining the adapter AP without inventing a binder.
+String wifiConnectInstructions({@visibleForTesting bool? isPhone}) {
+  final phone = isPhone ?? _phoneFormFactor;
+  if (phone) {
+    return '請先將手機連上轉接器發出的 Wi-Fi 熱點，再輸入其位址。'
+        '系統若問「此 Wi-Fi 無法連上網際網路，是否繼續使用」，選繼續使用。'
+        '在 Android 上，App 連線時會嘗試把流量固定在 Wi-Fi 路由，'
+        '避免被行動數據搶走。';
+  }
+  return '請先將這台電腦連上轉接器發出的 Wi-Fi 熱點，再輸入其位址。'
+      '系統若提示此網路無法連上網際網路，請選擇繼續使用。'
+      '桌面系統通常會把熱點當預設路由；不需要 Android 那套 Wi-Fi 路由綁定。';
+}
+
+bool get _phoneFormFactor =>
+    !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
 List<TransportQuestion> whichTransportGuidance({
   required bool classicAvailable,
-}) => [
+  bool bleAvailable = true,
+  @visibleForTesting bool? phoneCentricCopy,
+}) {
+  final phone = phoneCentricCopy ?? _phoneFormFactor;
+  return [
   (
     transport: TransportKind.wifi,
-    question: '手機的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？',
-    answer: '選 Wi-Fi。先把手機連上那個網路，再回來輸入位址。',
+    question: phone
+        ? '手機的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？'
+        : '系統的 Wi-Fi 清單裡多出一個網路（像 V-LINK、WiFi_OBDII）？',
+    answer: phone
+        ? '選 Wi-Fi。先把手機連上那個網路，再回來輸入位址。'
+        : '選 Wi-Fi。先把這台裝置連上那個網路，再回來輸入位址。',
   ),
-  (
-    transport: TransportKind.bluetoothLe,
-    question: '盒子、賣場標題或裝置名稱上有 BLE、4.0、5.0 這些字？',
-    // The fallback is in the answer rather than only in the note at the
-    // bottom, because the cheap clones lie: a box marked "Bluetooth 4.0"
-    // is sometimes an SPP-only adapter with a dual-mode chip it does not
-    // use. Somebody who answered honestly and got nothing needs the next
-    // step attached to the answer that failed them, not four lines below
-    // it.
-    answer:
-        '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
-        '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
-        '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。',
-  ),
+  if (bleAvailable)
+    (
+      transport: TransportKind.bluetoothLe,
+      question: '盒子、賣場標題或裝置名稱上有 BLE、4.0、5.0 這些字？',
+      // The fallback is in the answer rather than only in the note at the
+      // bottom, because the cheap clones lie: a box marked "Bluetooth 4.0"
+      // is sometimes an SPP-only adapter with a dual-mode chip it does not
+      // use. Somebody who answered honestly and got nothing needs the next
+      // step attached to the answer that failed them, not four lines below
+      // it. Only offer Classic when this host actually enables it.
+      answer: classicAvailable
+          ? '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
+              '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
+              '如果掃描不到，那盒子上的 4.0 只是晶片規格，改用 Bluetooth Classic。'
+          : '選 Bluetooth LE。不需要事先配對，直接在 App 裡掃描 —— '
+              '就算它出現在系統的藍牙配對清單裡，也不要去配對，那條路走不通。'
+              '如果掃描不到，先確認轉接器有通電，或改試 Wi‑Fi；'
+              '此主機未開放 Bluetooth Classic。',
+    ),
   if (classicAvailable)
     (
       transport: TransportKind.bluetoothClassic,
@@ -1501,7 +1636,8 @@ List<TransportQuestion> whichTransportGuidance({
           '選 Bluetooth Classic。先在系統設定裡配對完成，'
           'App 不能代替你配對。配對碼多半是 1234 或 0000。',
     ),
-];
+  ];
+}
 
 /// What to say when a BLE scan finishes having found nothing.
 ///
@@ -1512,12 +1648,66 @@ List<TransportQuestion> whichTransportGuidance({
 /// from a blank panel.
 ///
 /// Ordered by how often each one is the answer, not by how interesting it is.
-const String bleEmptyScanGuidance =
-    '搜尋結束，沒有找到 BLE 轉接器。依序確認：轉接器的燈有沒有亮 —— '
-    '多數 OBD 插座要電門轉到 ON 才供電；再來是距離，先坐進車裡再搜尋；'
-    '最後看盒子上的規格，如果寫的是 2.0 或 3.0，那是 Bluetooth Classic，'
-    '不會出現在這份清單裡，請改用上面的 Bluetooth Classic。'
-    'BLE 轉接器不需要、也不應該在系統設定裡配對，那條路走不通。';
+/// When Classic is unavailable on this host, never point at the greyed-out
+/// Classic card — offer power/range checks and Wi‑Fi instead.
+String bleEmptyScanGuidance({bool? classicAvailable}) {
+  final classic = classicAvailable ?? classicTransportAvailable;
+  final classicOrWifi = classic
+      ? '最後看盒子上的規格，如果寫的是 2.0 或 3.0，那是 Bluetooth Classic，'
+          '不會出現在這份清單裡，請改用上面的 Bluetooth Classic。'
+      : '最後看盒子上的規格：若寫的是 2.0／3.0 或只有 Wi‑Fi，'
+          '請改試 Wi‑Fi（此主機未開放 Bluetooth Classic）。';
+  return '搜尋結束，沒有找到 BLE 轉接器。依序確認：轉接器的燈有沒有亮 —— '
+      '多數 OBD 插座要電門轉到 ON 才供電；再來是距離，先坐進車裡再搜尋；'
+      '$classicOrWifi'
+      'BLE 轉接器不需要、也不應該在系統設定裡配對，那條路走不通。';
+}
+
+/// Empty-state copy for the Classic device list.
+///
+/// Bonded-device hosts (Android / macOS) talk about system pairing. SPP serial
+/// hosts (Windows / Linux) talk about COM / rfcomm nodes — headphones never
+/// appear in that enumeration, so the bonded-device paragraph must not.
+String classicDeviceListEmptyHint({
+  required bool serialHost,
+  @visibleForTesting bool? linuxHost,
+}) {
+  if (!serialHost) {
+    return '找不到已配對的轉接器。請先到系統藍牙設定完成配對'
+        '（多數 ELM327 的配對碼為 1234 或 0000）。';
+  }
+  final linux = linuxHost ?? Platform.isLinux;
+  if (linux) {
+    return '找不到藍牙序列埠（/dev/rfcomm*）。請先以 BlueZ 配對 ELM327，'
+        '再用 rfcomm bind（或等效）建立 RFCOMM TTY 後重試。';
+  }
+  return '找不到藍牙序列埠（COMx）。請先在 Windows 藍牙設定配對 ELM327，'
+      '確認裝置管理員出現「Standard Serial over Bluetooth link」。';
+}
+
+/// Non-empty list explanation for Classic.
+///
+/// The cancel-early sentence on bonded hosts exists because a wrong headphone
+/// row used to burn ~30s of cascade before failing. Serial hosts do not list
+/// headphones; inventing that warning there would make COM/rfcomm look broken.
+String classicDeviceListHint({
+  required bool serialHost,
+  @visibleForTesting bool? linuxHost,
+}) {
+  if (!serialHost) {
+    return '這裡列出系統上所有已配對的裝置 — 耳機、喇叭也會在內，'
+        '看起來像轉接器的排在前面。選錯了就按「取消」，'
+        '不必等它自己失敗，取消後可以馬上改選別的。';
+  }
+  final linux = linuxHost ?? Platform.isLinux;
+  if (linux) {
+    return '這裡列出 BlueZ 已綁定的藍牙序列埠（/dev/rfcomm* 或等效）。'
+        '空清單代表系統尚未建立 RFCOMM 節點，不是 App 壞掉。';
+  }
+  return '這裡列出與藍牙關聯的 COM 埠'
+      '（「Standard Serial over Bluetooth link」）。'
+      '空清單代表系統尚未建立虛擬序列埠，不是 App 壞掉。';
+}
 
 class _WhichTransportCard extends ConsumerStatefulWidget {
   const _WhichTransportCard();
@@ -1568,6 +1758,7 @@ class _WhichTransportCardState extends ConsumerState<_WhichTransportCard> {
               const SizedBox(height: Spacing.sm),
               for (final row in whichTransportGuidance(
                 classicAvailable: classicTransportAvailable,
+                bleAvailable: bleTransportAvailable,
               ))
                 _WhichRow(question: row.question, answer: row.answer),
               const SizedBox(height: Spacing.sm),

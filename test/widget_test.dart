@@ -7,7 +7,11 @@ import 'package:torque_obd/ui/widgets/gauges/dial_gauge.dart';
 import 'package:torque_obd/ui/widgets/gauges/linear_gauge.dart';
 import 'package:torque_obd/ui/widgets/panel.dart';
 
-Widget _host(Widget child, {ThemeData? theme, Size size = const Size(300, 300)}) {
+Widget _host(
+  Widget child, {
+  ThemeData? theme,
+  Size size = const Size(300, 300),
+}) {
   return MaterialApp(
     theme: theme ?? AppTheme.dark(),
     home: Scaffold(
@@ -39,8 +43,9 @@ void main() {
       expect(find.text('RPM'), findsOneWidget);
     });
 
-    testWidgets('clamps a value above the maximum without overflowing',
-        (tester) async {
+    testWidgets('clamps a value above the maximum without overflowing', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _host(
           const DialGauge(
@@ -90,7 +95,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('renders at a small tile size without overflow', (tester) async {
+    testWidgets('renders at a small tile size without overflow', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _host(
           const DialGauge(
@@ -166,8 +173,9 @@ void main() {
       expect(find.text('100'), findsOneWidget);
     });
 
-    testWidgets('renders a NaN value as dashes rather than crashing',
-        (tester) async {
+    testWidgets('renders a NaN value as dashes rather than crashing', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _host(
           const LinearGauge(
@@ -211,6 +219,47 @@ void main() {
       );
       expect(find.text('儀表板是空的'), findsOneWidget);
       expect(find.text('選擇 PID'), findsOneWidget);
+    });
+
+    testWidgets('EmptyState scrolls without overflow in 200% landscape', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(832, 384);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.dark(),
+          home: const MediaQuery(
+            data: MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: Scaffold(
+              body: EmptyState(
+                icon: Icons.tune,
+                title: '儀表板是空的',
+                message: '先停止錄製，再選擇想要顯示的 PID 項目。',
+                action: FilledButton(onPressed: null, child: Text('選擇 PID')),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(SingleChildScrollView), findsOneWidget);
+      expect(
+        tester
+            .widget<SingleChildScrollView>(find.byType(SingleChildScrollView))
+            .primary,
+        isFalse,
+      );
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -100),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('Panel forwards taps', (tester) async {
@@ -266,12 +315,16 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('資料已過期'), findsOneWidget);
-      expect(find.text('2450'), findsOneWidget,
-          reason: 'and the reading itself stays on screen and readable');
+      expect(
+        find.text('2450'),
+        findsOneWidget,
+        reason: 'and the reading itself stays on screen and readable',
+      );
     });
 
-    testWidgets('does not overwrite a footnote the caller supplied',
-        (tester) async {
+    testWidgets('does not overwrite a footnote the caller supplied', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _host(
           const DialGauge(
@@ -308,5 +361,4 @@ void main() {
       expect(find.text('資料已過期'), findsNothing);
     });
   });
-
 }

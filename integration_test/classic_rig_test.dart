@@ -23,6 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:torque_obd/obd/transport/demo_transport.dart';
+import 'package:torque_obd/obd/transport/obd_transport.dart';
 import 'package:torque_obd/state/obd_session.dart';
 
 import 'rig_support.dart';
@@ -154,16 +155,17 @@ void main() {
     expect(paired, isTrue, reason: 'the paired Classic adapter was not listed');
 
     final adapter = await revealText(tester, _name);
-    await tester.drag(
-      find.byType(Scrollable).first,
-      const Offset(0, -120),
-    );
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
     await tester.pump();
     await tester.tap(adapter);
     await tester.pump();
 
     await requireDashboard(tester);
     await requireLivePolling(tester);
+    await completeTelemetryRigJourney(
+      tester,
+      expectedTransport: TransportKind.bluetoothClassic,
+    );
 
     final connectCalls = methodCalls.where((call) => call.method == 'connect');
     expect(connectCalls, hasLength(1));

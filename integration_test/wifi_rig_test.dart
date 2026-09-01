@@ -13,9 +13,15 @@
 /// inherit the field-test app's preferences and evidence.
 library;
 
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:torque_obd/obd/transport/obd_transport.dart';
+import 'package:torque_obd/telemetry/session/telemetry_session.dart';
 
 import 'rig_support.dart';
 
@@ -24,11 +30,67 @@ const String rigPortText = String.fromEnvironment(
   'WIFI_RIG_PORT',
   defaultValue: '35000',
 );
+const String expectedTerminalText = String.fromEnvironment(
+  'WIFI_RIG_EXPECTED_TERMINAL',
+  defaultValue: 'user',
+);
+const String armedFault = String.fromEnvironment('WIFI_RIG_ARM_FAULT');
+const String controlPortText = String.fromEnvironment('WIFI_RIG_CONTROL_PORT');
+const String controlToken = String.fromEnvironment('WIFI_RIG_CONTROL_TOKEN');
 
 Finder fieldWithLabel(String label) => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.decoration?.labelText == label,
   description: 'TextField labelled "$label"',
 );
+
+Future<void> armNextFault({
+  required String host,
+  required int port,
+  required String token,
+  required String fault,
+}) async {
+  final socket = await Socket.connect(
+    host,
+    port,
+    timeout: const Duration(seconds: 5),
+  );
+  try {
+    socket.write('ARM $token\n');
+    await socket.flush();
+    final responses = StreamIterator(
+      socket
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter()),
+    );
+    expect(
+      await responses.moveNext().timeout(const Duration(seconds: 5)),
+      isTrue,
+      reason: 'chaos proxy closed before acknowledging the arm request',
+    );
+    expect(
+      responses.current,
+      'ARMED $fault',
+      reason:
+          'chaos proxy did not acknowledge a post-recording arm request; '
+          'received "${responses.current}"',
+    );
+    expect(
+      await responses.moveNext().timeout(const Duration(seconds: 20)),
+      isTrue,
+      reason: 'chaos proxy acknowledged but never injected the armed fault',
+    );
+    expect(
+      responses.current,
+      matches(RegExp('^INJECTED $fault [1-9][0-9]*\$')),
+      reason:
+          'chaos proxy must prove the selected post-recording fault was '
+          'consumed by one concrete command',
+    );
+  } finally {
+    socket.destroy();
+  }
+}
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -52,18 +114,74 @@ void main() {
       inInclusiveRange(1, 65535),
       reason: 'WIFI_RIG_PORT must be in the range 1-65535',
     );
+    final expectedTerminals = TelemetryTerminalReason.values.where(
+      (value) => value.name == expectedTerminalText,
+    );
+    expect(
+      expectedTerminals,
+      hasLength(1),
+      reason:
+          'WIFI_RIG_EXPECTED_TERMINAL must be a TelemetryTerminalReason name, '
+          'got "$expectedTerminalText"',
+    );
+    final expectedTerminal = expectedTerminals.single;
+    final usesArmedFault = armedFault.isNotEmpty;
+    expect(
+      armedFault,
+      anyOf(isEmpty, 'close', 'no_prompt', 'corrupt'),
+      reason: 'WIFI_RIG_ARM_FAULT must be empty, close, no_prompt, or corrupt',
+    );
+    final controlPort = int.tryParse(controlPortText);
+    if (usesArmedFault) {
+      expect(
+        expectedTerminal,
+        TelemetryTerminalReason.disconnect,
+        reason:
+            'the armed device matrix closes the damaged link, so its first '
+            'recorder terminal must be disconnect',
+      );
+      expect(
+        controlPort,
+        inInclusiveRange(1, 65535),
+        reason: 'WIFI_RIG_CONTROL_PORT must be in 1-65535 for an armed fault',
+      );
+      expect(
+        controlToken,
+        isNotEmpty,
+        reason: 'WIFI_RIG_CONTROL_TOKEN is required for an armed fault',
+      );
+    } else {
+      expect(
+        controlPortText,
+        isEmpty,
+        reason: 'WIFI_RIG_CONTROL_PORT requires WIFI_RIG_ARM_FAULT',
+      );
+      expect(
+        controlToken,
+        isEmpty,
+        reason: 'WIFI_RIG_CONTROL_TOKEN requires WIFI_RIG_ARM_FAULT',
+      );
+    }
 
     await startCleanRigApp(tester);
 
     final wifiHeader = await revealText(tester, 'Wi-Fi');
     await tester.tap(wifiHeader);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    await revealText(tester, 'IP 位址');
     final hostField = fieldWithLabel('IP 位址');
     final portField = fieldWithLabel('埠');
+    await tester.scrollUntilVisible(
+      hostField,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await Scrollable.ensureVisible(tester.element(hostField), alignment: 0.5);
+    await tester.pump(const Duration(milliseconds: 300));
     expect(hostField, findsOneWidget);
     expect(portField, findsOneWidget);
+    expect(hostField.hitTestable(), findsOneWidget);
+    expect(portField.hitTestable(), findsOneWidget);
     await tester.enterText(hostField, rigHost.trim());
     await tester.enterText(portField, '$rigPort');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -77,6 +195,21 @@ void main() {
 
     await requireDashboard(tester);
     await requireLivePolling(tester);
+    final telemetry = await completeTelemetryRigJourney(
+      tester,
+      expectedTransport: TransportKind.wifi,
+      expectedTerminalReason: expectedTerminal,
+      afterFirstRecordedValue: usesArmedFault
+          ? () => armNextFault(
+              host: rigHost.trim(),
+              port: controlPort!,
+              token: controlToken,
+              fault: armedFault,
+            )
+          : null,
+    );
+    expect(telemetry.terminalReason, expectedTerminal);
+    if (expectedTerminal != TelemetryTerminalReason.user) return;
 
     pauseApp(tester);
     final paused = await waitForStoredTranscript(
@@ -96,9 +229,11 @@ void main() {
     expect(paused.body, contains(r'>> 0100\r'));
     expect(paused.body, contains('  << '));
 
+    final resumeBaseline = capturePollingResumeBaseline(tester);
     resumeApp(tester);
-    await requireLivePolling(
+    await requirePollingRecoveredAfterResume(
       tester,
+      resumeBaseline,
       timeout: const Duration(seconds: 20),
       reason: 'Wi-Fi polling did not recover after resume',
     );

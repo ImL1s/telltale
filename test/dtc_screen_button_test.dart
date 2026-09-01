@@ -81,6 +81,47 @@ Future<void> _pump(WidgetTester tester, DtcScanState scan) async {
   await tester.pump(const Duration(milliseconds: 50));
 }
 
+Future<void> _pumpCompressedLandscape(
+  WidgetTester tester,
+  DtcScanState scan,
+) async {
+  tester.view.physicalSize = const Size(832, 384);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        dtcScanProvider.overrideWith(() => _FixedScan(scan)),
+        obdSessionProvider.overrideWith(_FixedSession.new),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.dark(),
+        home: const MediaQuery(
+          data: MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: Scaffold(
+            body: Row(
+              children: [
+                SizedBox(width: 112, child: Text('導覽列')),
+                Expanded(
+                  child: Column(
+                    children: [
+                      SizedBox(height: 88, child: Text('錄製中 00:09')),
+                      Expanded(child: DtcScreen()),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump(const Duration(milliseconds: 50));
+}
+
 /// The clear control, whatever its label currently is.
 Finder _clearButton() => find.byType(OutlinedButton);
 
@@ -154,6 +195,47 @@ void main() {
     expect(
       find.byWidgetPredicate((w) => w is SelectableText && w.data == said),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('200 percent short landscape keeps the DTC header scrollable',
+      (tester) async {
+    await _pumpCompressedLandscape(
+      tester,
+      _scanWith(
+        clearing: false,
+        repeatWouldHarm: true,
+        message: '已有控制器回報清除完成，但其餘控制器無法確認。'
+            '請先重新掃描，確認已儲存、待確認與永久故障碼的最新狀態。',
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('故障碼'), findsOneWidget);
+    expect(find.text('請先重新掃描'), findsOneWidget);
+    expect(find.byTooltip('關閉'), findsOneWidget);
+
+    final pageScroll = find.byKey(const ValueKey('dtc-page-scroll'));
+    expect(pageScroll, findsOneWidget);
+    await tester.drag(pageScroll, const Offset(0, -220));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+
+    final dismiss = find.widgetWithIcon(IconButton, Icons.close);
+    await Scrollable.ensureVisible(
+      tester.element(dismiss),
+      alignment: 0.5,
+    );
+    await tester.pump();
+    expect(dismiss.hitTestable(), findsOneWidget);
+    await tester.tap(dismiss);
+    await tester.pump();
+    expect(find.byTooltip('關閉'), findsNothing,
+        reason: 'the compressed layout must retain the clear-result action');
+    expect(
+      tester.widget<OutlinedButton>(_clearButton()).onPressed,
+      isNull,
+      reason: 'dismissing the result must not remove the repeat-clear lock',
     );
   });
 }

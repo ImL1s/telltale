@@ -16,6 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:torque_obd/obd/transport/ble_transport.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
+import 'package:torque_obd/state/app_runtime.dart';
+import 'package:torque_obd/state/app_share_coordinator.dart';
 import 'package:torque_obd/state/obd_session.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/state/settings.dart';
@@ -101,6 +103,9 @@ Future<_ReconnectSession> _pumpShortcut(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
+        appSharePolicyProvider.overrideWith(
+          (ref) => ref.watch(productionAppSharePolicyProvider),
+        ),
         obdSessionProvider.overrideWith(
           () => session = _ReconnectSession(succeeds),
         ),
@@ -112,6 +117,12 @@ Future<_ReconnectSession> _pumpShortcut(
   expect(find.text('直接連線'), findsOneWidget);
   return session;
 }
+
+bool _reconnectAllowedFor(TransportKind kind) => switch (kind) {
+      TransportKind.bluetoothClassic => classicTransportAvailable,
+      TransportKind.bluetoothLe => bleTransportAvailable,
+      TransportKind.wifi || TransportKind.demo => true,
+    };
 
 void main() {
   const reconnectable = <LastAdapter>[
@@ -142,6 +153,18 @@ void main() {
         adapter: adapter,
         succeeds: true,
       );
+
+      if (!_reconnectAllowedFor(adapter.kind)) {
+        // Same host gates as the transport cards: a remembered Classic/BLE
+        // adapter on an unsupported host must not call into connect*.
+        final button = tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, '直接連線'),
+        );
+        expect(button.onPressed, isNull);
+        expect(session.attemptedKind, isNull);
+        expect(find.text('dashboard reached'), findsNothing);
+        return;
+      }
 
       await tester.tap(find.text('直接連線'));
       // One frame with the attempt in flight: the wizard hides the shortcut

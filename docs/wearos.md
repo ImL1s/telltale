@@ -58,7 +58,7 @@ adb -s <wear-device> install -r build/app/outputs/flutter-apk/app-wear-debug.apk
 | WearShell 三頁、Demo 連線、儀表即時更新 | ✅ Wear OS 模擬器（sdk_gwear_arm64）實測 |
 | widget 測試（227dp 圓面幾何、頁面條件、循環、斷線確認、stale 熄滅、DEMO 標記、電池頁單一 owner＋generation 撤回） | ✅ `test/wear_shell_test.dart` |
 | 電池頁在真錶上出現 | ❌ **不可達** —— 安裝只在手機、錶是 standalone，兩邊偏好設定不互通；需要 provisioning 路徑（錶上安裝或 Data Layer），列為後續 |
-| BLE 直連實體轉接器 | ⚠️ **未於實錶驗證** —— 模擬器無 BLE。程式路徑與手機版共用（`universal_ble`），但 Wear 裝置上該套件無公開成功案例。上架前必須以真錶＋BLE 轉接器做一次 Gate 0 spike |
+| BLE 直連實體轉接器 | ⚠️ **未於實錶驗證** —— 模擬器無 BLE。程式路徑與手機版共用（`universal_ble`），但 Wear 裝置上該套件無公開成功案例。上架前必須以真錶＋BLE 轉接器做一次 Gate 0 spike。2026-09-01 複查：當時只接上 Galaxy S24 Ultra 與 `sdk_gwear_arm64` 模擬器，沒有實體錶，Gate 0 仍未做 |
 | 旋轉錶冠換頁 | ❌ 未做（`wearable_rotary` 已停維護；v1 以滑動代替，未來自 vendor 原生 channel） |
 | Ambient mode | ❌ 未做（v1 = 連線時常亮；ambient 需 `wear_plus`，列為後續） |
 | Play Wear OS track 上架 | ❌ 未做（需 target API 35+ 合規確認、384×384 截圖、release signing） |

@@ -7,6 +7,11 @@ command number. The counter continues across reconnects, so a fault is not
 silently replayed after the app reconnects. The configured chunk-size cycle
 restarts at the beginning of every emulator reply.
 
+Physical-device recording tests should instead use the authenticated arm
+control described below. It targets the first command after the app has
+confirmed that recording is active and has persisted a value, rather than
+guessing a command number from startup traffic.
+
 ## Start
 
 Run all commands from the Flutter app root: use `cd app` first in the private
@@ -33,6 +38,29 @@ Choose at most one fault option for the entire proxy run:
 --no-prompt-on-command N   forward reply N without its final `>`
 --corrupt-on-command N     flip one deterministic payload bit in reply N
 ```
+
+For a device recording fault, replace the numbered option with:
+
+```bash
+--arm-next-command close \
+--control-port 35002 --control-token <single-run-random-token> \
+--disconnect-after-armed-fault
+```
+
+`--arm-next-command` accepts `close`, `no_prompt`, or `corrupt`. The control
+listener uses `--control-host` when provided and otherwise follows
+`--listen-host`. The Wi-Fi journey invokes its control callback immediately
+after the root recorder proves `recording` with at least one value. The phone
+then sends `ARM <token>`, requires the exact `ARMED <fault>` acknowledgement,
+and waits for `INJECTED <fault> <command>` proof. The proxy consumes the armed
+fault on the next driver command. No elapsed delay or startup command count
+participates in this handoff.
+
+`--disconnect-after-armed-fault` closes the socket after delivering an armed
+`no_prompt` or `corrupt` reply. This makes the first recorder terminal
+deterministically `disconnect` while the JSONL still proves that the selected
+reply damage preceded that close. An armed `close` closes before forwarding
+the selected command. Numbered oracle faults keep their original behavior.
 
 The proxy permits one active driver connection. A new socket gets a 100 ms
 handover grace so the previous app test can finish closing; if the old driver
@@ -61,6 +89,23 @@ Drive the isolated Android rig build with:
   --dart-define=WIFI_RIG_HOST=<host-ip> \
   --dart-define=WIFI_RIG_PORT=35001
 ```
+
+For each physical-device fault case, start a fresh proxy with a unique token,
+then add these definitions to the Flutter command:
+
+```bash
+--dart-define=WIFI_RIG_EXPECTED_TERMINAL=disconnect \
+--dart-define=WIFI_RIG_ARM_FAULT=<close|no_prompt|corrupt> \
+--dart-define=WIFI_RIG_CONTROL_PORT=35002 \
+--dart-define=WIFI_RIG_CONTROL_TOKEN=<same-single-run-token>
+```
+
+The run is valid only when the integration test receives both control replies,
+passes with terminal `disconnect`, and the proxy JSONL has an `armed` control
+event followed by the configured fault with `"armed":true`.
+For `no_prompt` and `corrupt`, it must then contain `post_fault_close` for that
+same connection and command. Start a fresh proxy for every case; an armed fault
+is intentionally one-shot.
 
 Each JSONL record includes `run_id`, increasing `seq`, monotonic time,
 `direction`, `data_hex`, and `fault`, plus connection/command/chunk metadata.

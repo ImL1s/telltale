@@ -7,6 +7,7 @@ import 'package:torque_obd/core/theme/app_theme.dart';
 import 'package:torque_obd/obd/powertrain_battery/powertrain_battery_catalog.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
 import 'package:torque_obd/state/obd_session.dart';
+import 'package:torque_obd/state/pid_mutation_lock.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/state/powertrain_battery_profiles.dart';
 import 'package:torque_obd/ui/screens/pids/powertrain_battery_catalog_screen.dart';
@@ -233,7 +234,10 @@ void main() {
 
     await tester.tap(find.byKey(const Key('powertrain_install_mg-zs-ev')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('powertrain_install_disclosure')), findsOneWidget);
+    expect(
+      find.byKey(const Key('powertrain_install_disclosure')),
+      findsOneWidget,
+    );
 
     // Nothing installs before the identity acknowledgement.
     var confirm = tester.widget<FilledButton>(
@@ -265,6 +269,42 @@ void main() {
   });
 
   testWidgets(
+    'recording lock refuses catalog uninstall without removing signals',
+    (tester) async {
+      final container = await _pump(tester);
+      addTearDown(container.dispose);
+      await container
+          .read(pidRegistryProvider.notifier)
+          .installPowertrainProfile(_snapshot, 'mg-zs-ev', vehicleYear: 2021);
+      await tester.pumpAndSettle();
+      expect(
+        container
+            .read(pidRegistryProvider.notifier)
+            .installedPowertrainProfileIds,
+        {'mg-zs-ev'},
+      );
+
+      final token = container
+          .read(pidMutationLockProvider)
+          .tryAcquire('recording')!;
+      await tester.ensureVisible(
+        find.byKey(const Key('powertrain_uninstall_mg-zs-ev')),
+      );
+      await tester.tap(find.byKey(const Key('powertrain_uninstall_mg-zs-ev')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kPidMutationLockedMessage), findsOneWidget);
+      expect(
+        container
+            .read(pidRegistryProvider.notifier)
+            .installedPowertrainProfileIds,
+        {'mg-zs-ev'},
+      );
+      container.read(pidMutationLockProvider).release(token);
+    },
+  );
+
+  testWidgets(
     'an install accepted after the connection changed grants nothing',
     (tester) async {
       final container = await _pump(tester, connected: true);
@@ -291,10 +331,7 @@ void main() {
 
       final registry = container.read(pidRegistryProvider.notifier);
       expect(registry.installedPowertrainProfileIds, {'mg-zs-ev'});
-      expect(
-        container.read(powertrainProfileAuthorizationsProvider),
-        isEmpty,
-      );
+      expect(container.read(powertrainProfileAuthorizationsProvider), isEmpty);
     },
   );
 

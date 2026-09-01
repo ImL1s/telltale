@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/obd/pid/pid.dart';
 import 'package:torque_obd/obd/pid/pid_csv.dart';
@@ -8,6 +10,26 @@ void main() {
   _strictParsingTests();
   _torqueProCompatibility();
   group('export / import round trip', () {
+    test(
+      'streamed export preserves exact CSV bytes in bounded chunks',
+      () async {
+        const pid = Pid(
+          name: 'Coolant',
+          shortName: 'ECT',
+          modeAndPid: '0105',
+          equation: 'A-40',
+          minValue: -40,
+          maxValue: 215,
+          units: '°C',
+        );
+        final chunks = await PidCsv.stream([pid], maxChunkBytes: 32).toList();
+        expect(chunks.every((chunk) => chunk.length <= 32), isTrue);
+        expect(
+          chunks.expand((chunk) => chunk),
+          utf8.encode(PidCsv.export([pid])),
+        );
+      },
+    );
     test('every field survives a round trip', () {
       const original = Pid(
         name: 'Transmission Fluid Temp',
@@ -44,7 +66,8 @@ void main() {
 
   group('parsing files from elsewhere', () {
     test('reads a stock eight-column Torque file', () {
-      const wire = 'Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,Units,Header\r\n'
+      const wire =
+          'Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,Units,Header\r\n'
           'Engine RPM,RPM,010C,((A*256)+B)/4,0,8000,rpm,7E0\r\n';
       final result = PidCsv.parse(wire);
       expect(result.errors, isEmpty);
@@ -58,14 +81,16 @@ void main() {
     });
 
     test('a UTF-8 BOM does not end up inside the first column', () {
-      const wire = '﻿Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,Units,Header\r\n'
+      const wire =
+          '﻿Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,Units,Header\r\n'
           'Oil Temp,Oil,015C,A-40,-40,215,°C,7E0\r\n';
       final result = PidCsv.parse(wire);
       expect(result.pids.single.name, 'Oil Temp');
     });
 
     test('bad rows are reported rather than silently skipped', () {
-      const wire = 'Good,G,010C,A,0,100,x,7E0\r\n'
+      const wire =
+          'Good,G,010C,A,0,100,x,7E0\r\n'
           'Broken,B,ZZ,A,0,100,x,7E0\r\n'
           'NoFormula,N,0105,,0,100,x,7E0\r\n';
       final result = PidCsv.parse(wire);
@@ -101,20 +126,23 @@ void main() {
 /// perfectly valid request.
 void _strictParsingTests() {
   group('malformed rows are rejected, not repaired', () {
-    const columns = 'Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,'
+    const columns =
+        'Name,ShortName,ModeAndPID,Equation,Min Value,Max Value,'
         'Units,Header,Priority,Redline,Variant\r\n';
 
     PidCsvResult parseRow(String row) => PidCsv.parse('$columns$row\r\n');
 
-    test('a letter O typed for a zero fails instead of changing the request',
-        () {
-      // `22-11O1` had every non-hex character deleted, yielding a request the
-      // author never wrote. The gauge then polled a different identifier and
-      // displayed whatever came back.
-      final result = parseRow('Trans,T,22-11O1,A,0,100,C,7E0');
-      expect(result.pids, isEmpty);
-      expect(result.errors, isNotEmpty);
-    });
+    test(
+      'a letter O typed for a zero fails instead of changing the request',
+      () {
+        // `22-11O1` had every non-hex character deleted, yielding a request the
+        // author never wrote. The gauge then polled a different identifier and
+        // displayed whatever came back.
+        final result = parseRow('Trans,T,22-11O1,A,0,100,C,7E0');
+        expect(result.pids, isEmpty);
+        expect(result.errors, isNotEmpty);
+      },
+    );
 
     test('an odd number of hex digits fails', () {
       final result = parseRow('Odd,O,010C0,A,0,100,C,7E0');
@@ -165,22 +193,31 @@ void _strictParsingTests() {
       // whose needle then reads as authoritative against it.
       expect(
         PidDefinition.rejectionReason(
-          name: 'x', modeAndPid: '010C', header: '7EG',
-          minText: '0', maxText: '100',
+          name: 'x',
+          modeAndPid: '010C',
+          header: '7EG',
+          minText: '0',
+          maxText: '100',
         ),
         contains('標頭'),
       );
       expect(
         PidDefinition.rejectionReason(
-          name: 'x', modeAndPid: '010C', header: '7E0',
-          minText: '100', maxText: '10',
+          name: 'x',
+          modeAndPid: '010C',
+          header: '7E0',
+          minText: '100',
+          maxText: '10',
         ),
         contains('上限'),
       );
       expect(
         PidDefinition.rejectionReason(
-          name: 'x', modeAndPid: '010C', header: '7E0',
-          minText: 'abc', maxText: '100',
+          name: 'x',
+          modeAndPid: '010C',
+          header: '7E0',
+          minText: 'abc',
+          maxText: '100',
         ),
         contains('下限'),
       );
@@ -189,15 +226,22 @@ void _strictParsingTests() {
       // is the one place the two callers legitimately differ.
       expect(
         PidDefinition.rejectionReason(
-          name: 'x', modeAndPid: '010C', header: '7E0',
-          minText: '', maxText: '',
+          name: 'x',
+          modeAndPid: '010C',
+          header: '7E0',
+          minText: '',
+          maxText: '',
         ),
         isNull,
       );
       expect(
         PidDefinition.rejectionReason(
-          name: 'x', modeAndPid: '010C', header: '7E0',
-          minText: '', maxText: '', requireBounds: true,
+          name: 'x',
+          modeAndPid: '010C',
+          header: '7E0',
+          minText: '',
+          maxText: '',
+          requireBounds: true,
         ),
         isNotNull,
       );
@@ -205,8 +249,12 @@ void _strictParsingTests() {
       // And a well-formed definition passes both ways.
       expect(
         PidDefinition.rejectionReason(
-          name: 'x', modeAndPid: '010C', header: '7E0',
-          minText: '0', maxText: '8000', requireBounds: true,
+          name: 'x',
+          modeAndPid: '010C',
+          header: '7E0',
+          minText: '0',
+          maxText: '8000',
+          requireBounds: true,
         ),
         isNull,
       );
@@ -226,7 +274,8 @@ void _reorderedColumns() {
       // landing where `Min Value` and `Max Value` are expected produces a PID
       // that polls the wrong controller and renders against wrong bounds: two
       // numbers on a gauge that look exactly like the right ones.
-      const csv = 'Header,Name,Equation,ModeAndPID,Units,Max Value,Min Value\r\n'
+      const csv =
+          'Header,Name,Equation,ModeAndPID,Units,Max Value,Min Value\r\n'
           '7E1,Trans Temp,A-40,2211A6,°C,215,-40\r\n';
       final result = PidCsv.parse(csv);
       expect(result.errors, isEmpty);
@@ -234,9 +283,13 @@ void _reorderedColumns() {
       expect(pid.name, 'Trans Temp');
       expect(pid.modeAndPid, '2211A6');
       expect(pid.equation, 'A-40');
-      expect(pid.header, '7E1',
-          reason: 'the header decides which controller is asked; reading it '
-              'from the wrong column asks a different module');
+      expect(
+        pid.header,
+        '7E1',
+        reason:
+            'the header decides which controller is asked; reading it '
+            'from the wrong column asks a different module',
+      );
       expect(pid.units, '°C');
       expect(pid.minValue, -40);
       expect(pid.maxValue, 215);
@@ -264,7 +317,8 @@ void _reorderedColumns() {
       // that both claim to be the equation. Whichever is wrong produces a PID
       // that computes with the wrong formula — a number on a gauge that looks
       // exactly like the right one, from a file the author believed was fine.
-      const csv = 'Name,ModeAndPID,Equation,Equation\r\n'
+      const csv =
+          'Name,ModeAndPID,Equation,Equation\r\n'
           'Trans Temp,2211A6,A-40,A*100/255\r\n';
       final result = PidCsv.parse(csv);
       expect(result.pids, isEmpty);
@@ -272,15 +326,19 @@ void _reorderedColumns() {
       expect(result.errors.single, contains('重複'));
     });
 
-    test('and a duplicated Header, which decides which controller is asked',
-        () {
-      const csv = 'Name,ModeAndPID,Equation,Header,Header\r\n'
-          'Trans Temp,2211A6,A-40,7E0,7E1\r\n';
-      expect(PidCsv.parse(csv).pids, isEmpty);
-    });
+    test(
+      'and a duplicated Header, which decides which controller is asked',
+      () {
+        const csv =
+            'Name,ModeAndPID,Equation,Header,Header\r\n'
+            'Trans Temp,2211A6,A-40,7E0,7E1\r\n';
+        expect(PidCsv.parse(csv).pids, isEmpty);
+      },
+    );
 
     test('spelling variants of a column name are the same column', () {
-      const csv = 'name,modeandpid,equation,minvalue,max value\r\n'
+      const csv =
+          'name,modeandpid,equation,minvalue,max value\r\n'
           'Trans Temp,2211A6,A-40,-40,215\r\n';
       final result = PidCsv.parse(csv);
       expect(result.errors, isEmpty);
@@ -315,10 +373,14 @@ void _torqueProCompatibility() {
       expect(result.errors, isEmpty);
       expect(result.pids, hasLength(2));
 
-      expect(result.pids[1].header, '7E1',
-          reason: 'this PID is addressed to the transmission; sending it to '
-              'the engine is how an imported set produces a plausible wrong '
-              'number');
+      expect(
+        result.pids[1].header,
+        '7E1',
+        reason:
+            'this PID is addressed to the transmission; sending it to '
+            'the engine is how an imported set produces a plausible wrong '
+            'number',
+      );
       expect(result.pids[1].modeAndPid, '221E1C');
       expect(result.pids[1].equation, '((A*256)+B)/8-40');
 
@@ -330,7 +392,8 @@ void _torqueProCompatibility() {
     test('and the spelling this app exports still wins when both appear', () {
       // Not a real file, but the ambiguity has to resolve somewhere, and a
       // round trip through this app must not be degraded by an alias.
-      const file = 'Name,ModeAndPID,Equation,Header,OBD Header\r\n'
+      const file =
+          'Name,ModeAndPID,Equation,Header,OBD Header\r\n'
           '"X","0105","A",7E1,7E2\r\n';
       final result = PidCsv.parse(file);
       expect(result.errors, isEmpty);

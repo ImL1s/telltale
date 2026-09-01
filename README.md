@@ -99,10 +99,16 @@ See [powertrain battery profiles](docs/powertrain-battery-profiles.md) for the
 full counts, source limits, consent rules, licence, and validation boundary.
 
 Android is the primary physically tested platform for device, UI, and BLE-rig
-paths. iOS and macOS currently have compile gates, not equivalent physical-
-adapter or vehicle evidence. Bluetooth Classic
-is Android-only in practice because Apple platforms do not expose general
-RFCOMM/SPP accessories to third-party apps.
+paths. iOS, macOS, Windows, and Linux have public compile gates and a runnable
+Demo / Wi-Fi path in-tree; BLE is wired on every shipping host (Linux via
+BlueZ/D-Bus). They do not yet carry equivalent physical-adapter or vehicle
+evidence. Bluetooth Classic is offered in the UI on Android, macOS, Windows,
+and Linux (`classicTransportAvailable`): Android is field-proven RFCOMM/SPP;
+macOS uses IOBluetooth RFCOMM; Windows and Linux open Bluetooth SPP COM /
+`/dev/rfcomm*` serial nodes. iOS permanently blocks third-party SPP and keeps
+the Classic card grey. Desktop Classic is wired but still needs powered-adapter
+field evidence before calling it mature. See
+[platform support](docs/platform-support.md).
 
 ## Field-tested adapter
 

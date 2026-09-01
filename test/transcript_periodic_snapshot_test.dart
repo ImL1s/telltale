@@ -136,9 +136,11 @@ void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     _dir = Directory.systemTemp.createTempSync('transcript-periodic-test');
   });
   tearDown(() {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     if (_dir.existsSync()) _dir.deleteSync(recursive: true);
   });
 

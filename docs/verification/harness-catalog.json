@@ -1,0 +1,114 @@
+{
+  "updated": "2026-09-01",
+  "purpose": "Machine-checkable map of multiplatform claims to harness files. A listed file must exist. CI/local/hardware flags are honest: hardware-gated harnesses must refuse to report a pass when the adapter is absent.",
+  "entries": [
+    {
+      "id": "demo-telemetry",
+      "claim": "Demo connect → live telemetry / record",
+      "files": [
+        "test/demo_connect_journey_test.dart",
+        "test/telemetry_demo_journey_test.dart",
+        "integration_test/demo_rig_test.dart",
+        "integration_test/ios_field_demo_journey_test.dart"
+      ],
+      "ci": "telltale Apple/Linux/Windows functional smoke (demo + telemetry journeys); iOS sim journey is local",
+      "hardware": false
+    },
+    {
+      "id": "wifi-tcp",
+      "claim": "Wi-Fi TCP to ELM327 (Ircama oracle + phone LAN rig)",
+      "files": [
+        "test/wifi_transport_test.dart",
+        "test/emulator_integration_test.dart",
+        "tool/desktop_wifi_oracle/run.sh",
+        "tool/ios_wifi_oracle/run.sh",
+        "integration_test/ios_field_wifi_oracle_test.dart",
+        "integration_test/wifi_rig_test.dart",
+        "tool/ble_test_rig/emulator_entrypoint.py"
+      ],
+      "ci": "telltale third-party ELM327 simulator job; desktop_wifi_oracle is the local macOS wrapper",
+      "hardware": false
+    },
+    {
+      "id": "ble",
+      "claim": "BLE scan/connect (software + synthetic peripheral + field)",
+      "files": [
+        "test/ble_transport_test.dart",
+        "integration_test/ble_rig_test.dart",
+        "tool/ble_test_rig/run.sh",
+        "tool/field_bt_verify/run.sh",
+        "tool/field_bt_verify/probe_acl.py",
+        "tool/field_bt_verify/test_probe_acl.py",
+        "integration_test/field_bt_journey_test.dart"
+      ],
+      "ci": "ble_test_rig python tests in CI; field_bt_verify ACL tests in CI; live ELM327 field is hardware-gated",
+      "hardware": true
+    },
+    {
+      "id": "classic-spp",
+      "claim": "Classic SPP / RFCOMM (gates + serial + IOBluetooth contract + field)",
+      "files": [
+        "test/which_transport_test.dart",
+        "test/serial_transport_test.dart",
+        "test/macos_classic_iobluetooth_contract_test.dart",
+        "test/remembered_adapter_navigation_test.dart",
+        "integration_test/classic_rig_test.dart",
+        "tool/field_bt_verify/run.sh",
+        "tool/desktop_bt_probe/run.sh",
+        "tool/desktop_bt_probe/probe.py",
+        "tool/desktop_bt_probe/test_probe.py"
+      ],
+      "ci": "transport contract tests in flutter test + smoke; desktop_bt_probe unit tests in CI; field SPP is hardware-gated",
+      "hardware": true
+    },
+    {
+      "id": "share-export",
+      "claim": "Telemetry/transcript export and app_share handoff",
+      "files": [
+        "test/desktop_telemetry_share_smoke_test.dart",
+        "test/transcript_export_smoke_test.dart",
+        "test/app_share_coordinator_test.dart",
+        "test/app_share_platform_contract_test.dart",
+        "integration_test/macos_field_share_journey_test.dart",
+        "integration_test/telemetry_share_crash_rig_test.dart"
+      ],
+      "ci": "telltale functional smoke (desktop share + transcript export)",
+      "hardware": false
+    },
+    {
+      "id": "telemetry-runtimes",
+      "claim": "Session telemetry, lifecycle, memory/share ledger",
+      "files": [
+        "tool/telemetry_lifecycle_rig/run.sh",
+        "tool/telemetry_memory_rig/run.sh",
+        "integration_test/telemetry_lifecycle_rig_test.dart",
+        "integration_test/telemetry_memory_rig_test.dart"
+      ],
+      "ci": "unit/widget coverage in flutter test; device runners are local",
+      "hardware": false
+    },
+    {
+      "id": "packaging-unsigned",
+      "claim": "Unsigned desktop archives (not store-signed)",
+      "files": [
+        "tool/packaging/macos_dmg.sh",
+        "tool/packaging/windows_zip.sh",
+        "tool/packaging/linux_tarball.sh",
+        "tool/packaging/README.md"
+      ],
+      "ci": "telltale Apple/Linux/Windows jobs upload unsigned debug archives",
+      "hardware": false
+    },
+    {
+      "id": "platform-docs",
+      "claim": "Honest matrix + this catalog stay in tree",
+      "files": [
+        "docs/platform-support.md",
+        "docs/verification/rig-matrix.md",
+        "docs/verification/harness-catalog.json"
+      ],
+      "ci": "harness_catalog_test.dart in flutter test",
+      "hardware": false
+    }
+  ]
+}

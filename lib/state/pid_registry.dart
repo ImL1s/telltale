@@ -5,15 +5,18 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../obd/pid/pid.dart';
 import '../obd/pid/pid_library.dart';
+import '../obd/polling_engine.dart';
 import '../obd/powertrain_battery/powertrain_battery_catalog.dart';
 import '../obd/powertrain_battery/powertrain_battery_profile.dart';
 import '../obd/powertrain_battery/profile_pid_installer.dart';
 import '../obd/powertrain_battery/profile_wire_contract.dart';
+import 'pid_mutation_lock.dart';
 
 const _kCustomPidsKey = 'custom_pids_v1';
 const _kActivePidIdsKey = 'active_pid_ids_v1';
@@ -103,7 +106,38 @@ class PidRegistry extends Notifier<List<Pid>> {
     return null;
   }
 
-  Future<void> upsertCustom(Pid pid) => upsertAllCustom([pid]);
+  Future<PidImportOutcome> upsertCustom(Pid pid) => upsertAllCustom([pid]);
+
+  /// Replaces one custom definition as a single in-memory commit.
+  Future<PidMutationOutcome> replaceCustom(
+    Pid previous,
+    Pid replacement,
+  ) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    final previousId = Pid.canonicalId(previous.id);
+    final index = state.indexWhere(
+      (pid) => pid.isCustom && Pid.canonicalId(pid.id) == previousId,
+    );
+    if (index < 0) return const PidMutationOutcome.noChange();
+
+    final custom = replacement.copyWith(isCustom: true);
+    final replacementId = Pid.canonicalId(custom.id);
+    final collision = state.indexWhere(
+      (pid) =>
+          pid.isCustom &&
+          Pid.canonicalId(pid.id) == replacementId &&
+          Pid.canonicalId(pid.id) != previousId,
+    );
+    if (collision >= 0) return const PidMutationOutcome.noChange();
+
+    final next = [...state];
+    next[index] = custom;
+    state = next;
+    await _persist();
+    return const PidMutationOutcome.applied();
+  }
 
   /// Adds or replaces several definitions with a single write.
   ///
@@ -118,6 +152,14 @@ class PidRegistry extends Notifier<List<Pid>> {
   /// and silently swapped a working formula for it. A gauge then reads 26 rpm
   /// where the vehicle said 1726, with nothing on screen to say why.
   Future<PidImportOutcome> upsertAllCustom(Iterable<Pid> pids) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidImportOutcome(
+        inserted: 0,
+        replaced: 0,
+        duplicatesInFile: [],
+        failure: PidMutationFailure.locked,
+      );
+    }
     final next = [...state];
     var inserted = 0;
     var replaced = 0;
@@ -158,7 +200,13 @@ class PidRegistry extends Notifier<List<Pid>> {
     );
   }
 
-  Future<void> removeCustom(Pid pid) async {
+  Future<PidMutationOutcome> removeCustom(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (!state.any((p) => p.id == pid.id && p.isCustom)) {
+      return const PidMutationOutcome.noChange();
+    }
     state = state.where((p) => !(p.id == pid.id && p.isCustom)).toList();
     await _persist();
     // A deleted PID must also leave the dashboard, and it does — by being
@@ -181,6 +229,7 @@ class PidRegistry extends Notifier<List<Pid>> {
     // here leaves the grid on the rebuild this assignment already triggers. A
     // stale id left in storage never resolves again and is rewritten by the
     // next toggle.
+    return const PidMutationOutcome.applied();
   }
 
   /// Installs or replaces every signal owned by a catalog profile in one
@@ -196,59 +245,79 @@ class PidRegistry extends Notifier<List<Pid>> {
   /// [vehicleYear] is the model year the user confirmed at install time. It
   /// is stored with the reference so the connection-time authorization prompt
   /// can name the exact vehicle rather than a range.
-  Future<void> installPowertrainProfile(
+  Future<PidMutationOutcome> installPowertrainProfile(
     PowertrainBatteryCatalogSnapshot snapshot,
     String profileId, {
     required int vehicleYear,
   }) async {
-    if (!isPowertrainCatalogSha256(snapshot.catalogSha256)) {
-      throw const PowertrainProfileInstallException(
-        'catalog snapshot carries no verified SHA-256',
-      );
+    final lock = ref.read(pidMutationLockProvider);
+    final token = lock.tryAcquire('catalog-install');
+    if (token == null) return const PidMutationOutcome.locked();
+    try {
+      if (!isPowertrainCatalogSha256(snapshot.catalogSha256)) {
+        throw const PowertrainProfileInstallException(
+          'catalog snapshot carries no verified SHA-256',
+        );
+      }
+      final profile = snapshot.catalog.profiles
+          .where((candidate) => candidate.id == profileId)
+          .firstOrNull;
+      if (profile == null) {
+        throw PowertrainProfileInstallException(
+          '$profileId is not in the verified catalog',
+        );
+      }
+      if (!profile.appliesToYear(vehicleYear)) {
+        throw PowertrainProfileInstallException(
+          '$vehicleYear is outside ${profile.id}\'s documented year range',
+        );
+      }
+      final pids = PowertrainProfilePidInstaller.build(profile);
+      // Persist a snapshot first, commit second. Nothing observable — not the
+      // provider state, not the [installedVehicleYear] getter — changes until
+      // the storage write has succeeded, so a failure leaves every reader
+      // consistent and there is nothing to roll back. Publishing last matters
+      // separately: the state assignment notifies the dashboard's
+      // reconciliation synchronously, and a failure after that point could
+      // not reach across providers to undo what the notification caused.
+      final nextYears = Map.of(_installedYears)..[profile.id] = vehicleYear;
+      await _persistProfileInstalls(nextYears);
+      _installedYears
+        ..clear()
+        ..addAll(nextYears);
+      state = [
+        for (final pid in state)
+          if (pid.ownerProfileId != profile.id) pid,
+        ...pids,
+      ];
+      _powertrainRestoreSettled = true;
+      return const PidMutationOutcome.applied();
+    } finally {
+      lock.release(token);
     }
-    final profile = snapshot.catalog.profiles
-        .where((candidate) => candidate.id == profileId)
-        .firstOrNull;
-    if (profile == null) {
-      throw PowertrainProfileInstallException(
-        '$profileId is not in the verified catalog',
-      );
-    }
-    if (!profile.appliesToYear(vehicleYear)) {
-      throw PowertrainProfileInstallException(
-        '$vehicleYear is outside ${profile.id}\'s documented year range',
-      );
-    }
-    final pids = PowertrainProfilePidInstaller.build(profile);
-    // Persist a snapshot first, commit second. Nothing observable — not the
-    // provider state, not the [installedVehicleYear] getter — changes until
-    // the storage write has succeeded, so a failure leaves every reader
-    // consistent and there is nothing to roll back. Publishing last matters
-    // separately: the state assignment notifies the dashboard's
-    // reconciliation synchronously, and a failure after that point could
-    // not reach across providers to undo what the notification caused.
-    final nextYears = Map.of(_installedYears)..[profile.id] = vehicleYear;
-    await _persistProfileInstalls(nextYears);
-    _installedYears
-      ..clear()
-      ..addAll(nextYears);
-    state = [
-      for (final pid in state)
-        if (pid.ownerProfileId != profile.id) pid,
-      ...pids,
-    ];
   }
 
-  Future<void> uninstallPowertrainProfile(String profileId) async {
-    final nextYears = Map.of(_installedYears)..remove(profileId);
-    await _persistProfileInstalls(nextYears);
-    _installedYears
-      ..clear()
-      ..addAll(nextYears);
-    state = [
-      for (final pid in state)
-        if (pid.ownerProfileId != profileId) pid,
-    ];
+  Future<PidMutationOutcome> uninstallPowertrainProfile(
+    String profileId,
+  ) async {
+    final lock = ref.read(pidMutationLockProvider);
+    final token = lock.tryAcquire('catalog-uninstall');
+    if (token == null) return const PidMutationOutcome.locked();
+    try {
+      final nextYears = Map.of(_installedYears)..remove(profileId);
+      await _persistProfileInstalls(nextYears);
+      _installedYears
+        ..clear()
+        ..addAll(nextYears);
+      state = [
+        for (final pid in state)
+          if (pid.ownerProfileId != profileId) pid,
+      ];
+      _powertrainRestoreSettled = true;
+      return const PidMutationOutcome.applied();
+    } finally {
+      lock.release(token);
+    }
   }
 
   /// The model year confirmed when [profileId] was installed, if it is.
@@ -265,6 +334,18 @@ class PidRegistry extends Notifier<List<Pid>> {
   bool get powertrainRestoreSettled => _powertrainRestoreSettled;
   bool _powertrainRestoreSettled = false;
 
+  /// Recording may freeze the visible PID set once restore has finished, or
+  /// once storage proves there is nothing to restore. A non-empty install
+  /// list that has not been rebuilt yet still blocks Start — those gauges
+  /// are pending, not absent.
+  bool get pidDefinitionsReadyForRecording {
+    if (_powertrainRestoreSettled) return true;
+    final stored = ref
+        .read(sharedPreferencesProvider)
+        .getStringList(_kPowertrainProfileInstallsKey);
+    return stored == null || stored.isEmpty;
+  }
+
   /// Rebuilds installed profile PIDs from the verified [catalog].
   ///
   /// Only `{profile_id, vehicle_year}` references are persisted, so the
@@ -276,59 +357,68 @@ class PidRegistry extends Notifier<List<Pid>> {
   Future<void> restoreInstalledProfiles(
     PowertrainBatteryCatalog catalog,
   ) async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final stored = prefs.getStringList(_kPowertrainProfileInstallsKey);
-    if (stored == null || stored.isEmpty) {
+    final lock = ref.read(pidMutationLockProvider);
+    final token = lock.tryAcquire('catalog-restore');
+    if (token == null) return;
+    try {
+      final prefs = ref.read(sharedPreferencesProvider);
+      final stored = prefs.getStringList(_kPowertrainProfileInstallsKey);
+      if (stored == null || stored.isEmpty) {
+        _powertrainRestoreSettled = true;
+        // Nothing to rebuild, but the answer is now authoritative — notify so
+        // the dashboard can reconcile layout ids that will never resolve.
+        state = [...state];
+        return;
+      }
+
+      final byId = {
+        for (final profile in catalog.profiles) profile.id: profile,
+      };
+      final restored = <Pid>[];
+      final nextYears = <String, int>{};
+      for (final entry in stored) {
+        Object? decoded;
+        try {
+          decoded = jsonDecode(entry);
+        } on FormatException {
+          continue;
+        }
+        if (decoded is! Map<String, dynamic>) continue;
+        final profileId = decoded['profile_id'];
+        final vehicleYear = decoded['vehicle_year'];
+        if (profileId is! String || vehicleYear is! int) continue;
+        final profile = byId[profileId];
+        if (profile == null || !profile.appliesToYear(vehicleYear)) continue;
+        try {
+          restored.addAll(PowertrainProfilePidInstaller.build(profile));
+        } on PowertrainProfileInstallException {
+          continue;
+        }
+        nextYears[profileId] = vehicleYear;
+      }
+
+      // The stored references are the sole authority: every profile PID in the
+      // current state is replaced by what the verified catalog rebuilds, and a
+      // profile whose reference did not survive is gone rather than lingering.
+      //
+      // Persist the snapshot first, then commit, mark settled, and assign —
+      // nothing observable changes on a failed write, and the state
+      // assignment notifies listeners synchronously, so the dashboard's
+      // reconciliation must observe the settled flag on that very
+      // notification.
+      await _persistProfileInstalls(nextYears);
+      _installedYears
+        ..clear()
+        ..addAll(nextYears);
       _powertrainRestoreSettled = true;
-      // Nothing to rebuild, but the answer is now authoritative — notify so
-      // the dashboard can reconcile layout ids that will never resolve.
-      state = [...state];
-      return;
+      state = [
+        for (final pid in state)
+          if (pid.ownerProfileId == null) pid,
+        ...restored,
+      ];
+    } finally {
+      lock.release(token);
     }
-
-    final byId = {for (final profile in catalog.profiles) profile.id: profile};
-    final restored = <Pid>[];
-    final nextYears = <String, int>{};
-    for (final entry in stored) {
-      Object? decoded;
-      try {
-        decoded = jsonDecode(entry);
-      } on FormatException {
-        continue;
-      }
-      if (decoded is! Map<String, dynamic>) continue;
-      final profileId = decoded['profile_id'];
-      final vehicleYear = decoded['vehicle_year'];
-      if (profileId is! String || vehicleYear is! int) continue;
-      final profile = byId[profileId];
-      if (profile == null || !profile.appliesToYear(vehicleYear)) continue;
-      try {
-        restored.addAll(PowertrainProfilePidInstaller.build(profile));
-      } on PowertrainProfileInstallException {
-        continue;
-      }
-      nextYears[profileId] = vehicleYear;
-    }
-
-    // The stored references are the sole authority: every profile PID in the
-    // current state is replaced by what the verified catalog rebuilds, and a
-    // profile whose reference did not survive is gone rather than lingering.
-    //
-    // Persist the snapshot first, then commit, mark settled, and assign —
-    // nothing observable changes on a failed write, and the state
-    // assignment notifies listeners synchronously, so the dashboard's
-    // reconciliation must observe the settled flag on that very
-    // notification.
-    await _persistProfileInstalls(nextYears);
-    _installedYears
-      ..clear()
-      ..addAll(nextYears);
-    _powertrainRestoreSettled = true;
-    state = [
-      for (final pid in state)
-        if (pid.ownerProfileId == null) pid,
-      ...restored,
-    ];
   }
 
   Future<void> _persistProfileInstalls(Map<String, int> years) async {
@@ -367,10 +457,12 @@ class PidImportOutcome {
     required this.inserted,
     required this.replaced,
     required this.duplicatesInFile,
+    this.failure,
   });
 
   final int inserted;
   final int replaced;
+  final PidMutationFailure? failure;
 
   /// Names of rows skipped because an earlier row in the same file already
   /// claimed their identity.
@@ -387,6 +479,9 @@ class PidImportOutcome {
   /// comes to read 26 where the vehicle said 1726, so what is displayed is
   /// held to the same standard as what is stored.
   String describe({int skippedRows = 0, int defaultedRanges = 0}) {
+    if (failure == PidMutationFailure.locked) {
+      return '錄製準備、錄製或儲存完成前不能變更 PID。';
+    }
     final notes = [
       if (skippedRows > 0) '$skippedRows 行有問題已略過',
       if (defaultedRanges > 0) '$defaultedRanges 行套用了預設量程',
@@ -406,6 +501,11 @@ final pidRegistryProvider = NotifierProvider<PidRegistry, List<Pid>>(
 
 /// The PIDs currently on the dashboard, in display order.
 class ActivePids extends Notifier<List<Pid>> {
+  int _persistWriteCount = 0;
+
+  @visibleForTesting
+  int get persistWriteCount => _persistWriteCount;
+
   /// The user's chosen layout by canonical id — including ids that do not
   /// currently resolve.
   ///
@@ -529,6 +629,32 @@ class ActivePids extends Notifier<List<Pid>> {
   /// resurrect gauges the user did not put back.
   void _onRegistryChanged(List<Pid>? previous, List<Pid> next) {
     final byId = {for (final pid in next) Pid.canonicalId(pid.id): pid};
+    final replacements = <String, String>{};
+    if (previous != null && previous.length == next.length) {
+      for (var index = 0; index < previous.length; index++) {
+        final before = previous[index];
+        final after = next[index];
+        final beforeId = Pid.canonicalId(before.id);
+        final afterId = Pid.canonicalId(after.id);
+        if (before.isCustom &&
+            after.isCustom &&
+            beforeId != afterId &&
+            !byId.containsKey(beforeId)) {
+          replacements[beforeId] = afterId;
+        }
+      }
+    }
+    var persistLayout = false;
+    if (replacements.isNotEmpty) {
+      final remapped = [for (final id in _layoutIds) replacements[id] ?? id];
+      for (var i = 0; i < remapped.length; i++) {
+        if (remapped[i] != _layoutIds[i]) {
+          persistLayout = true;
+          break;
+        }
+      }
+      _layoutIds = remapped;
+    }
     final restoreSettled = ref
         .read(pidRegistryProvider.notifier)
         .powertrainRestoreSettled;
@@ -552,8 +678,11 @@ class ActivePids extends Notifier<List<Pid>> {
       } else {
         _layoutIds = pruned;
       }
-      unawaited(_persist());
+      persistLayout = true;
     }
+    // Identity remaps keep the same slot count, so pruning alone would leave
+    // the old id in storage. The next launch then drops the gauge.
+    if (persistLayout) unawaited(_persist());
     final resolved = _resolve(next);
 
     var changed = resolved.length != state.length;
@@ -574,24 +703,57 @@ class ActivePids extends Notifier<List<Pid>> {
 
   bool contains(Pid pid) => state.any((p) => p.id == pid.id);
 
-  Future<void> toggle(Pid pid) async {
-    if (contains(pid)) {
-      await remove(pid);
-    } else {
-      await add(pid);
+  Future<PidMutationOutcome> toggle(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
     }
+    if (contains(pid)) {
+      return remove(pid);
+    }
+    return add(pid);
   }
 
-  Future<void> add(Pid pid) async {
-    if (contains(pid)) return;
+  Future<PidMutationOutcome> add(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (contains(pid)) return const PidMutationOutcome.noChange();
     _layoutIds = [..._layoutIds, Pid.canonicalId(pid.id)];
     state = [...state, pid];
     await _persist();
+    return const PidMutationOutcome.applied();
+  }
+
+  /// Appends every safely selectable shipped definition as one atomic layout
+  /// mutation and one preferences write.
+  Future<SupportedPidSelectionOutcome> appendPositivelyConfirmed(
+    ObdCapabilitySummary summary,
+  ) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const SupportedPidSelectionOutcome.locked();
+    }
+    final activeIds = state.map((pid) => Pid.canonicalId(pid.id)).toSet();
+    final additions = summary.positivelyConfirmedShippedDirectPids
+        .where((pid) => !activeIds.contains(Pid.canonicalId(pid.id)))
+        .toList(growable: false);
+    if (additions.isEmpty) {
+      return const SupportedPidSelectionOutcome.noChange();
+    }
+    _layoutIds = [
+      ..._layoutIds,
+      for (final pid in additions) Pid.canonicalId(pid.id),
+    ];
+    state = List<Pid>.unmodifiable(<Pid>[...state, ...additions]);
+    await _persist();
+    return SupportedPidSelectionOutcome.applied(additions.length);
   }
 
   /// Adds [pid] at [index] rather than at the end.
-  Future<void> insert(int index, Pid pid) async {
-    if (contains(pid)) return;
+  Future<PidMutationOutcome> insert(int index, Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (contains(pid)) return const PidMutationOutcome.noChange();
     final next = [...state];
     final visibleIndex = index.clamp(0, next.length);
     final layout = [..._layoutIds];
@@ -608,6 +770,7 @@ class ActivePids extends Notifier<List<Pid>> {
     _layoutIds = layout;
     state = next;
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
   /// Puts [replacement] where [previous] was, rather than at the end.
@@ -620,9 +783,12 @@ class ActivePids extends Notifier<List<Pid>> {
   ///
   /// A no-op when [previous] was not on the dashboard, so the caller does not
   /// have to ask first.
-  Future<void> replace(Pid previous, Pid replacement) async {
+  Future<PidMutationOutcome> replace(Pid previous, Pid replacement) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
     final index = state.indexWhere((p) => p.id == previous.id);
-    if (index < 0) return;
+    if (index < 0) return const PidMutationOutcome.noChange();
     final layoutIndex = _layoutIds.indexOf(Pid.canonicalId(previous.id));
     if (layoutIndex >= 0) {
       final layout = [..._layoutIds];
@@ -633,10 +799,14 @@ class ActivePids extends Notifier<List<Pid>> {
     next[index] = replacement;
     state = next;
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
-  Future<void> remove(Pid pid) async {
-    if (!contains(pid)) return;
+  Future<PidMutationOutcome> remove(Pid pid) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (!contains(pid)) return const PidMutationOutcome.noChange();
     final canonical = Pid.canonicalId(pid.id);
     _layoutIds = [
       for (final id in _layoutIds)
@@ -644,6 +814,7 @@ class ActivePids extends Notifier<List<Pid>> {
     ];
     state = state.where((p) => p.id != pid.id).toList();
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
   /// Moves the entry at [oldIndex] to [newIndex].
@@ -652,8 +823,13 @@ class ActivePids extends Notifier<List<Pid>> {
   /// which is what `ReorderableListView.onReorderItem` supplies. The older
   /// `onReorder` callback reports it before removal and needs a -1 adjustment;
   /// passing that one here unadjusted would drop items one slot short.
-  Future<void> reorder(int oldIndex, int newIndex) async {
-    if (oldIndex < 0 || oldIndex >= state.length) return;
+  Future<PidMutationOutcome> reorder(int oldIndex, int newIndex) async {
+    if (ref.read(pidMutationLockProvider).isLocked) {
+      return const PidMutationOutcome.locked();
+    }
+    if (oldIndex < 0 || oldIndex >= state.length) {
+      return const PidMutationOutcome.noChange();
+    }
     final previousVisible = {for (final pid in state) Pid.canonicalId(pid.id)};
     final next = [...state];
     final item = next.removeAt(oldIndex);
@@ -668,12 +844,34 @@ class ActivePids extends Notifier<List<Pid>> {
         if (previousVisible.contains(id)) visibleOrder[cursor++] else id,
     ];
     await _persist();
+    return const PidMutationOutcome.applied();
   }
 
   Future<void> _persist() async {
+    _persistWriteCount++;
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setStringList(_kActivePidIdsKey, [..._layoutIds]);
   }
+}
+
+enum SupportedPidSelectionResult { applied, noChange, locked }
+
+final class SupportedPidSelectionOutcome {
+  const SupportedPidSelectionOutcome._(this.result, this.addedCount);
+
+  const SupportedPidSelectionOutcome.applied(int addedCount)
+    : this._(SupportedPidSelectionResult.applied, addedCount);
+
+  const SupportedPidSelectionOutcome.noChange()
+    : this._(SupportedPidSelectionResult.noChange, 0);
+
+  const SupportedPidSelectionOutcome.locked()
+    : this._(SupportedPidSelectionResult.locked, 0);
+
+  final SupportedPidSelectionResult result;
+  final int addedCount;
+
+  bool get isLocked => result == SupportedPidSelectionResult.locked;
 }
 
 final activePidsProvider = NotifierProvider<ActivePids, List<Pid>>(

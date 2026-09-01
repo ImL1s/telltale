@@ -10,9 +10,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
-import '../core/theme/app_colors.dart';
+import '../core/app_wakelock.dart';
 import '../core/theme/app_theme.dart';
 import '../state/obd_session.dart';
 import 'screens/dashboard/dashboard_screen.dart';
@@ -20,6 +19,7 @@ import 'screens/dtc/dtc_screen.dart';
 import 'screens/performance/performance_screen.dart';
 import 'screens/pids/pid_manager_screen.dart';
 import 'screens/settings/settings_screen.dart';
+import 'widgets/telemetry/telemetry_recorder_strip.dart';
 
 class _Destination {
   const _Destination(this.path, this.label, this.icon, this.selectedIcon);
@@ -33,9 +33,19 @@ class _Destination {
 const _destinations = [
   _Destination(DashboardScreen.path, '儀表板', Icons.speed_outlined, Icons.speed),
   _Destination(PidManagerScreen.path, 'PID', Icons.tune_outlined, Icons.tune),
-  _Destination(DtcScreen.path, '故障碼', Icons.warning_amber_outlined, Icons.warning_amber),
+  _Destination(
+    DtcScreen.path,
+    '故障碼',
+    Icons.warning_amber_outlined,
+    Icons.warning_amber,
+  ),
   _Destination(PerformanceScreen.path, '性能', Icons.timer_outlined, Icons.timer),
-  _Destination(SettingsScreen.path, '設定', Icons.settings_outlined, Icons.settings),
+  _Destination(
+    SettingsScreen.path,
+    '設定',
+    Icons.settings_outlined,
+    Icons.settings,
+  ),
 ];
 
 class AppShell extends ConsumerStatefulWidget {
@@ -52,7 +62,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   void dispose() {
-    if (_wakelockOn) unawaited(WakelockPlus.disable());
+    if (_wakelockOn) unawaited(setAppWakelock(false));
     super.dispose();
   }
 
@@ -65,7 +75,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   void _syncWakelock(bool shouldHold) {
     if (shouldHold == _wakelockOn) return;
     _wakelockOn = shouldHold;
-    unawaited(shouldHold ? WakelockPlus.enable() : WakelockPlus.disable());
+    unawaited(setAppWakelock(shouldHold));
   }
 
   int _indexFor(BuildContext context) {
@@ -85,7 +95,8 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Losing the link mid-session drops back to the connection wizard rather
     // than leaving frozen gauges on screen looking like live data.
     ref.listen(obdSessionProvider, (previous, next) {
-      if (previous?.isConnected == true && next.phase == ConnectionPhase.failed) {
+      if (previous?.isConnected == true &&
+          next.phase == ConnectionPhase.failed) {
         context.go('/');
       }
     });
@@ -96,7 +107,17 @@ class _AppShellState extends ConsumerState<AppShell> {
           children: [
             _Rail(index: index),
             const VerticalDivider(width: 1),
-            Expanded(child: child),
+            Expanded(
+              child: Column(
+                children: [
+                  const SafeArea(
+                    bottom: false,
+                    child: TelemetryRecorderStrip(),
+                  ),
+                  Expanded(child: child),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -104,16 +125,22 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       body: child,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (i) => context.go(_destinations[i].path),
-        destinations: [
-          for (final destination in _destinations)
-            NavigationDestination(
-              icon: Icon(destination.icon),
-              selectedIcon: Icon(destination.selectedIcon),
-              label: destination.label,
-            ),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const TelemetryRecorderStrip(),
+          NavigationBar(
+            selectedIndex: index,
+            onDestinationSelected: (i) => context.go(_destinations[i].path),
+            destinations: [
+              for (final destination in _destinations)
+                NavigationDestination(
+                  icon: Icon(destination.icon),
+                  selectedIcon: Icon(destination.selectedIcon),
+                  label: destination.label,
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -128,46 +155,25 @@ class _Rail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    // Five always-labelled destinations have a fixed intrinsic height, and a
-    // short landscape viewport at a large text scale does not necessarily have
-    // room for it — roughly 892x411 logical pixels at 1.5x is enough to
-    // overflow once the safe areas are taken out.
-    //
-    // `LayoutBuilder` + `IntrinsicHeight` inside a scroll view is the shape
-    // `NavigationRail` documents for this: it keeps the rail full height when
-    // there is room, and lets it scroll when there is not, rather than
-    // painting the yellow-and-black overflow stripes across the navigation.
-    //
-    // Precautionary, and said so plainly: the overflow could not be reproduced
-    // in a widget test at that viewport and scale, and Codex reported it as
-    // source-inferred rather than observed. The wrapping costs nothing when
-    // there is room, so it is worth having on the possibility — but no test
-    // here demonstrates the failure it prevents, and writing one that asserted
-    // a behaviour I could not reproduce would be inventing the evidence.
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: IntrinsicHeight(
-            child: _rail(context, palette),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _rail(BuildContext context, AppPalette palette) {
+    // The native rail scrolls only its destination group, retaining its own
+    // layout, SafeArea and semantics at short landscape heights. Wrapping the
+    // whole rail in an intrinsic-height scroll view duplicates this framework
+    // behavior and makes the accessibility layout needlessly expensive.
     return NavigationRail(
       selectedIndex: index,
       onDestinationSelected: (i) => context.go(_destinations[i].path),
+      scrollable: true,
       backgroundColor: palette.surface,
       labelType: NavigationRailLabelType.all,
       indicatorColor: palette.accent.withValues(alpha: 0.16),
       selectedIconTheme: IconThemeData(color: palette.accent, size: 22),
       unselectedIconTheme: IconThemeData(color: palette.textTertiary, size: 22),
-      selectedLabelTextStyle: context.texts.labelMedium?.copyWith(color: palette.accent),
-      unselectedLabelTextStyle:
-          context.texts.labelMedium?.copyWith(color: palette.textTertiary),
+      selectedLabelTextStyle: context.texts.labelMedium?.copyWith(
+        color: palette.accent,
+      ),
+      unselectedLabelTextStyle: context.texts.labelMedium?.copyWith(
+        color: palette.textTertiary,
+      ),
       destinations: [
         for (final destination in _destinations)
           NavigationRailDestination(

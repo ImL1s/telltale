@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,12 +22,17 @@ import 'package:torque_obd/obd/transcript_store.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
 import 'package:torque_obd/state/obd_session.dart';
 import 'package:torque_obd/state/pid_registry.dart';
+import 'package:torque_obd/state/app_share_coordinator.dart';
+import 'package:torque_obd/state/artifact_operation_gate.dart';
 
 import 'support/fake_elm327.dart';
 
 late Directory _dir;
 
-TranscriptStore _store() => TranscriptStore(directory: () async => _dir);
+TranscriptStore _store() => TranscriptStore(
+  directory: () async => _dir,
+  destructivePolicy: _StorePolicy(),
+);
 
 ObdTranscript _transcript(String reply) => ObdTranscript()
   ..recordWrite('0100\r'.codeUnits, DateTime(2026, 8, 17, 12))
@@ -79,6 +85,202 @@ void main() {
     );
     expect(loaded.body, contains('ATZ'));
     expect(loaded.body, contains('ELM327'));
+  });
+
+  test(
+    'recovered descriptor streams the complete file without whole-file loading',
+    () async {
+      final transcript = ObdTranscript()
+        ..recordWrite('ATZ\r'.codeUnits, DateTime(2026, 8, 17, 12));
+      await _store().save(
+        transcript,
+        '# protocol: 6\n',
+        fromRealHardware: true,
+      );
+      final descriptor = await _store().openStreaming();
+      expect(descriptor, isNotNull);
+      final chunks = await descriptor!.open(maxChunkBytes: 31).toList();
+      expect(chunks.every((chunk) => chunk.length <= 31), isTrue);
+      final loaded = await _store().load();
+      expect(
+        utf8.decode(chunks.expand((chunk) => chunk).toList()),
+        '${loaded!.header}${loaded.body}',
+      );
+    },
+  );
+
+  test(
+    'streaming descriptor stays on the validated inode after path replacement',
+    () async {
+      final file = File('${_dir.path}/last-session.log');
+      const timestamp = '2026-08-17T12:00:00.000Z';
+      const original =
+          '$timestamp\n#### HARDWARE 1\n# old\n#### TRANSCRIPT ####\nOLD\n';
+      const replacement =
+          '$timestamp\n#### HARDWARE 1\n# new\n#### TRANSCRIPT ####\nNEW\n';
+      expect(utf8.encode(original).length, utf8.encode(replacement).length);
+      file.writeAsStringSync(original);
+      final descriptor = await _store().openStreaming();
+      expect(descriptor, isNotNull);
+      final next = File('${file.path}.next')..writeAsStringSync(replacement);
+      next.renameSync(file.path);
+
+      final streamed = utf8.decode(
+        (await descriptor!.open(maxChunkBytes: 7).toList())
+            .expand((chunk) => chunk)
+            .toList(),
+      );
+      expect(streamed, '# old\nOLD\n');
+    },
+  );
+
+  test(
+    'openStreaming and clear refuse when the displayed snapshot no longer matches',
+    () async {
+      final store = TranscriptStore(
+        directory: () async => _dir,
+        destructivePolicy: _StorePolicy(),
+      );
+      final first = ObdTranscript()
+        ..recordWrite('ATZ\r'.codeUnits, DateTime(2026, 8, 17, 12));
+      expect(
+        await store.save(first, '# first\n', fromRealHardware: true),
+        isTrue,
+      );
+      final displayed = await store.load();
+      expect(displayed, isNotNull);
+
+      final second = ObdTranscript()
+        ..recordWrite('ATI\r'.codeUnits, DateTime(2026, 8, 17, 12, 1));
+      // Ensure the write lands at a distinct savedAt.
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      expect(
+        await store.save(second, '# second\n', fromRealHardware: true),
+        isTrue,
+      );
+
+      expect(await store.openStreaming(expected: displayed), isNull);
+      final cleared = await store.clear(expected: displayed);
+      expect(cleared.error, TranscriptMutationError.identityChanged);
+      expect(await store.load(), isNotNull, reason: 'replacement must remain');
+    },
+  );
+
+  test(
+    'canonical save survives unrelated artifact work while clear contends',
+    () async {
+      final gate = ArtifactOperationGate();
+      final token = gate.tryAcquire('other', ArtifactOperation.export).token!;
+      final store = TranscriptStore(
+        directory: () async => _dir,
+        artifactGate: gate,
+        destructivePolicy: _StorePolicy(),
+      );
+      expect(
+        await store.save(
+          _transcript('AA'),
+          '# blocked\n',
+          fromRealHardware: true,
+        ),
+        isTrue,
+      );
+      expect((await store.clear()).error, TranscriptMutationError.artifactBusy);
+      expect(await store.load(), isNotNull);
+      gate.release(token);
+    },
+  );
+
+  test(
+    'concurrent canonical saves still contend on their mutation lane',
+    () async {
+      final saveGate = ArtifactOperationGate();
+      final token = saveGate
+          .tryAcquire('existing-save', ArtifactOperation.install)
+          .token!;
+      final store = TranscriptStore(
+        directory: () async => _dir,
+        saveGate: saveGate,
+        destructivePolicy: _StorePolicy(),
+      );
+
+      expect(
+        await store.save(
+          _transcript('AA'),
+          '# blocked\n',
+          fromRealHardware: true,
+        ),
+        isFalse,
+      );
+      expect(_dir.listSync(), isEmpty);
+      saveGate.release(token);
+    },
+  );
+
+  test('clear cannot overtake an in-flight canonical save', () async {
+    final directory = Completer<Directory>();
+    final saveGate = ArtifactOperationGate();
+    final artifactGate = ArtifactOperationGate();
+    final store = TranscriptStore(
+      directory: () => directory.future,
+      saveGate: saveGate,
+      artifactGate: artifactGate,
+      destructivePolicy: _StorePolicy(),
+    );
+
+    final saving = store.save(
+      _transcript('AA'),
+      '# saving\n',
+      fromRealHardware: true,
+    );
+    final clear = await store.clear();
+
+    expect(clear.error, TranscriptMutationError.artifactBusy);
+    expect(artifactGate.snapshot.isIdle, isTrue);
+    directory.complete(_dir);
+    expect(await saving, isTrue);
+    expect(await store.load(), isNotNull);
+  });
+
+  test(
+    'an in-flight clear prevents a new canonical save from recreating',
+    () async {
+      final directory = Completer<Directory>();
+      final store = TranscriptStore(
+        directory: () => directory.future,
+        saveGate: ArtifactOperationGate(),
+        artifactGate: ArtifactOperationGate(),
+        destructivePolicy: _StorePolicy(),
+      );
+
+      final clearing = store.clear();
+      expect(
+        await store.save(
+          _transcript('AA'),
+          '# blocked\n',
+          fromRealHardware: true,
+        ),
+        isFalse,
+      );
+      directory.complete(_dir);
+      expect((await clearing).succeeded, isTrue);
+      expect(await store.load(), isNull);
+    },
+  );
+
+  test('clear revalidates live driving safety after directory await', () async {
+    final directory = Completer<Directory>();
+    final policy = _StorePolicy();
+    final store = TranscriptStore(
+      directory: () => directory.future,
+      artifactGate: ArtifactOperationGate(),
+      destructivePolicy: policy,
+    );
+    File('${_dir.path}/last-session.log').writeAsStringSync('evidence');
+    final clearing = store.clear();
+    policy.valid = false;
+    directory.complete(_dir);
+    expect((await clearing).error, TranscriptMutationError.safetyChanged);
+    expect(File('${_dir.path}/last-session.log').existsSync(), isTrue);
   });
 
   test(
@@ -211,7 +413,10 @@ void main() {
     // Every way a connection ends goes through `_teardown`, which is why the
     // snapshot is taken there rather than at each of them.
     final container = await _container();
-    addTearDown(container.dispose);
+    var disposed = false;
+    addTearDown(() {
+      if (!disposed) container.dispose();
+    });
     final session = container.read(obdSessionProvider.notifier);
     session.transcriptStore = _store();
 
@@ -235,9 +440,12 @@ void main() {
       isTrue,
     );
     await session.disconnect();
-    // The snapshot is unawaited by design — the pause path cannot afford to
-    // wait — so give the write a turn to land.
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // Production teardown remains unawaited, but the test must drain the
+    // actual snapshot chain rather than sleep and leak a late write/save-gate
+    // owner into the next case.
+    container.dispose();
+    disposed = true;
+    await session.drainTranscriptSnapshotsForTest();
 
     final loaded = await _store().load();
     expect(
@@ -265,15 +473,21 @@ void main() {
 
     test('demo does not overwrite hardware', () async {
       final store = _store();
-      await store.save(
-        _transcript('7E8 41 0C 1A F8'),
-        'real adapter\n',
-        fromRealHardware: true,
+      expect(
+        await store.save(
+          _transcript('7E8 41 0C 1A F8'),
+          'real adapter\n',
+          fromRealHardware: true,
+        ),
+        isTrue,
       );
-      await store.save(
-        _transcript('7E8 41 0C 00 00'),
-        'Demo ECU\n',
-        fromRealHardware: false,
+      expect(
+        await store.save(
+          _transcript('7E8 41 0C 00 00'),
+          'Demo ECU\n',
+          fromRealHardware: false,
+        ),
+        isTrue,
       );
 
       final kept = await store.load();
@@ -445,4 +659,22 @@ class _CountingStore extends TranscriptStore {
       onExit();
     }
   }
+}
+
+class _StorePolicy implements AppSharePolicy {
+  bool valid = true;
+
+  @override
+  SharePreparationPermit? freeze() => const SharePreparationPermit(
+    recorderEpoch: 1,
+    foregroundEpoch: 1,
+    connectionEpoch: 1,
+    safetyEpoch: 1,
+    connectionClass: ShareConnectionClass.disconnected,
+  );
+
+  @override
+  SharePermitValidation validate(SharePreparationPermit permit) => valid
+      ? const SharePermitValidation.valid()
+      : const SharePermitValidation.invalid(SharePermitCause.moving);
 }

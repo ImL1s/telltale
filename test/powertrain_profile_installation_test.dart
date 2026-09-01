@@ -9,6 +9,7 @@ import 'package:torque_obd/obd/pid/pid_library.dart';
 import 'package:torque_obd/obd/pid/priority_tier.dart';
 import 'package:torque_obd/obd/powertrain_battery/powertrain_battery_profile.dart';
 import 'package:torque_obd/obd/powertrain_battery/profile_pid_installer.dart';
+import 'package:torque_obd/state/pid_mutation_lock.dart';
 import 'package:torque_obd/state/pid_registry.dart';
 import 'package:torque_obd/state/powertrain_battery_profiles.dart';
 
@@ -153,8 +154,7 @@ final class _FlakyPrefs implements SharedPreferences {
   /// where one preferences write lands and another does not.
   Set<String> failKeys = const {};
 
-  bool _fails(String key) =>
-      failWrites || failKeys.contains(key);
+  bool _fails(String key) => failWrites || failKeys.contains(key);
 
   @override
   Future<bool> setStringList(String key, List<String> value) async =>
@@ -212,7 +212,9 @@ void main() {
     test('community without a pinned source artifact hash cannot install', () {
       expect(
         () => PowertrainProfilePidInstaller.build(
-          _profileOf(_profileJson(source: _primarySource(pinnedArtifact: false))),
+          _profileOf(
+            _profileJson(source: _primarySource(pinnedArtifact: false)),
+          ),
         ),
         throwsA(
           isA<PowertrainProfileInstallException>().having(
@@ -343,6 +345,90 @@ void main() {
       expect(prefs.containsKey(_installsKey), isFalse);
     });
 
+    test(
+      'recording lock refuses install and uninstall without writes',
+      () async {
+        final (container, prefs) = await _container({});
+        addTearDown(container.dispose);
+        final registry = container.read(pidRegistryProvider.notifier);
+        final snapshot = snapshotOfProfiles([_profileJson()]);
+        final token = container
+            .read(pidMutationLockProvider)
+            .tryAcquire('recording')!;
+
+        expect(
+          await registry.installPowertrainProfile(
+            snapshot,
+            _profileId,
+            vehicleYear: 2021,
+          ),
+          const PidMutationOutcome.locked(),
+        );
+        expect(registry.profilePids, isEmpty);
+        expect(prefs.containsKey(_installsKey), isFalse);
+
+        expect(
+          await registry.uninstallPowertrainProfile(_profileId),
+          const PidMutationOutcome.locked(),
+        );
+        container.read(pidMutationLockProvider).release(token);
+      },
+    );
+
+    test(
+      'restore under a recording lock does not rewrite definitions',
+      () async {
+        final snapshot = snapshotOfProfiles([_profileJson()]);
+        final (container, prefs) = await _container({
+          _installsKey: [
+            jsonEncode({'profile_id': _profileId, 'vehicle_year': 2021}),
+          ],
+        });
+        addTearDown(container.dispose);
+        final registry = container.read(pidRegistryProvider.notifier);
+        final token = container
+            .read(pidMutationLockProvider)
+            .tryAcquire('recording')!;
+
+        await registry.restoreInstalledProfiles(snapshot.catalog);
+
+        expect(registry.powertrainRestoreSettled, isFalse);
+        expect(registry.profilePids, isEmpty);
+        expect(prefs.getStringList(_installsKey), [
+          jsonEncode({'profile_id': _profileId, 'vehicle_year': 2021}),
+        ]);
+        container.read(pidMutationLockProvider).release(token);
+      },
+    );
+
+    test(
+      'install after a skipped restore settles so Start can proceed',
+      () async {
+        final snapshot = snapshotOfProfiles([_profileJson()]);
+        final (container, _) = await _container({});
+        addTearDown(container.dispose);
+        final registry = container.read(pidRegistryProvider.notifier);
+        final token = container
+            .read(pidMutationLockProvider)
+            .tryAcquire('recording')!;
+
+        await registry.restoreInstalledProfiles(snapshot.catalog);
+        expect(registry.powertrainRestoreSettled, isFalse);
+        container.read(pidMutationLockProvider).release(token);
+
+        expect(
+          await registry.installPowertrainProfile(
+            snapshot,
+            _profileId,
+            vehicleYear: 2021,
+          ),
+          const PidMutationOutcome.applied(),
+        );
+        expect(registry.powertrainRestoreSettled, isTrue);
+        expect(registry.pidDefinitionsReadyForRecording, isTrue);
+      },
+    );
+
     test('uninstall removes PIDs and the stored reference', () async {
       final (container, prefs) = await _container({});
       addTearDown(container.dispose);
@@ -416,64 +502,66 @@ void main() {
 
       await container
           .read(pidRegistryProvider.notifier)
-          .restoreInstalledProfiles(snapshotOfProfiles([_profileJson()]).catalog);
+          .restoreInstalledProfiles(
+            snapshotOfProfiles([_profileJson()]).catalog,
+          );
 
       final restored = container.read(activePidsProvider);
       expect(restored.first.id, profilePidId);
       // The persisted layout was never rewritten by the pending state.
-      expect(
-        prefs.getStringList('active_pid_ids_v1'),
-        contains(profilePidId),
-      );
+      expect(prefs.getStringList('active_pid_ids_v1'), contains(profilePidId));
     });
 
-    test('a persistence failure rolls the install and uninstall back', () async {
-      SharedPreferences.setMockInitialValues({});
-      final real = await SharedPreferences.getInstance();
-      final prefs = _FlakyPrefs(real);
-      final container = ProviderContainer(
-        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-      );
-      addTearDown(container.dispose);
-      final registry = container.read(pidRegistryProvider.notifier);
-      final snapshot = snapshotOfProfiles([_profileJson()]);
+    test(
+      'a persistence failure rolls the install and uninstall back',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final real = await SharedPreferences.getInstance();
+        final prefs = _FlakyPrefs(real);
+        final container = ProviderContainer(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        );
+        addTearDown(container.dispose);
+        final registry = container.read(pidRegistryProvider.notifier);
+        final snapshot = snapshotOfProfiles([_profileJson()]);
 
-      prefs.failWrites = true;
-      await expectLater(
-        registry.installPowertrainProfile(
+        prefs.failWrites = true;
+        await expectLater(
+          registry.installPowertrainProfile(
+            snapshot,
+            _profileId,
+            vehicleYear: 2021,
+          ),
+          throwsA(
+            isA<PowertrainProfileInstallException>().having(
+              (error) => error.message,
+              'message',
+              contains('persisted'),
+            ),
+          ),
+        );
+        // The UI must not be told an install happened that a reboot loses.
+        expect(registry.profilePids, isEmpty);
+        expect(registry.installedVehicleYear(_profileId), isNull);
+        expect(real.containsKey(_installsKey), isFalse);
+
+        prefs.failWrites = false;
+        await registry.installPowertrainProfile(
           snapshot,
           _profileId,
           vehicleYear: 2021,
-        ),
-        throwsA(
-          isA<PowertrainProfileInstallException>().having(
-            (error) => error.message,
-            'message',
-            contains('persisted'),
-          ),
-        ),
-      );
-      // The UI must not be told an install happened that a reboot loses.
-      expect(registry.profilePids, isEmpty);
-      expect(registry.installedVehicleYear(_profileId), isNull);
-      expect(real.containsKey(_installsKey), isFalse);
-
-      prefs.failWrites = false;
-      await registry.installPowertrainProfile(
-        snapshot,
-        _profileId,
-        vehicleYear: 2021,
-      );
-      prefs.failWrites = true;
-      await expectLater(
-        registry.uninstallPowertrainProfile(_profileId),
-        throwsA(isA<PowertrainProfileInstallException>()),
-      );
-      // An uninstall storage failure must not leave a half-uninstalled
-      // state that resurrects on restart.
-      expect(registry.profilePids, hasLength(2));
-      expect(registry.installedVehicleYear(_profileId), 2021);
-    });
+        );
+        prefs.failWrites = true;
+        await expectLater(
+          registry.uninstallPowertrainProfile(_profileId),
+          throwsA(isA<PowertrainProfileInstallException>()),
+        );
+        // An uninstall storage failure must not leave a half-uninstalled
+        // state that resurrects on restart.
+        expect(registry.profilePids, hasLength(2));
+        expect(registry.installedVehicleYear(_profileId), 2021);
+      },
+    );
 
     test('a failed uninstall cannot prune the dashboard layout', () async {
       SharedPreferences.setMockInitialValues({});
@@ -561,10 +649,7 @@ void main() {
 
       // Pending: the slot survives the pre-restore window.
       expect(container.read(activePidsProvider), isEmpty);
-      expect(
-        prefs.getStringList('active_pid_ids_v1'),
-        contains(profilePidId),
-      );
+      expect(prefs.getStringList('active_pid_ids_v1'), contains(profilePidId));
 
       // The catalog no longer carries the profile: the restore settles, the
       // reference is dropped, and a dashboard that held only battery gauges
@@ -606,7 +691,8 @@ void main() {
       expect(
         prefs.getStringList('active_pid_ids_v1'),
         isNot(contains(gauge.id)),
-        reason: 'an explicit uninstall is a deletion and must outlive the '
+        reason:
+            'an explicit uninstall is a deletion and must outlive the '
             'session',
       );
 
@@ -618,47 +704,53 @@ void main() {
       expect(
         container.read(activePidsProvider).map((pid) => pid.id),
         isNot(contains(gauge.id)),
-        reason: 'reinstalling must not resurrect gauges the user did not '
+        reason:
+            'reinstalling must not resurrect gauges the user did not '
             'put back',
       );
     });
 
-    test('pending profile slots keep their position through user edits',
-        () async {
-      final profilePidId = _injectedProfilePid.id;
-      const rpm = PidLibrary.engineRpm;
-      const speed = PidLibrary.vehicleSpeed;
-      final (container, prefs) = await _container({
-        _installsKey: [
-          jsonEncode({'profile_id': _profileId, 'vehicle_year': 2021}),
-        ],
-        'active_pid_ids_v1': [profilePidId, rpm.id, speed.id],
-      });
-      addTearDown(container.dispose);
-      final active = container.read(activePidsProvider.notifier);
+    test(
+      'pending profile slots keep their position through user edits',
+      () async {
+        final profilePidId = _injectedProfilePid.id;
+        const rpm = PidLibrary.engineRpm;
+        const speed = PidLibrary.vehicleSpeed;
+        final (container, prefs) = await _container({
+          _installsKey: [
+            jsonEncode({'profile_id': _profileId, 'vehicle_year': 2021}),
+          ],
+          'active_pid_ids_v1': [profilePidId, rpm.id, speed.id],
+        });
+        addTearDown(container.dispose);
+        final active = container.read(activePidsProvider.notifier);
 
-      // Only the two built-ins are visible while the profile is pending.
-      expect(
-        container.read(activePidsProvider).map((pid) => pid.id),
-        [rpm.id, speed.id],
-      );
+        // Only the two built-ins are visible while the profile is pending.
+        expect(container.read(activePidsProvider).map((pid) => pid.id), [
+          rpm.id,
+          speed.id,
+        ]);
 
-      // Reordering the visible pair must not eat the invisible slot.
-      await active.reorder(0, 1);
-      expect(
-        prefs.getStringList('active_pid_ids_v1'),
-        [profilePidId, speed.id, rpm.id],
-      );
+        // Reordering the visible pair must not eat the invisible slot.
+        await active.reorder(0, 1);
+        expect(prefs.getStringList('active_pid_ids_v1'), [
+          profilePidId,
+          speed.id,
+          rpm.id,
+        ]);
 
-      // When the restore finally resolves the profile, the gauge comes back
-      // in its original slot, ahead of the reordered pair.
-      await container
-          .read(pidRegistryProvider.notifier)
-          .restoreInstalledProfiles(snapshotOfProfiles([_profileJson()]).catalog);
-      final resolved = container.read(activePidsProvider);
-      expect(resolved.first.id, profilePidId);
-      expect(resolved.map((pid) => pid.id).skip(1), [speed.id, rpm.id]);
-    });
+        // When the restore finally resolves the profile, the gauge comes back
+        // in its original slot, ahead of the reordered pair.
+        await container
+            .read(pidRegistryProvider.notifier)
+            .restoreInstalledProfiles(
+              snapshotOfProfiles([_profileJson()]).catalog,
+            );
+        final resolved = container.read(activePidsProvider);
+        expect(resolved.first.id, profilePidId);
+        expect(resolved.map((pid) => pid.id).skip(1), [speed.id, rpm.id]);
+      },
+    );
 
     test('injected persisted profile PIDs are ignored and erased', () async {
       final (container, prefs) = await _container({
@@ -748,7 +840,8 @@ void main() {
       expect(
         authorizations.isAuthorized(_profileId),
         isFalse,
-        reason: 'a profile the validator no longer accepts must not keep '
+        reason:
+            'a profile the validator no longer accepts must not keep '
             'polling on the strength of an earlier answer',
       );
     });

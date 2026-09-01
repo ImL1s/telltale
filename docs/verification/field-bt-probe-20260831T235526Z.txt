@@ -1,0 +1,17 @@
+field_bt_verify ACL probe
+timestamp_utc: 20260831T235526Z
+device: R5CX10VFFBA (SM_S9280 / Galaxy S24 Ultra)
+phone_bt: ON
+names: OBDBLE, OBDII
+verdict: FAIL — bonded but ACL down (no fake field pass)
+summary: bonded but ACL down (unpowered/out of range) — OBDBLE ACL BR/EDR:N LE:N; ConnectionState: STATE_DISCONNECTED
+no_fake_field_pass: true
+mac_system_profiler_obd: none
+app_level_connect: skipped (ACL down — nothing advertising / nothing to connect)
+journey: not run (fail-closed; use tool/field_bt_verify/run.sh when dongle is powered)
+---
+OBDBLE bond line:
+    XX:XX:XX:XX:22:33(Public ) => XX:XX:XX:XX:22:33(Public ) [ DUAL ] [0x010000] [ACL BR/EDR:N LE:N] [ Encryption status(BR/EDR): null LE: null] OBDBLE
+    XX:XX:XX:XX:22:33 | OBDII | 2 | 3 | 65536 | 576 | null | SPP | 41 | …
+shim::record … name:"OBDBLE" … bredr_linkkey_known:T,le_linkkey_known:F …
+Historical GATT cache (not live): Service uuid=0000fff0-0000-1000-8000-00805f9b34fb

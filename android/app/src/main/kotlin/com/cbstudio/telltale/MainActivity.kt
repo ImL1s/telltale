@@ -3,6 +3,7 @@ package com.cbstudio.telltale
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.StatFs
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -17,6 +18,17 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "getPlatformMetadata" -> result.success(platformMetadata())
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            APP_STORAGE_CAPACITY_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getAvailableBytes" ->
+                    appCacheAvailableBytes(call.argument<String>("path"), result)
                 else -> result.notImplemented()
             }
         }
@@ -236,6 +248,23 @@ class MainActivity : FlutterActivity() {
         result.success(null)
     }
 
+    private fun appCacheAvailableBytes(
+        path: String?,
+        result: MethodChannel.Result,
+    ) {
+        try {
+            val probePath = if (path.isNullOrEmpty()) cacheDir.path else path
+            val bytes = StatFs(probePath).availableBytes
+            if (bytes > 0L) {
+                result.success(bytes)
+            } else {
+                result.error("capacity_invalid", "Available bytes were not positive", null)
+            }
+        } catch (error: Exception) {
+            result.error("capacity_failed", error.message, null)
+        }
+    }
+
     private fun connectivityManagerOr(
         result: MethodChannel.Result,
     ): ConnectivityManager? {
@@ -273,6 +302,8 @@ class MainActivity : FlutterActivity() {
 
     private companion object {
         const val PLATFORM_METADATA_CHANNEL = "com.cbstudio.telltale/platform_metadata"
+        const val APP_STORAGE_CAPACITY_CHANNEL =
+            "com.cbstudio.telltale/app_storage_capacity"
         const val WIFI_ROUTE_CHANNEL = "com.cbstudio.telltale/wifi_route"
         const val SCREEN_WAKE_CHANNEL = "com.cbstudio.telltale/screen_wake"
         const val FORM_FACTOR_CHANNEL = "com.cbstudio.telltale/form_factor"

@@ -33,6 +33,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_classic_bluetooth/flutter_classic_bluetooth.dart';
@@ -288,13 +289,38 @@ class ClassicTransport extends BaseObdTransport {
       );
 
   /// The cascade, in order. `channel` null means "look the service up by UUID".
-  static const List<({bool secure, int? channel})> _attempts = [
+  ///
+  /// Tier 3 (`channel: 1`) is Android-only (`createRfcommSocket`). Product
+  /// code never constructs [ClassicTransport] on Windows/Linux (those hosts
+  /// use [SerialTransport]). On macOS, IOBluetooth already resolves SPP via
+  /// SDP and falls back to RFCOMM channel 1 inside the plugin — secure /
+  /// insecure / explicit-channel are not distinct host APIs — so the cascade
+  /// is a single UUID open.
+  static const List<({bool secure, int? channel})> androidAttempts = [
     (secure: true, channel: null),
     (secure: false, channel: null),
     // No SDP lookup at all — for clones that listen on channel 1 and publish
     // nothing. This is the tier upstream does not have.
     (secure: false, channel: 1),
   ];
+
+  /// macOS IOBluetooth: one RFCOMM open (plugin SDP → channel, else channel 1).
+  static const List<({bool secure, int? channel})> macOsAttempts = [
+    (secure: true, channel: null),
+  ];
+
+  /// Test seam — force the Android three-tier list on a macOS CI host.
+  @visibleForTesting
+  static List<({bool secure, int? channel})>? attemptsForTest;
+
+  static List<({bool secure, int? channel})> get _attempts =>
+      attemptsForTest ??
+      (Platform.isAndroid
+          ? androidAttempts
+          : Platform.isMacOS
+              ? macOsAttempts
+              // Should be unreachable: Windows/Linux Classic uses SerialTransport.
+              : androidAttempts);
 
   /// Long enough for a slow SDP lookup, short enough that a wedged stack does
   /// not look like a frozen app.

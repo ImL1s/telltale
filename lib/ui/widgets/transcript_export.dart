@@ -8,18 +8,17 @@
 /// the teardown had already discarded.
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../obd/transcript_store.dart';
 
 import '../../core/theme/app_theme.dart';
 import 'panel.dart';
 import '../../state/obd_session.dart';
+import '../../state/app_share_entry_controller.dart';
+import '../../state/app_share_coordinator.dart';
+import '../../state/transcript_store_runtime.dart';
 
 /// How big a stored recording is, in a unit that does not read as "empty".
 ///
@@ -36,7 +35,11 @@ String formatTranscriptSize(int bytes) =>
 /// A file rather than a text share: these run to hundreds of kilobytes and
 /// every messaging app truncates a long string. The name carries the timestamp
 /// so two exports from one afternoon do not overwrite each other.
-Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
+Future<String?> exportTranscript(
+  WidgetRef ref, {
+  required bool withHex,
+  Rect? sharePositionOrigin,
+}) async {
   final session = ref.read(obdSessionProvider.notifier);
   // One read, so the heading and the bytes are from the same session.
   //
@@ -45,35 +48,17 @@ Future<String?> exportTranscript(WidgetRef ref, {required bool withHex}) async {
   // session's bytes with the new session's adapter and protocol.
   final record = session.exportableRecord;
   if (record == null) return '沒有可匯出的紀錄。';
-  final transcript = record.transcript.frozenCopy();
   try {
-    final now = DateTime.now();
-    String two(int v) => v.toString().padLeft(2, '0');
-    final stamp = '${now.year}${two(now.month)}${two(now.day)}'
-        '-${two(now.hour)}${two(now.minute)}${two(now.second)}';
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/torque-obd-$stamp.txt');
-    await file.writeAsBytes(transcript.encode(
-      header: record.header,
-      withHex: withHex,
-    ));
-    await SharePlus.instance.share(ShareParams(
-      // Declared, not inferred.
-      //
-      // Without it Android is left to guess from the extension, and the guess
-      // is not carried through every share target the same way: on a Galaxy
-      // S25 the Quick Share **儲存** target answered 無法儲存文字，建議改為儲存
-      // 連結 — it had taken the payload for a string. The sibling export a
-      // file away has always named `text/csv`; this one had nothing.
-      //
-      // This is the one instruction `docs/field-guide.zh-TW.md` gives for every situation
-      // it cannot otherwise resolve, so the obvious way to keep the file has
-      // to be the working one.
-      files: [XFile(file.path, mimeType: 'text/plain')],
-      subject: 'Telltale 傳輸紀錄 $stamp',
-      fileNameOverrides: ['torque-obd-$stamp.txt'],
-    ));
-    return null;
+    final outcome = await ref
+        .read(appShareEntryControllerProvider)
+        .shareRawTranscript(
+          transcript: record.transcript,
+          header: record.header,
+          withHex: withHex,
+          subjectAt: DateTime.now(),
+          sharePositionOrigin: sharePositionOrigin,
+        );
+    return outcome.userFacingError;
   } on Object catch (e) {
     return '匯出失敗：$e';
   }
@@ -97,7 +82,15 @@ class TranscriptExportButtons extends ConsumerWidget {
     final available = ref.read(obdSessionProvider.notifier).hasTranscript;
 
     Future<void> run(bool withHex) async {
-      final error = await exportTranscript(ref, withHex: withHex);
+      final box = context.findRenderObject() as RenderBox?;
+      final origin = box == null
+          ? null
+          : box.localToGlobal(Offset.zero) & box.size;
+      final error = await exportTranscript(
+        ref,
+        withHex: withHex,
+        sharePositionOrigin: origin,
+      );
       if (error == null || !context.mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error)));
@@ -145,7 +138,7 @@ class TranscriptExportButtons extends ConsumerWidget {
 /// Loaded once, because the answer only changes when a session ends and this
 /// is read on a screen the user reaches between sessions.
 final recoveredTranscriptProvider = FutureProvider<StoredTranscript?>((ref) {
-  return TranscriptStore().load();
+  return ref.watch(managedTranscriptStoreProvider).load();
 });
 
 /// Hands a recovered recording to the share sheet.
@@ -154,21 +147,30 @@ final recoveredTranscriptProvider = FutureProvider<StoredTranscript?>((ref) {
 /// bytes came off disk, written by an app that is no longer running. That is
 /// the case this exists for — Android killed it, or the phone died, and the
 /// only copy is the one that was saved on the way out.
-Future<String?> exportRecoveredTranscript(StoredTranscript stored) async {
+///
+/// [displayed] is the snapshot currently shown in the panel. Export refuses
+/// when `last-session.log` no longer matches it, so a later periodic snapshot
+/// cannot be shared under the previous-connection label.
+Future<String?> exportRecoveredTranscript(
+  WidgetRef ref,
+  StoredTranscript displayed, {
+  Rect? sharePositionOrigin,
+}) async {
   try {
-    final at = stored.savedAt;
-    String two(int v) => v.toString().padLeft(2, '0');
-    final stamp = '${at.year}${two(at.month)}${two(at.day)}'
-        '-${two(at.hour)}${two(at.minute)}${two(at.second)}';
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/torque-obd-$stamp-recovered.txt');
-    await file.writeAsString('${stored.header}${stored.body}');
-    await SharePlus.instance.share(ShareParams(
-      files: [XFile(file.path, mimeType: 'text/plain')],
-      subject: 'Telltale 傳輸紀錄（上一次連線）$stamp',
-      fileNameOverrides: ['torque-obd-$stamp-recovered.txt'],
-    ));
-    return null;
+    final store = ref.read(managedTranscriptStoreProvider);
+    final outcome = await ref
+        .read(appShareEntryControllerProvider)
+        .shareRecoveredTranscript(
+          store: store,
+          expected: displayed,
+          sharePositionOrigin: sharePositionOrigin,
+        );
+    if (outcome.error == ShareError.storageFailure) {
+      // openStreaming returned null because the file changed or vanished.
+      ref.invalidate(recoveredTranscriptProvider);
+      return '上一次連線的紀錄已更新，請再確認。';
+    }
+    return outcome.userFacingError;
   } on Object catch (e) {
     return '匯出失敗：$e';
   }
@@ -210,7 +212,15 @@ class RecoveredTranscriptPanel extends ConsumerWidget {
               children: [
                 OutlinedButton.icon(
                   onPressed: () async {
-                    final error = await exportRecoveredTranscript(stored);
+                    final box = context.findRenderObject() as RenderBox?;
+                    final origin = box == null
+                        ? null
+                        : box.localToGlobal(Offset.zero) & box.size;
+                    final error = await exportRecoveredTranscript(
+                      ref,
+                      stored,
+                      sharePositionOrigin: origin,
+                    );
                     if (error != null && context.mounted) {
                       ScaffoldMessenger.of(context)
                           .showSnackBar(SnackBar(content: Text(error)));
@@ -222,8 +232,30 @@ class RecoveredTranscriptPanel extends ConsumerWidget {
                 const SizedBox(width: Spacing.sm),
                 TextButton(
                   onPressed: () async {
-                    await TranscriptStore().clear();
-                    ref.invalidate(recoveredTranscriptProvider);
+                    final outcome = await ref
+                        .read(managedTranscriptStoreProvider)
+                        .clear(expected: stored);
+                    if (outcome.succeeded) {
+                      ref.invalidate(recoveredTranscriptProvider);
+                    } else if (context.mounted) {
+                      if (outcome.error ==
+                          TranscriptMutationError.identityChanged) {
+                        ref.invalidate(recoveredTranscriptProvider);
+                      }
+                      final message = switch (outcome.error) {
+                        TranscriptMutationError.artifactBusy => '另一個檔案作業尚未完成。',
+                        TranscriptMutationError.policyDenied ||
+                        TranscriptMutationError.safetyChanged =>
+                          '目前車速或連線狀態不允許刪除紀錄。',
+                        TranscriptMutationError.identityChanged =>
+                          '上一次連線的紀錄已更新，請再確認。',
+                        TranscriptMutationError.storageFailure =>
+                          '無法刪除上一次連線的紀錄。',
+                        null => '',
+                      };
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(SnackBar(content: Text(message)));
+                    }
                   },
                   child: const Text('刪除'),
                 ),

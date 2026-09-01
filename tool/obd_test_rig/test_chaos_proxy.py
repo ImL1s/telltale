@@ -71,6 +71,11 @@ def config(upstream_port: int, **overrides: object) -> Config:
         "close_on_command": None,
         "no_prompt_on_command": None,
         "corrupt_on_command": None,
+        "armed_fault": None,
+        "control_host": "127.0.0.1",
+        "control_port": None,
+        "control_token": None,
+        "disconnect_after_armed_fault": False,
         "log_path": "-",
     }
     values.update(overrides)
@@ -236,6 +241,170 @@ class ChaosProxyTest(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertEqual([], rejected)
 
+    async def test_control_arms_exactly_next_command_after_acknowledgement(self) -> None:
+        await self._restart(
+            armed_fault="corrupt",
+            control_port=0,
+            control_token="device-test-token",
+        )
+        assert self.proxy.control_server is not None
+        control_address = self.proxy.control_server.sockets[0].getsockname()[:2]
+        reader, writer = await self.connect()
+
+        writer.write(b"ATI\r")
+        await writer.drain()
+        self.assertEqual(b"ATI\rOK\r>", await self.read_until(reader, b">"))
+
+        control_reader, control_writer = await asyncio.open_connection(
+            *control_address
+        )
+        control_writer.write(b"ARM device-test-token\n")
+        await control_writer.drain()
+        self.assertEqual(
+            b"ARMED corrupt\n",
+            await self.read_until(control_reader, b"\n"),
+        )
+
+        writer.write(b"0100\r")
+        await writer.drain()
+        response = await self.read_until(reader, b">")
+        self.assertNotEqual(b"0100\rOK\r>", response)
+        self.assertEqual(
+            b"INJECTED corrupt 2\n",
+            await self.read_until(control_reader, b"\n"),
+        )
+        await self._close_client(control_writer)
+        writer.write(b"010C\r")
+        await writer.drain()
+        self.assertEqual(b"010C\rOK\r>", await self.read_until(reader, b">"))
+        faults = [
+            record for record in self.logger.records if record["direction"] == "fault"
+        ]
+        self.assertEqual(["corrupt"], [record["fault"] for record in faults])
+        self.assertEqual([2], [record["command"] for record in faults])
+        self.assertEqual([True], [record["armed"] for record in faults])
+        await self._close_client(writer)
+
+    async def test_invalid_control_token_cannot_consume_armed_fault(self) -> None:
+        await self._restart(
+            armed_fault="close",
+            control_port=0,
+            control_token="right-token",
+        )
+        assert self.proxy.control_server is not None
+        address = self.proxy.control_server.sockets[0].getsockname()[:2]
+        control_reader, control_writer = await asyncio.open_connection(*address)
+        control_writer.write(b"ARM wrong-token\n")
+        await control_writer.drain()
+        self.assertEqual(
+            b"INVALID close\n",
+            await self.read_until(control_reader, b"\n"),
+        )
+        await self._close_client(control_writer)
+
+        reader, writer = await self.connect()
+        writer.write(b"ATI\r")
+        await writer.drain()
+        self.assertEqual(b"ATI\rOK\r>", await self.read_until(reader, b">"))
+        self.assertFalse(self.proxy._armed_fault_consumed)
+        await self._close_client(writer)
+
+    async def test_armed_close_reports_the_consumed_command(self) -> None:
+        await self._restart(
+            armed_fault="close",
+            control_port=0,
+            control_token="token",
+        )
+        assert self.proxy.control_server is not None
+        address = self.proxy.control_server.sockets[0].getsockname()[:2]
+        control_reader, control_writer = await asyncio.open_connection(*address)
+        control_writer.write(b"ARM token\n")
+        await control_writer.drain()
+        self.assertEqual(
+            b"ARMED close\n",
+            await self.read_until(control_reader, b"\n"),
+        )
+
+        reader, writer = await self.connect()
+        writer.write(b"0100\r")
+        await writer.drain()
+        self.assertEqual(b"", await self.read_to_eof(reader))
+        self.assertEqual(
+            b"INJECTED close 1\n",
+            await self.read_until(control_reader, b"\n"),
+        )
+        await self._close_client(control_writer)
+        await self._close_client(writer)
+
+    async def test_armed_reply_fault_can_close_after_delivering_damage(self) -> None:
+        for fault in ("no_prompt", "corrupt"):
+            with self.subTest(fault=fault):
+                await self._restart(
+                    armed_fault=fault,
+                    control_port=0,
+                    control_token="token",
+                    disconnect_after_armed_fault=True,
+                )
+                assert self.proxy.control_server is not None
+                address = self.proxy.control_server.sockets[0].getsockname()[:2]
+                control_reader, control_writer = await asyncio.open_connection(
+                    *address
+                )
+                control_writer.write(b"ARM token\n")
+                await control_writer.drain()
+                self.assertEqual(
+                    f"ARMED {fault}\n".encode(),
+                    await self.read_until(control_reader, b"\n"),
+                )
+
+                reader, writer = await self.connect()
+                writer.write(b"0100\r")
+                await writer.drain()
+                response = await self.read_to_eof(reader)
+                if fault == "no_prompt":
+                    self.assertEqual(b"0100\rOK\r", response)
+                else:
+                    self.assertNotEqual(b"0100\rOK\r>", response)
+                    self.assertEqual(b">", response[-1:])
+
+                injected = await self.read_until(control_reader, b"\n")
+                prefix = f"INJECTED {fault} ".encode()
+                self.assertTrue(injected.startswith(prefix))
+                injected_command = int(injected.removeprefix(prefix).strip())
+                await self._close_client(control_writer)
+
+                records = self.logger.records
+                armed_index = next(
+                    index
+                    for index, record in enumerate(records)
+                    if record["direction"] == "control"
+                    and record.get("event") == "armed"
+                )
+                selected_index = next(
+                    index
+                    for index, record in enumerate(records)
+                    if record["direction"] == "fault"
+                    and record["fault"] == fault
+                )
+                close_index = next(
+                    index
+                    for index, record in enumerate(records)
+                    if record["direction"] == "fault"
+                    and record["fault"] == "post_fault_close"
+                )
+                self.assertLess(armed_index, selected_index)
+                self.assertLess(selected_index, close_index)
+
+                selected = records[selected_index]
+                post_close = records[close_index]
+                self.assertEqual(injected_command, selected["command"])
+                self.assertEqual(injected_command, post_close["command"])
+                self.assertEqual(selected["connection"], post_close["connection"])
+                self.assertTrue(selected["armed"])
+                self.assertTrue(post_close["armed"])
+                self.assertEqual(fault, post_close["after"])
+                await self._close_client(writer)
+
     async def _restart(self, **overrides: object) -> None:
         await self.proxy.close()
         self.logger = MemoryLogger()
@@ -287,6 +456,7 @@ class ConfigTest(unittest.TestCase):
         for arguments in (
             ["--close-on-command", "3", "--no-prompt-on-command", "3"],
             ["--close-on-command", "2", "--corrupt-on-command", "7"],
+            ["--close-on-command", "2", "--arm-next-command", "close"],
         ):
             with self.subTest(arguments=arguments):
                 with mock.patch("sys.stderr", io.StringIO()), self.assertRaises(
@@ -310,6 +480,40 @@ class ConfigTest(unittest.TestCase):
                     SystemExit
                 ):
                     parse_config(arguments)
+
+    def test_armed_fault_requires_complete_control_configuration(self) -> None:
+        invalid = (
+            ["--arm-next-command", "close"],
+            ["--arm-next-command", "close", "--control-port", "35002"],
+            ["--control-port", "35002", "--control-token", "token"],
+            ["--disconnect-after-armed-fault"],
+        )
+        for arguments in invalid:
+            with self.subTest(arguments=arguments):
+                with mock.patch("sys.stderr", io.StringIO()), self.assertRaises(
+                    SystemExit
+                ):
+                    parse_config(arguments)
+
+    def test_parses_armed_fault_control(self) -> None:
+        parsed = parse_config(
+            [
+                "--listen-host",
+                "0.0.0.0",
+                "--arm-next-command",
+                "corrupt",
+                "--control-port",
+                "35002",
+                "--control-token",
+                "token",
+                "--disconnect-after-armed-fault",
+            ]
+        )
+        self.assertEqual("corrupt", parsed.armed_fault)
+        self.assertEqual("0.0.0.0", parsed.control_host)
+        self.assertEqual(35002, parsed.control_port)
+        self.assertEqual("token", parsed.control_token)
+        self.assertTrue(parsed.disconnect_after_armed_fault)
 
 
 if __name__ == "__main__":

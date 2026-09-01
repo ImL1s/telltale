@@ -15,7 +15,6 @@
 /// drops the link halfway through service discovery.
 library;
 
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -59,6 +58,7 @@ List<BleService> _nordicProfile() => [
 
 class _FakeBlePlatform extends UniversalBlePlatform {
   AvailabilityState availability = AvailabilityState.poweredOn;
+  Duration? availabilityDelay;
 
   /// What `discoverServices` reports.
   List<BleService> services = _nordicProfile();
@@ -84,6 +84,7 @@ class _FakeBlePlatform extends UniversalBlePlatform {
   int stopScanCalls = 0;
   int disconnectCalls = 0;
   int? requestedMtu;
+  Duration? startScanDelay;
   final List<BleInputProperty> inputProperties = [];
   final List<({Uint8List value, BleOutputProperty property})> writes = [];
   final Map<String, bool> _connected = {};
@@ -95,8 +96,11 @@ class _FakeBlePlatform extends UniversalBlePlatform {
   }
 
   @override
-  Future<AvailabilityState> getBluetoothAvailabilityState() async =>
-      availability;
+  Future<AvailabilityState> getBluetoothAvailabilityState() async {
+    final delay = availabilityDelay;
+    if (delay != null) await Future<void>.delayed(delay);
+    return availability;
+  }
 
   @override
   Future<bool> enableBluetooth() async => true;
@@ -109,6 +113,8 @@ class _FakeBlePlatform extends UniversalBlePlatform {
     ScanFilter? scanFilter,
     PlatformConfig? platformConfig,
   }) async {
+    final delay = startScanDelay;
+    if (delay != null) await Future<void>.delayed(delay);
     startScanCalled = true;
     scanning = true;
     for (final device in advertisements) {
@@ -532,15 +538,84 @@ void main() {
       expect(stopwatch.elapsedMilliseconds, greaterThanOrEqualTo(70));
     });
 
-    test('a radio that never powers on ends the scan with an error', () async {
+    test('a radio that is powered off fails immediately with clear copy',
+        () async {
       fake.availability = AvailabilityState.poweredOff;
 
       await expectLater(
         BleTransport.scanEntries(timeout: const Duration(milliseconds: 50))
             .toList(),
-        throwsA(isA<TimeoutException>()),
+        throwsA(
+          isA<BleRadioUnavailableException>().having(
+            (e) => e.message,
+            'message',
+            contains('藍牙未開啟'),
+          ),
+        ),
       );
       expect(fake.startScanCalled, isFalse);
+    });
+
+    test('cancelling during availability does not start a global scan',
+        () async {
+      fake.availabilityDelay = const Duration(milliseconds: 40);
+      final subscription = BleTransport.scanEntries(
+        timeout: const Duration(seconds: 2),
+      ).listen((_) {});
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await subscription.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(fake.startScanCalled, isFalse);
+      expect(fake.scanning, isFalse);
+    });
+
+    test(
+      'cancelled scan after startScan does not stop a newer generation',
+      () async {
+        fake.startScanDelay = const Duration(milliseconds: 40);
+        final first = BleTransport.scanEntries(
+          timeout: const Duration(seconds: 2),
+        ).listen((_) {});
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        // Second generation claims ownership before the first startScan
+        // continuation runs close().
+        final second = BleTransport.scanEntries(
+          timeout: const Duration(milliseconds: 80),
+        ).listen((_) {});
+        await first.cancel();
+        await Future<void>.delayed(const Duration(milliseconds: 60));
+        expect(fake.scanning, isTrue);
+        expect(fake.stopScanCalls, 0);
+        await second.cancel();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(fake.stopScanCalls, greaterThan(0));
+        expect(fake.scanning, isFalse);
+      },
+    );
+
+    test('unauthorized radio maps to permission guidance', () async {
+      fake.availability = AvailabilityState.unauthorized;
+
+      await expectLater(
+        BleTransport.scanEntries(timeout: const Duration(milliseconds: 50))
+            .toList(),
+        throwsA(
+          isA<BleRadioUnavailableException>().having(
+            (e) => e.message,
+            'message',
+            contains('藍牙權限'),
+          ),
+        ),
+      );
+    });
+
+    test('BlueZ/D-Bus failures map to service guidance', () {
+      expect(
+        BleTransport.userFacingScanFailure(
+          Exception('org.bluez.Error.Failed: Failed to connect to socket'),
+        ),
+        contains('BlueZ'),
+      );
     });
   });
 

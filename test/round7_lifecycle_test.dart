@@ -36,6 +36,34 @@ void _foreground(TestWidgetsFlutterBinding binding) {
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(() {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+
+  tearDown(() {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+
+  test('hidden is a foreground boundary and hidden then paused counts once',
+      () async {
+    final container = await _container();
+    addTearDown(container.dispose);
+    final session = container.read(obdSessionProvider.notifier);
+    final before = session.pauseEpoch;
+
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    expect(session.isForeground, isFalse);
+    expect(session.pauseEpoch, before + 1);
+
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    expect(
+      session.pauseEpoch,
+      before + 1,
+      reason: 'mobile hidden -> paused is one suspension, not two',
+    );
+  });
+
   test('R7 F-10: backgrounding clears the gauges and says the session paused',
       () async {
     // The guard here was inverted, which reversed both halves: the empty
@@ -132,6 +160,56 @@ void main() {
         reason: 'the polling loop holds no lease; its writes are repeatable '
             'reads and refusing them would stop the gauges');
   });
+
+  test(
+    'resume keeps safety closed until ATRV; pre-pause telemetry is cleared',
+    () async {
+      // Codex P1: opening isForeground while `_pauseNow` still awaited
+      // engine.stop() left a pre-pause stopped-speed reading authoritative
+      // for seconds, so record/share could mint permits on stale authority.
+      final container = await _container();
+      addTearDown(container.dispose);
+      final session = container.read(obdSessionProvider.notifier);
+      expect(await session.connectDemo(), isTrue);
+
+      for (var i = 0; i < 40 && session.engine!.current.readings.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      expect(session.engine!.current.readings, isNotEmpty);
+
+      final seen = <int>[];
+      final sub =
+          session.telemetryStream.listen((s) => seen.add(s.readings.length));
+      addTearDown(sub.cancel);
+
+      _background(binding);
+      // Resume immediately — before pause's stop is guaranteed to finish —
+      // and assert the safety gate is still closed with empty telemetry.
+      _foreground(binding);
+      expect(
+        session.isForeground,
+        isFalse,
+        reason: 'foreground must stay closed until resume validation finishes',
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        seen.isNotEmpty && seen.last == 0,
+        isTrue,
+        reason: 'pre-pause readings must be revoked on the resume edge',
+      );
+
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      expect(
+        session.isForeground,
+        isTrue,
+        reason: 'after ATRV the safety gate opens for a live session',
+      );
+      expect(
+        container.read(obdSessionProvider).phase,
+        ConnectionPhase.connected,
+      );
+    },
+  );
 
   test('R7 F-15: an interrupted scan says so instead of going blank', () async {
     // The wipe set a bare empty state, so the screen returned to 尚未掃描 with

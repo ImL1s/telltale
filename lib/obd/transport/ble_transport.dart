@@ -106,6 +106,45 @@ class BleTransport extends BaseObdTransport {
 
   static Future<void> stopScan() => UniversalBle.stopScan();
 
+  /// Maps radio / BlueZ / permission failures to copy the connect screen can
+  /// show. Raw `TimeoutException` / D-Bus strings are not actionable at a car.
+  static String userFacingScanFailure(Object error) {
+    if (error is BleRadioUnavailableException) {
+      return error.message;
+    }
+    final text = '$error';
+    final lower = text.toLowerCase();
+    if (error is TimeoutException ||
+        lower.contains('timeout') ||
+        lower.contains('poweredoff') ||
+        lower.contains('powered off')) {
+      return '藍牙未開啟或尚未就緒。請先在系統設定開啟藍牙後再搜尋。';
+    }
+    if (lower.contains('unauthorized') ||
+        lower.contains('permission') ||
+        lower.contains('denied')) {
+      return '需要藍牙權限才能搜尋。請到系統設定允許此 App 使用藍牙。';
+    }
+    if (lower.contains('unsupported') ||
+        lower.contains('not available') ||
+        lower.contains('missingpluginexception')) {
+      return '這台主機沒有可用的藍牙 LE 實作。';
+    }
+    if (lower.contains('org.bluez') ||
+        lower.contains('bluez') ||
+        lower.contains('dbus') ||
+        lower.contains('failed to connect to socket')) {
+      return '找不到可用的 BlueZ／D-Bus 藍牙服務。'
+          '請確認系統已安裝並啟動 bluetooth 服務後再試。';
+    }
+    return 'BLE 搜尋失敗：$error';
+  }
+
+  /// Current radio state, used before starting a scan so powered-off hosts
+  /// fail immediately with a clear reason instead of waiting on a stream.
+  static Future<AvailabilityState> bluetoothAvailability() =>
+      UniversalBle.getBluetoothAvailabilityState();
+
   /// The name to show for a scanned peripheral.
   ///
   /// `BleDevice.name` has already had every non-ASCII character stripped by the
@@ -135,20 +174,36 @@ class BleTransport extends BaseObdTransport {
   ///
   /// Each advertisement arrives as its own event, including repeats from an
   /// adapter already seen, so a consumer must upsert by id rather than append.
+  ///
+  /// Only the newest scan generation may call the global `stopScan` — an
+  /// older cancelled startup that loses the race after `startScan` must not
+  /// tear down a newer screen's radio session.
+  static int _scanGeneration = 0;
+
   static Stream<(String, String, int?)> scanEntries({
     Duration timeout = const Duration(seconds: 12),
   }) {
+    final generation = ++_scanGeneration;
     final controller = StreamController<(String, String, int?)>();
     StreamSubscription<BleDevice>? resultsSub;
     Timer? deadline;
+    var cancelled = false;
 
     Future<void> close() async {
+      cancelled = true;
       deadline?.cancel();
       await resultsSub?.cancel();
-      try {
-        if (await UniversalBle.isScanning()) await UniversalBle.stopScan();
-      } on Object {
-        // Radio already stopped or turned off; nothing to unwind.
+      if (generation == _scanGeneration) {
+        try {
+          final scanning = await UniversalBle.isScanning();
+          // A newer scan may have started while isScanning awaited — only the
+          // current generation may issue the global stop.
+          if (generation == _scanGeneration && scanning) {
+            await UniversalBle.stopScan();
+          }
+        } on Object {
+          // Radio already stopped or turned off; nothing to unwind.
+        }
       }
       if (!controller.isClosed) await controller.close();
     }
@@ -157,28 +212,54 @@ class BleTransport extends BaseObdTransport {
 
     Future<void> start() async {
       try {
-        await UniversalBle.availabilityStream
-            .where((s) => s == AvailabilityState.poweredOn)
-            .first
-            .timeout(const Duration(seconds: 8));
+        final current = await UniversalBle.getBluetoothAvailabilityState();
+        // User may have cancelled while availability was awaited — do not arm a
+        // global radio scan that close() can no longer associate with this start.
+        if (cancelled || controller.isClosed) return;
+        if (current != AvailabilityState.poweredOn) {
+          throw BleRadioUnavailableException(current);
+        }
 
         resultsSub = UniversalBle.scanStream.listen((device) {
-          if (controller.isClosed) return;
+          if (cancelled || controller.isClosed) return;
           controller.add((
             device.deviceId,
             _displayNameFor(device),
             device.rssi,
           ));
-        }, onError: controller.addError);
+        }, onError: (Object error, StackTrace stack) {
+          if (!cancelled && !controller.isClosed) {
+            controller.addError(
+              BleRadioUnavailableException.fromScanError(error),
+              stack,
+            );
+          }
+        });
+
+        if (cancelled || controller.isClosed) {
+          await resultsSub?.cancel();
+          resultsSub = null;
+          return;
+        }
 
         await UniversalBle.startScan();
+        if (cancelled || controller.isClosed) {
+          await close();
+          return;
+        }
         // The scan itself takes no duration — unlike the previous package,
         // there is no plugin-side timer to stop the radio and no "is scanning"
         // stream to observe it stopping. This deadline is the only thing that
         // ends the scan, so it must be armed unconditionally.
         deadline = Timer(timeout, () => unawaited(close()));
       } on Object catch (e) {
-        if (!controller.isClosed) controller.addError(e);
+        if (!cancelled && !controller.isClosed) {
+          controller.addError(
+            e is BleRadioUnavailableException
+                ? e
+                : BleRadioUnavailableException.fromScanError(e),
+          );
+        }
         await close();
       }
     }
@@ -370,4 +451,41 @@ class BleTransport extends BaseObdTransport {
     );
     await characteristic.write(data, withResponse: !withoutResponse);
   }
+}
+
+/// BLE radio is not in a state that can scan or connect.
+///
+/// Distinct from an empty scan result: the radio itself refused the work, so
+/// the connect screen should not show the "no adapters found" checklist.
+final class BleRadioUnavailableException implements Exception {
+  BleRadioUnavailableException(AvailabilityState state)
+    : state = state,
+      cause = null,
+      message = _messageFor(state);
+
+  BleRadioUnavailableException.fromScanError(Object error)
+    : state = null,
+      cause = error,
+      message = BleTransport.userFacingScanFailure(error);
+
+  final AvailabilityState? state;
+  final Object? cause;
+  final String message;
+
+  static String _messageFor(AvailabilityState state) {
+    return switch (state) {
+      AvailabilityState.poweredOff =>
+        '藍牙未開啟。請先在系統設定開啟藍牙後再搜尋。',
+      AvailabilityState.unauthorized =>
+        '需要藍牙權限才能搜尋。請到系統設定允許此 App 使用藍牙。',
+      AvailabilityState.unsupported => '這台主機不支援藍牙 LE。',
+      AvailabilityState.unknown ||
+      AvailabilityState.resetting ||
+      AvailabilityState.poweredOn =>
+        '藍牙目前無法使用（$state）。請稍後再試。',
+    };
+  }
+
+  @override
+  String toString() => message;
 }

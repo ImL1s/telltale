@@ -11,6 +11,7 @@ import '../../../obd/powertrain_battery/powertrain_battery_probe.dart';
 import '../../../obd/powertrain_battery/profile_catalog_validator.dart';
 import '../../../obd/powertrain_battery/profile_pid_installer.dart';
 import '../../../state/obd_session.dart';
+import '../../../state/pid_mutation_lock.dart';
 import '../../../state/pid_registry.dart';
 import '../../../state/powertrain_battery_profiles.dart';
 import '../../../state/powertrain_battery_experiments.dart';
@@ -160,9 +161,13 @@ class _PowertrainBatteryCatalogScreenState
     if (!mounted) return;
 
     try {
-      await ref
+      final outcome = await ref
           .read(pidRegistryProvider.notifier)
           .installPowertrainProfile(snapshot, profile.id, vehicleYear: year);
+      if (outcome.isLocked) {
+        _snack(kPidMutationLockedMessage);
+        return;
+      }
     } on PowertrainProfileInstallException catch (error) {
       _snack('無法安裝：${error.message}');
       return;
@@ -191,9 +196,13 @@ class _PowertrainBatteryCatalogScreenState
   }
 
   Future<void> _uninstallProfile(PowertrainBatteryProfile profile) async {
-    await ref
+    final outcome = await ref
         .read(pidRegistryProvider.notifier)
         .uninstallPowertrainProfile(profile.id);
+    if (outcome.isLocked) {
+      _snack(kPidMutationLockedMessage);
+      return;
+    }
     ref
         .read(powertrainProfileAuthorizationsProvider.notifier)
         .revoke(profile.id);
@@ -208,9 +217,7 @@ class _PowertrainBatteryCatalogScreenState
           var year = profile.yearFrom;
           var identityAcknowledged = false;
           final years = [
-            for (var value = profile.yearFrom;
-                value <= profile.yearTo;
-                value++)
+            for (var value = profile.yearFrom; value <= profile.yearTo; value++)
               value,
           ];
           return StatefulBuilder(

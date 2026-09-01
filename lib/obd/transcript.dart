@@ -427,4 +427,56 @@ class ObdTranscript {
   /// Bytes of the rendered text, for writing to a file.
   List<int> encode({String header = '', bool withHex = false}) =>
       utf8.encode(withHex ? renderHex(header: header) : render(header: header));
+
+  /// Streams the same evidence bytes as [encode] without joining the complete
+  /// transcript in memory. Chunks never exceed [maxChunkBytes].
+  Stream<List<int>> streamEncoded({
+    String header = '',
+    bool withHex = false,
+    int maxChunkBytes = 64 * 1024,
+  }) async* {
+    if (maxChunkBytes <= 0) throw ArgumentError.value(maxChunkBytes);
+
+    Iterable<String> lines() sync* {
+      if (header.isNotEmpty) {
+        yield '${header.trimRight()}\n\n';
+      }
+      if (isEmpty) {
+        yield '# 沒有任何傳輸紀錄。\n';
+        return;
+      }
+      String entryText(TranscriptEntry entry) {
+        final out = StringBuffer();
+        if (withHex) {
+          _writeHexEntry(out, entry);
+        } else {
+          _writeTextEntry(out, entry);
+        }
+        return out.toString();
+      }
+
+      for (final entry in _head) {
+        yield entryText(entry);
+      }
+      if (_dropped > 0) {
+        yield '$_droppedMessage\n';
+      }
+      for (final entry in _pinnedNotes) {
+        yield entryText(entry);
+      }
+      for (final entry in _tail) {
+        yield entryText(entry);
+      }
+    }
+
+    for (final line in lines()) {
+      final bytes = utf8.encode(line);
+      for (var offset = 0; offset < bytes.length; offset += maxChunkBytes) {
+        yield bytes.sublist(
+          offset,
+          math.min(offset + maxChunkBytes, bytes.length),
+        );
+      }
+    }
+  }
 }

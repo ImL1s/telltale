@@ -5,6 +5,8 @@
 /// exported here can be taken back out.
 library;
 
+import 'dart:convert';
+
 import 'package:csv/csv.dart';
 
 import '../addressing.dart';
@@ -103,6 +105,33 @@ abstract final class PidCsv {
     ]);
   }
 
+  /// Emits the canonical export incrementally without a whole-file String.
+  static Stream<List<int>> stream(
+    Iterable<Pid> pids, {
+    int maxChunkBytes = 64 * 1024,
+  }) async* {
+    if (maxChunkBytes <= 0) throw ArgumentError.value(maxChunkBytes);
+    final rowCodec = Csv(lineDelimiter: '\r\n');
+    var first = true;
+    Iterable<List<dynamic>> rows() sync* {
+      yield header;
+      for (final pid in pids) {
+        yield pid.toCsvRow();
+      }
+    }
+
+    for (final row in rows()) {
+      final bytes = utf8.encode(
+        '${first ? '\ufeff' : '\r\n'}${rowCodec.encode([row])}',
+      );
+      first = false;
+      for (var offset = 0; offset < bytes.length; offset += maxChunkBytes) {
+        final end = (offset + maxChunkBytes).clamp(0, bytes.length);
+        yield bytes.sublist(offset, end);
+      }
+    }
+  }
+
   /// Parses [contents]. Tolerant by design — files in the wild come from other
   /// tools and often carry extra columns, missing headers, or a stray BOM.
   static PidCsvResult parse(String contents) {
@@ -125,7 +154,9 @@ abstract final class PidCsv {
     }
 
     var startIndex = 0;
-    final first = rows.first.map((c) => c.toString().trim().toLowerCase()).toList();
+    final first = rows.first
+        .map((c) => c.toString().trim().toLowerCase())
+        .toList();
     // Where each field lives. Positional by default, because a file with no
     // header row has nothing else to go on — and by *name* when there is a
     // header, which is the case this used to get wrong.
@@ -142,7 +173,8 @@ abstract final class PidCsv {
     var columns = <String, int>{
       for (var i = 0; i < header.length; i++) _key(header[i]): i,
     };
-    if (first.isNotEmpty && (first.first == 'name' || first.contains('modeandpid'))) {
+    if (first.isNotEmpty &&
+        (first.first == 'name' || first.contains('modeandpid'))) {
       startIndex = 1;
       final named = <String, int>{};
       final duplicated = <String>{};
@@ -272,9 +304,11 @@ abstract final class PidCsv {
       // needle reads as authoritative against whatever it is drawn on. The
       // importer says so rather than letting the difference be invisible.
       if (min == null || max == null) {
-        warnings.add('第 $lineNumber 行：量程留空，已套用預設 '
-            '${min ?? 0}–${max ?? (min ?? 0) + 100}。'
-            '請確認這個刻度適合這個感測器。');
+        warnings.add(
+          '第 $lineNumber 行：量程留空，已套用預設 '
+          '${min ?? 0}–${max ?? (min ?? 0) + 100}。'
+          '請確認這個刻度適合這個感測器。',
+        );
       }
       pids.add(
         Pid(

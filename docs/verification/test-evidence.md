@@ -16,13 +16,25 @@ tree that starts rotting the next time anyone writes a test.
 What a count cannot tell you is what *kind* of evidence it is, and that is
 what this file is for.
 
-**It is strong automated evidence plus physical-phone rig runs** — BLE/GATT,
-Demo, Classic through a mocked plugin boundary, and Wi-Fi over the phone's real
-radio including the Android route-lease bind path. Those layers remain separate
-from the one bounded purchased-adapter/GT86 observation documented in
-`device-verification.md`; a real connection does not retroactively turn any
-software fixture into broad vehicle evidence. The maintained overview is the
-[rig matrix](rig-matrix.md).
+**The current telemetry-v1 evidence bundle is mixed, not wholly green.** Its
+host/software oracles are green: seven project-owned freeze-frame cases, six
+direct Ircama cases, and six fragmented nominal-proxy cases all report zero
+skips and zero failures; fresh close, missing-prompt, and critical-reply-
+corruption processes add one passing case each. On the Samsung `SM-S9280`, Demo
+and the mocked Classic plugin-boundary journey are green. The fresh
+Samsung-to-Mac BLE/GATT run is also green, including transcript-backed
+post-resume traffic. The corrected fresh Wi-Fi nominal run is green over actual
+phone LAN TCP to the Mac fragmentation proxy and Ircama synthetic ELM/ECU. Its
+proxy records 65 commands, zero faults, and two phone connections. Device
+post-first-value close/missing-prompt/corruption cases have not run. The bundle
+still contains no fresh lifecycle-runner or memory-runner terminal log.
+Historical passes remain historical evidence; they do not change a current
+missing row into a pass.
+
+Every one of those layers remains separate from the one bounded
+purchased-adapter/GT86 observation documented in `device-verification.md`; a
+real connection does not retroactively turn any software fixture into broad
+vehicle evidence. The maintained overview is the [rig matrix](rig-matrix.md).
 
 ## The oracle surfaces, and what each can be trusted for
 
@@ -32,9 +44,11 @@ software fixture into broad vehicle evidence. The maintained overview is the
 | `Ircama/ELM327-emulator` (`emulator_integration_test.dart`) | That the client works against an implementation nobody here wrote | 11-bit CAN only; no functional addressing; answers `ATSP3` with `OK` while still reporting `A6`, so it does not refuse — it quietly misleads |
 | Ircama through `tool/obd_test_rig/chaos_proxy.py` (`chaos_oracle_test.dart`) | That the real Wi-Fi socket handles deterministic fragmentation and fails closed on peer close, a missing prompt, or a corrupted critical reply | Physical radio loss, adapter reboot behavior, vehicle timing, or any fault shape not injected by this repository's proxy |
 | Project-owned `elm327_virtual_server.py` (`freeze_frame_oracle_test.dart`) | That the freeze frame (Mode 02) survives a separately maintained, hash-pinned research-branch oracle — its Mode 02 came from a separate agent review lane and disagreed usefully on first contact: it serves the data PIDs with **no support mask at all**, a shape a mask-first reader renders as "this car has no stored frame". Its seven cases also cover the fault-code classes, the readiness monitors, VIN reassembly, two controllers answering a census, a deadline, and a link that drops mid-session | It is not an independent third-party implementation. It has the same 11-bit CAN-only limit as Ircama's and remains one implementation's reading of J1979, not the standard — where the two readings happen to agree they can still be wrong together |
-| Physical BLE rig (`integration_test/ble_rig_test.dart`) | A Samsung `SM-S9280` can scan, hit-test the discovered result, connect through Android GATT, discover Nordic UART, subscribe, exchange ELM327 commands/notifications, poll live data, and persist rig-labelled evidence | The peripheral and ECU are simulated; no CAR25 firmware, real adapter timing, CAN bus, vehicle, Classic RFCOMM, or OS-delivered Doze/lifecycle behavior |
-| Wi-Fi rig (`integration_test/wifi_rig_test.dart`) | The shipped wizard connecting over the device's real TCP stack — and, against a non-loopback host, the Android route lease actually binding through `ConnectivityManager` on real hardware — to an ELM327 implementation nobody here wrote | The adversarial network the binder exists for (an internet-less hotspot with cellular armed); dual-STA ambiguity; adapter firmware and timing |
-| Demo / Classic rigs (`integration_test/demo_rig_test.dart`, `classic_rig_test.dart`) | The shipped wizard, live polling, lifecycle recovery and simulated-evidence labelling on a physical phone; Classic exercises the plugin boundary through mocked platform channels bridged to the Demo ECU | Demo touches no socket or radio; Classic proves nothing about `BluetoothSocket`, RFCOMM, or a real adapter |
+| Samsung-to-Mac BLE rig (`integration_test/ble_rig_test.dart`) | The fresh run proves real scan/GATT/Nordic-UART subscribe/write/notification traffic, live polling, simulated-rig telemetry storage/export, and a persisted resume `ATRV` followed by later bridge PID traffic. | Lifecycle callbacks are injected, not Android Home/Doze. The Mac peripheral/ECU are simulated; no purchased-adapter timing, CAN bus, vehicle, or Classic RFCOMM. |
+| Wi-Fi rig (`integration_test/wifi_rig_test.dart`) | The fresh nominal run covers the shipped wizard and actual Samsung LAN TCP through the Mac fragmentation proxy to Ircama, including recording/export and a second connection for resume. | The current device run injects no fault. It does not prove post-first-value close/missing-prompt/corruption, an internet-less adapter hotspot with cellular armed, adapter firmware, ECU, or vehicle. |
+| Demo / Classic rigs (`integration_test/demo_rig_test.dart`, `classic_rig_test.dart`) | Fresh Samsung runs cover the shipped journey, polling, recording, History/replay and simulated-evidence labelling; Classic crosses mocked method/event channels and serial bytes. | Demo touches no socket or radio. Classic proves nothing about `BluetoothSocket`, RFCOMM, Bluetooth radio, or a real adapter. |
+| Telemetry lifecycle rig (`tool/telemetry_lifecycle_rig/`) | The runner is designed to bind an actual Android Home event and `am force-stop` to exact durable-prefix recovery and root History UI proof. | No fresh terminal run is in the current telemetry-v1 bundle. The runner uses Demo data and cannot establish a transport, adapter, ECU, or vehicle. |
+| Telemetry memory/share rig (`integration_test/telemetry_memory_rig_test.dart`) | Feasible in-process paths cover the five production streaming sources, app-owned source/ledger parity, capacity, policy, contention, pending state, retention, and PSS gates when the full runner executes. | No fresh terminal device log is in the current bundle, and Revision-8 Gate C still lacks deterministic force-stop cuts and real chooser/plugin-cleanup proof. |
 | Other on-device runs (`SM-S9280`) | Layout, theming, text scaling, Android lifecycle, and anything visible | Purchased-adapter or vehicle behavior unless the exported field transcript says otherwise |
 
 The legacy buses (J1850, ISO 9141-2, KWP2000) and 29-bit CAN are covered
@@ -128,6 +142,21 @@ Named by Codex in round 6, kept as a list rather than a claim:
   datasheet's worked examples
 - Clone adapters generally — every clone behaviour modelled here is one someone
   described, not one that was observed
+
+### Revision-8 Gate C is intentionally incomplete
+
+The memory harness must not be reported as a complete crash matrix. Production
+has no acknowledged pause after source flush/stat/fingerprint verification and
+before `handedOffLease`, or after durable handoff reread and before the
+platform call. The raw transcript, recovered transcript, and PID CSV UI entries
+also do not expose one common request-builder/controller seam. Finally, the
+real platform bridge opens an interactive chooser, while the measured injected
+platform can prove only app-owned source and ledger state.
+
+`TELLTALE_MEMORY_CRASH_CUT_READY` therefore means allocation/pending-state
+readiness, not force-stop or fresh-process reconstruction proof. The exact
+blockers and the required multi-install runner are recorded in
+[`tool/telemetry_memory_rig/GATE_C_BLOCKERS.md`](../../tool/telemetry_memory_rig/GATE_C_BLOCKERS.md).
 
 ## Known gaps, written down rather than half-built
 
