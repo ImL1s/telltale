@@ -96,14 +96,12 @@ FlValue* EnumerateBluetoothSppPorts() {
 struct IdleBytes {
   SppSerialChannel* channel;
   uint64_t generation;
-  guint source_id = 0;
   std::vector<uint8_t> bytes;
 };
 
 struct IdleError {
   SppSerialChannel* channel;
   uint64_t generation;
-  guint source_id = 0;
   int err;
 };
 
@@ -130,12 +128,6 @@ struct _SppSerialChannel {
 
 namespace {
 
-void TrackIdleSource(SppSerialChannel* channel, guint source_id) {
-  if (channel == nullptr || source_id == 0) return;
-  std::lock_guard<std::mutex> lock(channel->idle_mutex);
-  channel->pending_idle_sources.push_back(source_id);
-}
-
 void UntrackIdleSource(SppSerialChannel* channel, guint source_id) {
   if (channel == nullptr || source_id == 0) return;
   std::lock_guard<std::mutex> lock(channel->idle_mutex);
@@ -146,6 +138,11 @@ void UntrackIdleSource(SppSerialChannel* channel, guint source_id) {
       return;
     }
   }
+}
+
+guint CurrentIdleSourceId() {
+  GSource* current = g_main_current_source();
+  return current != nullptr ? g_source_get_id(current) : 0;
 }
 
 void DrainIdleSources(SppSerialChannel* channel) {
@@ -161,7 +158,11 @@ void DrainIdleSources(SppSerialChannel* channel) {
 
 gboolean SendBytesIdle(gpointer data) {
   auto* payload = static_cast<IdleBytes*>(data);
-  UntrackIdleSource(payload->channel, payload->source_id);
+  // Resolve the source id from the running GSource — never from the payload
+  // after g_idle_add_full returns. Attach can dispatch before the queuing
+  // thread stores an id, and DestroyIdleBytes may free the payload before a
+  // post-attach payload->source_id read.
+  UntrackIdleSource(payload->channel, CurrentIdleSourceId());
   if (payload->channel != nullptr &&
       payload->generation == payload->channel->open_generation.load() &&
       payload->channel->listening.load() &&
@@ -177,7 +178,7 @@ gboolean SendBytesIdle(gpointer data) {
 
 gboolean SendErrorIdle(gpointer data) {
   auto* payload = static_cast<IdleError*>(data);
-  UntrackIdleSource(payload->channel, payload->source_id);
+  UntrackIdleSource(payload->channel, CurrentIdleSourceId());
   if (payload->channel != nullptr &&
       payload->generation == payload->channel->open_generation.load() &&
       payload->channel->listening.load() &&
@@ -200,17 +201,26 @@ void DestroyIdleError(gpointer data) {
 
 void QueueBytes(SppSerialChannel* self, uint64_t generation,
                 std::vector<uint8_t> bytes) {
-  auto* payload = new IdleBytes{self, generation, 0, std::move(bytes)};
-  payload->source_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, SendBytesIdle,
-                                       payload, DestroyIdleBytes);
-  TrackIdleSource(self, payload->source_id);
+  auto* payload = new IdleBytes{self, generation, std::move(bytes)};
+  // Hold idle_mutex across attach + track so SendBytesIdle's Untrack cannot
+  // finish (and DestroyIdleBytes cannot free `payload`) until the source id
+  // is recorded. After g_idle_add_full returns, never touch `payload` again.
+  std::lock_guard<std::mutex> lock(self->idle_mutex);
+  const guint source_id = g_idle_add_full(
+      G_PRIORITY_DEFAULT_IDLE, SendBytesIdle, payload, DestroyIdleBytes);
+  if (source_id != 0) {
+    self->pending_idle_sources.push_back(source_id);
+  }
 }
 
 void QueueError(SppSerialChannel* self, uint64_t generation, int err) {
-  auto* payload = new IdleError{self, generation, 0, err};
-  payload->source_id = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, SendErrorIdle,
-                                       payload, DestroyIdleError);
-  TrackIdleSource(self, payload->source_id);
+  auto* payload = new IdleError{self, generation, err};
+  std::lock_guard<std::mutex> lock(self->idle_mutex);
+  const guint source_id = g_idle_add_full(
+      G_PRIORITY_DEFAULT_IDLE, SendErrorIdle, payload, DestroyIdleError);
+  if (source_id != 0) {
+    self->pending_idle_sources.push_back(source_id);
+  }
 }
 
 void* ReadLoop(void* arg) {
