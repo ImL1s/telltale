@@ -150,6 +150,69 @@ void main() {
   );
 
   test(
+    'interrupted corrupt temp beside valid main ledger is discarded',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('share-interrupted-tmp');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      const id = 'acacacacacacacacacacacacacacacac';
+      final bytes = [9, 8, 7];
+      final hash = Fnv1a64()..add(bytes);
+      final handed =
+          ShareLeaseRecord.allocated(
+            id: id,
+            sourceKind: ShareSourceKind.pidCsv,
+            createdAtUtc: DateTime.utc(2026),
+          ).handedOff(
+            bytes: bytes.length,
+            fingerprint: hash.fingerprint,
+            atUtc: DateTime.utc(2026),
+          );
+      final ledger = ShareLeaseLedger(dir);
+      await ledger.install(handed);
+      File('${dir.path}/${handed.sourceFileName}').writeAsBytesSync(bytes);
+      // Crash mid-transition: `.tmp` created/partially written, rename never
+      // committed. Installed main remains the authority.
+      File('${dir.path}/$id.lease.json.tmp').writeAsStringSync('{partial');
+
+      final restored = await AppShareCache(dir)
+          .reconstructAndClean(DateTime.utc(2026, 1, 1, 0, 2));
+      expect(restored, hasLength(1));
+      expect(File('${dir.path}/$id.lease.json.tmp').existsSync(), isFalse);
+      expect((await ledger.read(id))!.state, ShareLeaseState.handedOffLease);
+    },
+  );
+
+  test(
+    'symlink temp beside valid main ledger still blocks',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('share-symlink-main');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      const id = 'adadadadadadadadadadadadadadadad';
+      final bytes = [4, 5, 6];
+      final hash = Fnv1a64()..add(bytes);
+      final handed =
+          ShareLeaseRecord.allocated(
+            id: id,
+            sourceKind: ShareSourceKind.pidCsv,
+            createdAtUtc: DateTime.utc(2026),
+          ).handedOff(
+            bytes: bytes.length,
+            fingerprint: hash.fingerprint,
+            atUtc: DateTime.utc(2026),
+          );
+      await ShareLeaseLedger(dir).install(handed);
+      File('${dir.path}/${handed.sourceFileName}').writeAsBytesSync(bytes);
+      final target = File('${dir.path}/target')..writeAsStringSync('{}');
+      Link('${dir.path}/$id.lease.json.tmp').createSync(target.path);
+
+      await expectLater(
+        AppShareCache(dir).reconstructAndClean(DateTime.utc(2026, 1, 1, 0, 2)),
+        throwsA(isA<FileSystemException>()),
+      );
+    },
+  );
+
+  test(
     'strict ledger rejects unknown keys and invalid handed-off metadata',
     () {
       final allocated = ShareLeaseRecord.allocated(

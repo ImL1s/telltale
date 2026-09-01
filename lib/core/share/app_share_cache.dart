@@ -87,16 +87,25 @@ class AppShareCache {
               expectedId: id,
               checkpoint: checkpoint,
             );
-      final temp = group.temp == null
+      var temp = group.temp == null
           ? null
           : await ledgerReader.readFile(
               group.temp!,
               expectedId: id,
               checkpoint: checkpoint,
             );
-      if ((group.ledger != null && main == null) ||
-          (group.temp != null && temp == null)) {
+      if (group.ledger != null && main == null) {
         throw const FileSystemException('corrupt share lease');
+      }
+      if (group.temp != null && temp == null) {
+        // A readable installed ledger is still authoritative when rename has
+        // not committed. An unreadable regular `.tmp` is an interrupted
+        // transition — discard it. Non-regular temps still fail closed below.
+        if (main == null) {
+          throw const FileSystemException('corrupt share lease');
+        }
+        await _deleteRegular(group.temp, checkpoint);
+        group.temp = null;
       }
       if (main == null && temp == null) {
         throw const FileSystemException('orphan share source');
