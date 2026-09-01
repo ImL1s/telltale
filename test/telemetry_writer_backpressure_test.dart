@@ -5,6 +5,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/telemetry/session/telemetry_session_writer.dart';
 
 void main() {
+  test(
+    'checkpointPartial appends a short active buffer before 64 KiB overflow',
+    () async {
+      final sink = _ControlledSink()..holdAppends = false;
+      final writer = TelemetrySessionWriter(sink: sink);
+      expect(
+        writer.tryAppendLine(utf8.encode('event\n')),
+        TelemetryAppendResult.accepted,
+      );
+      expect(sink.bytes, isEmpty);
+      expect(writer.activeBytes, utf8.encode('event\n').length);
+
+      await writer.checkpointPartial();
+
+      expect(utf8.decode(sink.bytes), 'event\n');
+      expect(writer.activeBytes, 0);
+      expect(sink.calls, <String>['append', 'flush']);
+    },
+  );
+
+  test(
+    'checkpointPartial is a no-op when the active buffer is empty',
+    () async {
+      final sink = _ControlledSink()..holdAppends = false;
+      final writer = TelemetrySessionWriter(sink: sink);
+      await writer.checkpointPartial();
+      expect(sink.calls, isEmpty);
+      expect(sink.bytes, isEmpty);
+    },
+  );
+
   test('uses one active and one in-flight 64 KiB buffer only', () async {
     final sink = _ControlledSink();
     final writer = TelemetrySessionWriter(sink: sink);

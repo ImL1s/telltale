@@ -1,6 +1,7 @@
 /// Production filesystem and live-state wiring for telemetry recording.
 library;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -347,7 +348,12 @@ final class _FileTelemetryStagingWriter
     required this.header,
     required List<int> headerLine,
     required this.writer,
-  }) : _headerLine = List<int>.unmodifiable(headerLine);
+  }) : _headerLine = List<int>.unmodifiable(headerLine) {
+    _partialCheckpoint = Timer.periodic(
+      TelemetrySessionWriter.partialCheckpointInterval,
+      (_) => unawaited(_checkpointPartial()),
+    );
+  }
 
   final TelemetrySessionStore store;
   final String sessionId;
@@ -357,6 +363,25 @@ final class _FileTelemetryStagingWriter
   final List<int> _headerLine;
   final TelemetrySessionWriter writer;
   bool _headerAccepted = false;
+  Timer? _partialCheckpoint;
+  bool _partialCheckpointBusy = false;
+
+  void _stopPartialCheckpoint() {
+    _partialCheckpoint?.cancel();
+    _partialCheckpoint = null;
+  }
+
+  Future<void> _checkpointPartial() async {
+    if (_partialCheckpointBusy) return;
+    _partialCheckpointBusy = true;
+    try {
+      await writer.checkpointPartial();
+    } on Object {
+      // Append-failure handler already closes acceptance.
+    } finally {
+      _partialCheckpointBusy = false;
+    }
+  }
 
   @override
   int get bytesBeforeFooter => writer.bytesBeforeFooter;
@@ -389,6 +414,7 @@ final class _FileTelemetryStagingWriter
 
   @override
   Future<TelemetryCloseResult> closeForAbort() async {
+    _stopPartialCheckpoint();
     try {
       await writer.closeForAbort();
       return TelemetryCloseResult.closed;
@@ -411,6 +437,7 @@ final class _FileTelemetryStagingWriter
   Future<TelemetryFinalizeResult> finalizeAndInstall(
     TelemetrySessionFooter footer,
   ) async {
+    _stopPartialCheckpoint();
     try {
       if (footer.bytesBeforeFooter != writer.bytesBeforeFooter) {
         return TelemetryFinalizeResult.uncontainedFailure;

@@ -60,6 +60,12 @@ final class TelemetrySessionWriter {
 
   static const bufferBytes = 64 * 1024;
 
+  /// How often production staging should checkpoint a short active buffer.
+  /// Overflow still flushes at [bufferBytes]; this bound exists so a crash
+  /// during a low-rate recording leaves recoverable event lines, not a
+  /// header-only staging file.
+  static const partialCheckpointInterval = Duration(seconds: 2);
+
   final TelemetryAppendSink sink;
   final int effectiveSessionLimit;
   final bool sessionLimitIsLibraryBound;
@@ -122,6 +128,26 @@ final class TelemetrySessionWriter {
       }
     }
     return TelemetryAppendResult.accepted;
+  }
+
+  /// Durably appends any partial active buffer without waiting for overflow.
+  ///
+  /// Acceptance stays open. Empty / already-in-flight / closed writers are
+  /// no-ops so a periodic caller can tick without racing finalize.
+  Future<void> checkpointPartial() async {
+    if (!_accepting) return;
+    final pending = _inFlight;
+    if (pending != null) {
+      await pending;
+      _throwPriorAppendFailure();
+      if (!_accepting) return;
+    }
+    if (_activeLength == 0) return;
+    flushActive();
+    final outgoing = _inFlight;
+    if (outgoing != null) await outgoing;
+    _throwPriorAppendFailure();
+    await sink.flush();
   }
 
   /// Starts the one permitted append without awaiting it.

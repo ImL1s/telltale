@@ -10,7 +10,9 @@ Private `ImL1s/torque` Actions may be unavailable (billing). **Public
 enablement. Compile gates are necessary but **not sufficient**: functional
 smoke (Demo journey, Wi‑Fi TCP unit path, export, host gates) must also pass
 on free runners. Product code still originates in private `app/` and is
-archive-synced; telltale `.github/` is publish-only.
+archive-synced; telltale `.github/` is publish-only. The harness map is
+[`docs/verification/harness-catalog.json`](verification/harness-catalog.json),
+checked by `test/harness_catalog_test.dart`.
 
 ## Functional matrix (honest)
 

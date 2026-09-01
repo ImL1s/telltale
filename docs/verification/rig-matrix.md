@@ -1,6 +1,9 @@
 # Verification rig matrix / 可驗證馬具矩陣
 
-Inventory date: 2026-08-30. This is an evidence map, not a compatibility list.
+Inventory date: 2026-09-01. This is an evidence map, not a compatibility list.
+The multiplatform file list is machine-checked by
+`test/harness_catalog_test.dart` against
+[`harness-catalog.json`](harness-catalog.json).
 "Available" below means either reproducibly runnable from this repository or
 described on a current first-party product page. Commercial rigs marked
 **identified only** have not been purchased or run by this project.
@@ -25,6 +28,14 @@ described on a current first-party product page. Commercial rigs marked
 | L3 | [Freematics OBD-II Emulator MK2](https://freematics.com/pages/products/freematics-obd-emulator-mk2/) | **Identified only; not purchased/run** | With a real ELM/BLE/Wi-Fi adapter plugged into its OBD socket, it can exercise physical power/pinout and selectable CAN 11/29-bit, ISO 9141-2 and KWP paths; the vendor lists optional J1850 support | It is not a vehicle and cannot reproduce a GT86 ECU, real bus load/arbitration, ignition/crank, harness faults or proprietary services. |
 | L3 | [ECUsim 2000](https://www.obdsol.com/solutions/development-tools/obd-simulators/ecusim-2000/) | **Identified only; availability and configuration must be confirmed before purchase** | The vendor describes all five legislated protocol families: J1850 PWM/VPW, ISO 9141, ISO 14230 KWP and ISO 15765 CAN | No project run exists, so it currently contributes no product evidence. It is also not a real vehicle. |
 | L4 | Purchased CL-OBDII-M25B + Samsung `SM-S9280` + one Toyota GT86 | One bounded 2026-08-27 field observation | BLE, adapter and one real CAN 11-bit/500 kbit/s vehicle session worked together; a private transcript supplied real response/framing regression shapes | No other unit, phone, model year, trim, ECU, PID accuracy, DTC coverage or vehicle model. |
+| L2 | `tool/desktop_wifi_oracle/run.sh` + `emulator_integration_test.dart` | Public telltale oracle job (Linux) + local macOS wrapper | Real `WifiTransport` against Ircama on TCP 35000: handshake, VIN, live RPM/speed, record/export | Not a purchased Wi-Fi adapter, not iOS Simulator (that is `ios_wifi_oracle`), not a vehicle |
+| L2 | `tool/ios_wifi_oracle/run.sh` + `ios_field_wifi_oracle_test.dart` | Local Simulator evidence; not in GitHub Actions | iOS Simulator → host LAN Ircama on `TransportKind.wifi` | Not TestFlight/device BLE, not cellular |
+| L2 | `integration_test/ios_field_demo_journey_test.dart` | Local Simulator evidence | Demo → live PIDs → record → durable `.ndjson` on field flavor | Not a radio |
+| L2 | `integration_test/macos_field_share_journey_test.dart` | Local macOS evidence | Capacity → Demo record → staged CSV + `app_share` channel | OS share-sheet target selection is still human |
+| L2 | Public telltale Apple/Linux/Windows **functional smoke** | Required on telltale PRs | Host `flutter build` plus Demo/export/transport-gate tests on each desktop runner | Not field BLE/Classic |
+| L2 | `tool/field_bt_verify/` | ACL unit tests in CI; journey requires a powered dongle | Android bonded-adapter preflight refuses a pass while ACL is down; journey is connect→PID→record | Bonded-but-unpowered is exit 2, never a pass |
+| L1 | `tool/desktop_bt_probe/` | Python unit tests in CI | Fail-closed OBD-name scan of macOS/Linux/Windows Bluetooth inventory | Finding a name is not connect→PID |
+| L1 | `test/serial_transport_test.dart`, `test/macos_classic_iobluetooth_contract_test.dart`, `test/which_transport_test.dart` | `flutter test` + telltale smoke | Classic host gates, Windows/Linux serial channel, macOS IOBluetooth contract | Not a physical SPP session |
 
 The ELM protocol terminology is cross-checked against the
 [ELM Electronics OBD product documentation](https://elmelectronics.com/products/ics/obd/).
@@ -62,6 +73,8 @@ FLUTTER="$HOME/fvm/versions/3.47.0/bin/flutter"
 
 python3 -m unittest discover -s tool/ble_test_rig -p 'test_*.py' -v
 python3 -m unittest discover -s tool/obd_test_rig -p 'test_*.py' -v
+python3 -m unittest discover -s tool/field_bt_verify -p 'test_*.py' -v
+python3 -m unittest discover -s tool/desktop_bt_probe -p 'test_*.py' -v
 ```
 
 The external-oracle job in `.github/workflows/ci.yml` starts both software

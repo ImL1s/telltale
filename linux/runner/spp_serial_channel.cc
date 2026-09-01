@@ -307,6 +307,9 @@ bool ConfigureTermios(int fd, int baud) {
   tio.c_cflag &= ~CSTOPB;
   tio.c_cflag &= ~CSIZE;
   tio.c_cflag |= CS8;
+  // cfmakeraw does not clear CRTSCTS. Inherited RTS/CTS on an RFCOMM TTY
+  // can stall write() because typical ELM327 clones never raise CTS.
+  tio.c_cflag &= ~CRTSCTS;
   // ~0.2s read timeout when no bytes wait — lets ClosePort unwind.
   tio.c_cc[VMIN] = 0;
   tio.c_cc[VTIME] = 2;
