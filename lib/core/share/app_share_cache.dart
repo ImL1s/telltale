@@ -108,9 +108,14 @@ class AppShareCache {
       }
       if (group.temp != null && temp == null) {
         // A readable installed ledger is still authoritative when rename has
-        // not committed. An unreadable regular `.tmp` is an interrupted
-        // transition — discard it. Non-regular temps still fail closed below.
+        // not committed. An unreadable regular `.tmp` beside a valid main is
+        // an interrupted transition — discard it. A source-less unreadable
+        // temp with no main is interrupted atomic initial install staging.
         if (main == null) {
+          if (group.source == null && group.ledger == null) {
+            await _deleteRegular(group.temp, checkpoint);
+            continue;
+          }
           throw const FileSystemException('corrupt share lease');
         }
         await _deleteRegular(group.temp, checkpoint);

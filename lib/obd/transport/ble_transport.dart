@@ -195,7 +195,12 @@ class BleTransport extends BaseObdTransport {
       await resultsSub?.cancel();
       if (generation == _scanGeneration) {
         try {
-          if (await UniversalBle.isScanning()) await UniversalBle.stopScan();
+          final scanning = await UniversalBle.isScanning();
+          // A newer scan may have started while isScanning awaited — only the
+          // current generation may issue the global stop.
+          if (generation == _scanGeneration && scanning) {
+            await UniversalBle.stopScan();
+          }
         } on Object {
           // Radio already stopped or turned off; nothing to unwind.
         }

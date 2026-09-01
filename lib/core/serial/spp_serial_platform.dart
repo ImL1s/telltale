@@ -104,11 +104,8 @@ class MethodChannelSppSerialSession implements SppSerialSession {
     int baudRate = 38400,
   }) async {
     await close();
-    await _methods.invokeMethod<void>('open', {
-      'portName': portName,
-      'baudRate': baudRate,
-    });
-    _open = true;
+    // Subscribe before open so a disconnect/error that races the native read
+    // thread startup is not dropped while Dart still thinks the port is open.
     _inboundSub = _inbound.receiveBroadcastStream().listen(
       (event) {
         if (event is Uint8List) {
@@ -123,6 +120,17 @@ class MethodChannelSppSerialSession implements SppSerialSession {
         }
       },
     );
+    try {
+      await _methods.invokeMethod<void>('open', {
+        'portName': portName,
+        'baudRate': baudRate,
+      });
+      _open = true;
+    } on Object {
+      await _inboundSub?.cancel();
+      _inboundSub = null;
+      rethrow;
+    }
   }
 
   @override

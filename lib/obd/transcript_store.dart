@@ -480,11 +480,9 @@ class TranscriptStore {
         );
       }
       await file.delete();
-      if (!valid()) {
-        return const TranscriptMutationOutcome.failure(
-          TranscriptMutationError.safetyChanged,
-        );
-      }
+      // Deletion has committed. If safety flipped during the await, still
+      // report success so the recovered-transcript UI invalidates instead of
+      // claiming the delete was refused while the file is already gone.
       return const TranscriptMutationOutcome.success();
     } on Object {
       return const TranscriptMutationOutcome.failure(

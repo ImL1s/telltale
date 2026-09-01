@@ -128,15 +128,13 @@ void main() {
   );
 
   test(
-    'corrupt, symlink, and near-match temp residue remain blocked',
+    'symlink and near-match temp residue remain blocked',
     () async {
-      for (final fixture in ['corrupt', 'symlink', 'near-match']) {
+      for (final fixture in ['symlink', 'near-match']) {
         final dir = Directory.systemTemp.createTempSync('share-$fixture');
         addTearDown(() => dir.deleteSync(recursive: true));
         const id = 'abababababababababababababababab';
-        if (fixture == 'corrupt') {
-          File('${dir.path}/$id.lease.json.tmp').writeAsStringSync('{bad');
-        } else if (fixture == 'symlink') {
+        if (fixture == 'symlink') {
           final target = File('${dir.path}/target')..writeAsStringSync('{}');
           Link('${dir.path}/$id.lease.json.tmp').createSync(target.path);
         } else {
@@ -308,6 +306,22 @@ void main() {
       const id = 'abababababababababababababababab';
       // Crash after exclusive create / before flush under the old install path.
       File('${dir.path}/$id.lease.json').writeAsBytesSync(const []);
+
+      expect(
+        await AppShareCache(dir).reconstructAndClean(DateTime.utc(2026)),
+        isEmpty,
+      );
+      expect(dir.listSync(), isEmpty);
+    },
+  );
+
+  test(
+    'source-less partial install temp is cleaned as interrupted staging',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('share-partial-temp');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      const id = 'efefefefefefefefefefefefefefefef';
+      File('${dir.path}/$id.lease.json.tmp').writeAsStringSync('{partial');
 
       expect(
         await AppShareCache(dir).reconstructAndClean(DateTime.utc(2026)),
