@@ -640,6 +640,16 @@ class _DerivedStrip extends ConsumerWidget {
     // confident horsepower derived from a number nobody measured.
     final accel = snapshot.accelerationMs2;
     final hasInputs = rpm != null && speed != null && accel != null;
+    DatumStatus measuredFuelStatus(double? value) =>
+        AvailabilityPolicy.decodedValue(
+          structurallyValid: true,
+          value: value,
+          min: PidLibrary.engineFuelRate.minValue,
+          max: PidLibrary.engineFuelRate.maxValue,
+          origin: DatumOrigin.ecuReported,
+          evidence: EvidenceKind.notTested,
+        );
+
     if (!hasInputs) {
       if (measuredFuelRate != null &&
           measuredFuelRate.isFinite &&
@@ -647,6 +657,7 @@ class _DerivedStrip extends ConsumerWidget {
         return _MeasuredFuelStrip(
           fuelRateLPerHour: measuredFuelRate,
           speedKmh: speed,
+          status: measuredFuelStatus(measuredFuelRate),
         );
       }
       return const _DerivedUnavailable();
@@ -678,16 +689,8 @@ class _DerivedStrip extends ConsumerWidget {
       quantity: '馬力',
       kind: EstimateKind.horsepower,
     );
-    const fuelPid = PidLibrary.engineFuelRate;
     final fuelStatus = metrics.fuelSource == FuelSource.measured
-        ? AvailabilityPolicy.decodedValue(
-            structurallyValid: true,
-            value: metrics.fuelRateLPerHour,
-            min: fuelPid.minValue,
-            max: fuelPid.maxValue,
-            origin: DatumOrigin.ecuReported,
-            evidence: EvidenceKind.notTested,
-          )
+        ? measuredFuelStatus(metrics.fuelRateLPerHour)
         : AvailabilityPolicy.forEstimate(
             profile: profile,
             value: metrics.fuelRateLPerHour,
@@ -826,10 +829,12 @@ class _MeasuredFuelStrip extends StatelessWidget {
   const _MeasuredFuelStrip({
     required this.fuelRateLPerHour,
     required this.speedKmh,
+    required this.status,
   });
 
   final double fuelRateLPerHour;
   final double? speedKmh;
+  final DatumStatus status;
 
   @override
   Widget build(BuildContext context) {
@@ -861,11 +866,14 @@ class _MeasuredFuelStrip extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                const StatusPill(
-                  label: 'ECU 回報',
-                  tone: StatusTone.neutral,
-                  dense: true,
-                ),
+                if (status.badgeText.isNotEmpty)
+                  DatumStatusBadge(status: status)
+                else
+                  const StatusPill(
+                    label: 'ECU 回報',
+                    tone: StatusTone.neutral,
+                    dense: true,
+                  ),
               ],
             ),
             const SizedBox(height: Spacing.md),

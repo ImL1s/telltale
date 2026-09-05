@@ -193,11 +193,25 @@ void main() {
     );
 
     expect(_label('ECU 油耗資料'), findsOneWidget);
-    expect(_label('ECU 回報'), findsOneWidget);
+    expect(_onScreen('未驗證'), findsWidgets);
     expect(_label('油耗'), findsOneWidget);
     expect(_label('10.0'), findsOneWidget);
     expect(_label('L/100km'), findsOneWidget);
     expect(_label('引擎馬力'), findsNothing);
     expect(_label('扭力'), findsNothing);
+  });
+
+  testWidgets('measured-fuel fallback keeps 異常 when 015E is out of range', (
+    tester,
+  ) async {
+    await pumpDashboard(
+      tester,
+      snapshot: _snapshot(accel: null, fuelRate: 80),
+      activePids: _activePids,
+    );
+
+    expect(_label('ECU 油耗資料'), findsOneWidget);
+    expect(_onScreen('未驗證'), findsWidgets);
+    expect(_onScreen('異常'), findsWidgets);
   });
 }

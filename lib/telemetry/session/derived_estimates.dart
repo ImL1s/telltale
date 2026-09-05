@@ -41,9 +41,7 @@ abstract final class DerivedEstimates {
   static const defaultReplayLaneLimit = 4;
 
   static bool isDerived(TelemetrySignalDefinition definition) =>
-      isDerivedId(definition.id) ||
-      definition.variant == horsepowerVariant ||
-      definition.variant == fuelVariant;
+      isDerivedId(definition.id);
 
   static bool isDerivedId(String id) =>
       id == horsepower.id || id == fuelRate.id;
@@ -89,8 +87,8 @@ abstract final class DerivedEstimates {
     final derived = <String>[];
     final others = <String>[];
     for (final signal in signals) {
-      if (recorded != null && !recorded.contains(signal.id)) continue;
       if (isDerived(signal)) {
+        if (recorded != null && !recorded.contains(signal.id)) continue;
         derived.add(signal.id);
       } else {
         others.add(signal.id);

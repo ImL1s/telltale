@@ -481,8 +481,8 @@ abstract final class AvailabilityPolicy {
     TelemetrySource? source,
   }) {
     final derived =
-        definition.variant == 'derived-horsepower' ||
-        definition.variant == 'derived-fuel-rate';
+        definition.id == '000:00FF#derived-horsepower' ||
+        definition.id == '000:00FE#derived-fuel-rate';
     final origin = derived
         ? DatumOrigin.calculated
         : source == TelemetrySource.demo

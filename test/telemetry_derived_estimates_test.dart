@@ -60,6 +60,7 @@ void main() {
     );
     expect(withValues, contains(DerivedEstimates.horsepower.id));
     expect(withValues, isNot(contains(DerivedEstimates.fuelRate.id)));
+    expect(withValues, contains(PidLibrary.engineRpm.id));
   });
 
   test(
@@ -77,7 +78,7 @@ void main() {
           minimum: 0,
           maximum: 8000,
           isCustom: true,
-          variant: 'derived-custom',
+          variant: 'derived-horsepower',
           priority: 1,
           equation: 'A',
         ),
