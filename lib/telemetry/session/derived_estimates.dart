@@ -60,8 +60,9 @@ abstract final class DerivedEstimates {
     required TelemetrySnapshot snapshot,
     required VehicleProfile profile,
   }) {
-    final rpm = snapshot.valueOf(PidLibrary.engineRpm);
-    final speed = snapshot.valueOf(PidLibrary.vehicleSpeed);
+    final clock = snapshot.capturedAt;
+    final rpm = snapshot.valueOf(PidLibrary.engineRpm, now: clock);
+    final speed = snapshot.valueOf(PidLibrary.vehicleSpeed, now: clock);
     final accel = snapshot.accelerationMs2;
     if (rpm == null || speed == null || accel == null) return const {};
     final metrics = PhysicsEngine.derive(
@@ -69,10 +70,13 @@ abstract final class DerivedEstimates {
       rpm: rpm,
       speedKmh: speed,
       accelMs2: accel,
-      mafSensorGps: snapshot.valueOf(PidLibrary.mafRate),
-      mapKpa: snapshot.valueOf(PidLibrary.manifoldPressure),
-      intakeTempC: snapshot.valueOf(PidLibrary.intakeAirTemp),
-      fuelRateSensorLPerHour: snapshot.valueOf(PidLibrary.engineFuelRate),
+      mafSensorGps: snapshot.valueOf(PidLibrary.mafRate, now: clock),
+      mapKpa: snapshot.valueOf(PidLibrary.manifoldPressure, now: clock),
+      intakeTempC: snapshot.valueOf(PidLibrary.intakeAirTemp, now: clock),
+      fuelRateSensorLPerHour: snapshot.valueOf(
+        PidLibrary.engineFuelRate,
+        now: clock,
+      ),
     );
     final values = <String, double>{};
     if (metrics.engineHorsepower.isFinite) {
