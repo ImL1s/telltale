@@ -298,7 +298,7 @@ void main() {
       PidLibrary.engineRpm.copyWith(evidenceKind: 'community'),
     );
     final user = freezePidDefinition(
-      Pid(
+      const Pid(
         name: 'User coolant',
         shortName: 'cool',
         modeAndPid: '0105',
