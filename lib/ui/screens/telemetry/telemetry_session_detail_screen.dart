@@ -313,10 +313,13 @@ class _ReplayLanePanel extends StatelessWidget {
         currentValue = primitive.value;
         currentQuality = primitive.quality;
         currentStatus = null;
-      } else {
+      } else if (primitive.kind == TelemetryReplayPrimitiveKind.status) {
         currentValue = null;
         currentQuality = null;
         currentStatus = primitive.status;
+      } else {
+        currentValue = null;
+        currentQuality = null;
       }
     }
     final status = _statusFor(

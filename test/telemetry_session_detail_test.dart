@@ -145,6 +145,31 @@ void main() {
     );
     expect(find.textContaining('使用者提供'), findsOneWidget);
   });
+
+  testWidgets('History gap after a status keeps the recorded quality label', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          telemetryHistoryAccessProvider.overrideWithValue(
+            TelemetryHistoryAccess.permitted,
+          ),
+          telemetrySessionReplayProvider.overrideWith(
+            (ref, id) async => _gapStatusReplay,
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark(),
+          home: const TelemetrySessionDetailScreen(
+            sessionId: '00000000000000000000000000000004',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('過期'), findsOneWidget);
+  });
 }
 
 final _accessProvider =
@@ -158,6 +183,46 @@ class _AccessNotifier extends Notifier<TelemetryHistoryAccess> {
 
   void setAccess(TelemetryHistoryAccess value) => state = value;
 }
+
+final _gapStatusReplay = TelemetryReplayResult.success(
+  TelemetrySessionReplay(
+    sessionId: '00000000000000000000000000000004',
+    startedAtUtc: DateTime.utc(2026, 8, 30, 1),
+    endedAtUtc: DateTime.utc(2026, 8, 30, 3),
+    source: TelemetrySource.fieldAppConnection,
+    transport: TransportKind.wifi.name,
+    protocol: 'ISO 15765-4 CAN',
+    signalCount: 1,
+    valueCount: 1,
+    statusCount: 1,
+    gapCount: 1,
+    terminalReason: TelemetryTerminalReason.user,
+    elapsedDurationUs: 1000,
+    workerDebugName: 'detail-test-worker',
+    lanes: const [
+      TelemetryReplayLane(
+        pidId: '7E0:010C',
+        name: 'Engine RPM',
+        unit: 'rpm',
+        request: '010C',
+        evidenceKind: 'community',
+        minimum: 0,
+        maximum: 8000,
+        primitives: [
+          TelemetryReplayPrimitive(
+            kind: TelemetryReplayPrimitiveKind.status,
+            elapsedUs: 0,
+            status: 'stale',
+          ),
+          TelemetryReplayPrimitive(
+            kind: TelemetryReplayPrimitiveKind.gap,
+            elapsedUs: 0,
+          ),
+        ],
+      ),
+    ],
+  ),
+);
 
 final _provenanceReplay = TelemetryReplayResult.success(
   TelemetrySessionReplay(
