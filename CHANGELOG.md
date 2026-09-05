@@ -10,6 +10,18 @@ Dates are the date the build was made, not the date it reached anyone.
 
 ### Added
 
+## 1.0.8 — 2026-09-06
+
+GitHub pre-release `v1.0.8-beta.1`. Physical ELM327 / vehicle ECU still unverified.
+
+### Added
+
+- Unverified labelled reads stay usable: generic OBD without VIN or catalog match, community/experimental/user PIDs, partial ECU success, and disclosed 馬力/油耗 estimates. Field verification adds 已驗證; it is not a use gate. Clear/actuate/program keep their own preconditions. Bad packets stay raw/error, never a number.
+
+## Unreleased profiles
+
+### Added
+
 - Three more installable community battery profiles, each cross-corroborated
   by two mutually independent, license-pinned implementations: MG4 Electric
   (OVMS × OBDb on functional 7DF/7ED; not the Mk1 ZS EV 781/789 map), MG5 EV
