@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/diagnostics/availability.dart';
 import 'package:torque_obd/obd/physics/vehicle_profile.dart';
+import 'package:torque_obd/obd/pid/pid.dart';
 import 'package:torque_obd/obd/pid/pid_library.dart';
+import 'package:torque_obd/obd/telemetry.dart';
 import 'package:torque_obd/telemetry/session/derived_estimates.dart';
 import 'package:torque_obd/telemetry/session/telemetry_recorder.dart';
 import 'package:torque_obd/telemetry/session/telemetry_session.dart';
@@ -27,6 +29,69 @@ void main() {
     expect(fuel.definition.assumptions, isNot(contains('車重')));
     expect(hp.definition.maximum, AvailabilityPolicy.horsepowerRangeMax);
     expect(fuel.definition.maximum, AvailabilityPolicy.fuelRateRangeMax);
+    expect(hp.definition.assumptionsConfirmed, isFalse);
+    expect(fuel.definition.assumptionsConfirmed, isFalse);
+  });
+
+  test('appendTo freezes confirmed estimate status', () {
+    const profile = VehicleProfile(massKg: 1280, isConfirmed: true);
+    final signals = DerivedEstimates.appendTo([
+      freezePidDefinition(PidLibrary.engineRpm),
+    ], profile: profile);
+    expect(
+      signals
+          .where((signal) => DerivedEstimates.isDerived(signal.definition))
+          .every((signal) => signal.definition.assumptionsConfirmed == true),
+      isTrue,
+    );
+  });
+
+  test('appendTo reserves both derived slots instead of dropping fuel', () {
+    final thirty = DerivedEstimates.appendTo(_liveSignals(30));
+    expect(thirty, hasLength(32));
+    expect(
+      thirty.map((signal) => signal.definition.id),
+      containsAll([
+        DerivedEstimates.horsepower.id,
+        DerivedEstimates.fuelRate.id,
+      ]),
+    );
+    expect(
+      () => DerivedEstimates.appendTo(_liveSignals(31)),
+      throwsA(
+        isA<TelemetryValidationException>().having(
+          (error) => error.code,
+          'code',
+          'derivedEstimatesNeedRoom',
+        ),
+      ),
+    );
+    expect(
+      () => DerivedEstimates.appendTo(_liveSignals(32)),
+      throwsA(isA<TelemetryValidationException>()),
+    );
+  });
+
+  test('fuel estimate does not require horsepower inputs', () {
+    final now = DateTime.utc(2026);
+    final values = DerivedEstimates.valuesFor(
+      snapshot: TelemetrySnapshot(
+        readings: {
+          PidLibrary.mafRate.id: Reading(
+            pid: PidLibrary.mafRate,
+            value: 25,
+            rawBytes: const [0x09, 0xc4],
+            timestamp: now,
+          ),
+        },
+        capturedAt: now,
+      ),
+      profile: const VehicleProfile(),
+    );
+    expect(values.containsKey(DerivedEstimates.horsepower.id), isFalse);
+    expect(values[DerivedEstimates.fuelRate.id], isNotNull);
+    expect(values[DerivedEstimates.fuelRate.id]!.isFinite, isTrue);
+    expect(values[DerivedEstimates.fuelRate.id], greaterThan(0));
   });
 
   test('default replay lanes prefer derived estimates over header order', () {
@@ -90,3 +155,19 @@ void main() {
     },
   );
 }
+
+List<FrozenPidDefinition> _liveSignals(int count) => [
+  for (var index = 0; index < count; index++)
+    freezePidDefinition(
+      Pid(
+        name: 'Signal $index',
+        shortName: 's$index',
+        modeAndPid:
+            '01${index.toRadixString(16).toUpperCase().padLeft(2, '0')}',
+        equation: 'A',
+        minValue: 0,
+        maxValue: 1,
+        units: 'x',
+      ),
+    ),
+];

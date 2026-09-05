@@ -549,6 +549,9 @@ abstract final class TelemetrySessionCodec {
     assumptions: map['assumptions'] is String
         ? _string(map, 'assumptions')
         : null,
+    assumptionsConfirmed: map.containsKey('assumptionsConfirmed')
+        ? _boolean(map, 'assumptionsConfirmed')
+        : null,
   );
 
   static TelemetryEvent _decodeEvent(Map<String, Object?> map) =>

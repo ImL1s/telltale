@@ -13,6 +13,7 @@ import '../../../state/settings.dart';
 import '../../../state/telemetry_recorder.dart';
 import '../../../state/telemetry_runtime.dart';
 import '../../../state/telemetry_sessions.dart';
+import '../../../telemetry/session/derived_estimates.dart';
 import '../../../telemetry/session/telemetry_recorder.dart';
 import '../../widgets/panel.dart';
 import 'telemetry_status_copy.dart';
@@ -277,7 +278,9 @@ class _TelemetryRecorderPanelState
     }
     if (speedKmh > 5) return '請停車後操作';
     if (activeCount == 0) return '請先啟用至少一項 PID';
-    if (activeCount > 32) return '錄製最多包含 32 項訊號，請先減少 PID';
+    if (activeCount > DerivedEstimates.maxLiveSignals) {
+      return '錄製需保留估算馬力與估算油耗欄位，請先停用 PID';
+    }
     return null;
   }
 

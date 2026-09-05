@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/obd/physics/vehicle_profile.dart';
+import 'package:torque_obd/obd/pid/pid.dart';
 import 'package:torque_obd/obd/pid/pid_library.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
 import 'package:torque_obd/state/telemetry_sessions.dart';
@@ -284,6 +285,83 @@ void main() {
     expect(primitive.kind, TelemetryReplayPrimitiveKind.value);
     expect(primitive.value, 999);
     expect(primitive.quality, 'outOfReferenceRange');
+  });
+
+  test('replay lanes carry frozen evidence provenance', () async {
+    final documents = await Directory.systemTemp.createTemp(
+      'replay-provenance',
+    );
+    addTearDown(() => documents.delete(recursive: true));
+    const id = '10000000000000000000000000000007';
+    final started = DateTime.utc(2026, 8, 30, 6);
+    final community = freezePidDefinition(
+      PidLibrary.engineRpm.copyWith(evidenceKind: 'community'),
+    );
+    final user = freezePidDefinition(
+      Pid(
+        name: 'User coolant',
+        shortName: 'cool',
+        modeAndPid: '0105',
+        equation: 'A-40',
+        minValue: -40,
+        maxValue: 215,
+        units: '°C',
+        isCustom: true,
+      ),
+    );
+    final header = TelemetrySessionHeader(
+      sessionId: id,
+      startedAtUtc: started,
+      source: TelemetrySource.fieldAppConnection,
+      transport: TransportKind.wifi,
+      protocol: 'AUTO',
+      signals: [community, user],
+    );
+    final events = [
+      TelemetryEvent.value(
+        observedAtUtc: started,
+        sourceTimestampUtc: started,
+        elapsedUs: 0,
+        pidId: community.definition.id,
+        value: 2100,
+      ),
+      TelemetryEvent.value(
+        observedAtUtc: started,
+        sourceTimestampUtc: started,
+        elapsedUs: 0,
+        pidId: user.definition.id,
+        value: 90,
+      ),
+    ];
+    final prefix = TelemetrySessionCodec.encodePrefix(header, events);
+    final root = Directory('${documents.path}/telltale-telemetry');
+    await root.create(recursive: true);
+    await File('${root.path}/$id.ndjson').writeAsBytes(
+      TelemetrySessionCodec.encode(
+        TelemetrySession(
+          header: header,
+          events: events,
+          footer: TelemetrySessionFooter(
+            endedAtUtc: started.add(const Duration(seconds: 1)),
+            terminalReason: TelemetryTerminalReason.user,
+            valueCount: 2,
+            statusCount: 0,
+            gapCount: 0,
+            bytesBeforeFooter: prefix.length,
+          ),
+        ),
+      ),
+    );
+
+    final result = await TelemetrySessionLibraryService(
+      documentsDirectory: () async => documents,
+    ).replay(id);
+    expect(result.failure, isNull);
+    final byId = {for (final lane in result.replay!.lanes) lane.pidId: lane};
+    expect(byId[community.definition.id]?.evidenceKind, 'community');
+    expect(byId[community.definition.id]?.isCustom, isFalse);
+    expect(byId[user.definition.id]?.isCustom, isTrue);
+    expect(byId[user.definition.id]?.evidenceKind, 'userSupplied');
   });
 
   test(

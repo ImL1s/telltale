@@ -58,7 +58,11 @@ class TelemetryRecorderState {
 }
 
 /// Converts the live PID definition to the exact immutable recording form.
-FrozenPidDefinition freezePidDefinition(Pid pid, {String? assumptions}) {
+FrozenPidDefinition freezePidDefinition(
+  Pid pid, {
+  String? assumptions,
+  bool? assumptionsConfirmed,
+}) {
   final provenance = pid.isCustom
       ? UnitProvenance.userDefined
       : pid.isMode01 && pid.header == kDefaultHeader && pid.variant == null
@@ -81,6 +85,7 @@ FrozenPidDefinition freezePidDefinition(Pid pid, {String? assumptions}) {
       equation: pid.equation,
       evidenceKind: pid.isCustom ? 'userSupplied' : pid.evidenceKind,
       assumptions: assumptions,
+      assumptionsConfirmed: assumptionsConfirmed,
     ),
   );
 }

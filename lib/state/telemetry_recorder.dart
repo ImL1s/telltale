@@ -373,8 +373,13 @@ final class RootTelemetryRecorder {
 
     late final List<FrozenPidDefinition> definitions;
     try {
-      if (request.activePids.isEmpty || request.activePids.length > 32) {
-        throw const TelemetryValidationException('signalCount');
+      if (request.activePids.isEmpty ||
+          request.activePids.length > DerivedEstimates.maxLiveSignals) {
+        throw TelemetryValidationException(
+          request.activePids.isEmpty
+              ? 'signalCount'
+              : 'derivedEstimatesNeedRoom',
+        );
       }
       definitions = DerivedEstimates.appendTo(
         request.activePids.map(freezePidDefinition).toList(),

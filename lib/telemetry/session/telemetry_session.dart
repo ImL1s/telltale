@@ -108,6 +108,7 @@ final class TelemetrySignalDefinition {
     required this.equation,
     this.evidenceKind,
     this.assumptions,
+    this.assumptionsConfirmed,
   });
 
   final String id;
@@ -131,6 +132,10 @@ final class TelemetrySignalDefinition {
   /// Frozen estimate disclosure captured at Start. Omitted when null.
   final String? assumptions;
 
+  /// Whether [assumptions] were confirmed at Start. Omitted when unknown so
+  /// existing recordings keep their fingerprints and do not claim otherwise.
+  final bool? assumptionsConfirmed;
+
   Map<String, Object?> toCanonicalJson() {
     final json = <String, Object?>{
       'id': id,
@@ -152,6 +157,9 @@ final class TelemetrySignalDefinition {
     }
     if (assumptions != null && assumptions!.isNotEmpty) {
       json['assumptions'] = assumptions;
+    }
+    if (assumptionsConfirmed != null) {
+      json['assumptionsConfirmed'] = assumptionsConfirmed;
     }
     return json;
   }

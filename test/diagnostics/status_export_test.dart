@@ -301,12 +301,40 @@ void main() {
     expect(status.badgeLabels, contains('估算'));
     expect(status.formula, AvailabilityPolicy.horsepowerFormula);
     expect(status.assumptions, contains('1280'));
+    expect(status.reason, isNull);
+    final confirmed = AvailabilityPolicy.forRecordedEvent(
+      definition: freezePidDefinition(
+        DerivedEstimates.horsepower,
+        assumptions: AvailabilityPolicy.estimateAssumptions(
+          const VehicleProfile(massKg: 1280, isConfirmed: true),
+          EstimateKind.horsepower,
+        ),
+        assumptionsConfirmed: true,
+      ).definition,
+      event: events.single,
+      source: TelemetrySource.demo,
+    );
+    expect(confirmed.reason, isNull);
+    final unconfirmed = AvailabilityPolicy.forRecordedEvent(
+      definition: freezePidDefinition(
+        DerivedEstimates.horsepower,
+        assumptions: AvailabilityPolicy.estimateAssumptions(
+          profile,
+          EstimateKind.horsepower,
+        ),
+        assumptionsConfirmed: false,
+      ).definition,
+      event: events.single,
+      source: TelemetrySource.demo,
+    );
+    expect(unconfirmed.reason, '假設尚未確認，仍可估算');
     final legacy = AvailabilityPolicy.forRecordedEvent(
       definition: freezePidDefinition(DerivedEstimates.horsepower).definition,
       event: events.single,
       source: TelemetrySource.demo,
     );
     expect(legacy.assumptions, '估算使用記錄當下的車輛設定');
+    expect(legacy.reason, isNull);
   });
 }
 

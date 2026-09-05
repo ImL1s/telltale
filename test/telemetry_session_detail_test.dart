@@ -113,6 +113,38 @@ void main() {
     expect(find.text('播放'), findsOneWidget);
     expect(tester.widget<Slider>(find.byType(Slider)).value, 0);
   });
+
+  testWidgets('History replay titles keep provenance labels', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          telemetryHistoryAccessProvider.overrideWithValue(
+            TelemetryHistoryAccess.permitted,
+          ),
+          telemetrySessionReplayProvider.overrideWith(
+            (ref, id) async => _provenanceReplay,
+          ),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark(),
+          home: const TelemetrySessionDetailScreen(
+            sessionId: '00000000000000000000000000000003',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('估算'), findsWidgets);
+    expect(find.textContaining('異常'), findsOneWidget);
+    expect(find.textContaining('社群解碼'), findsWidgets);
+    expect(find.textContaining('本車未驗證'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.textContaining('使用者提供'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('使用者提供'), findsOneWidget);
+  });
 }
 
 final _accessProvider =
@@ -126,6 +158,78 @@ class _AccessNotifier extends Notifier<TelemetryHistoryAccess> {
 
   void setAccess(TelemetryHistoryAccess value) => state = value;
 }
+
+final _provenanceReplay = TelemetryReplayResult.success(
+  TelemetrySessionReplay(
+    sessionId: '00000000000000000000000000000003',
+    startedAtUtc: DateTime.utc(2026, 8, 30, 1),
+    endedAtUtc: DateTime.utc(2026, 8, 30, 3),
+    source: TelemetrySource.fieldAppConnection,
+    transport: TransportKind.wifi.name,
+    protocol: 'ISO 15765-4 CAN',
+    signalCount: 3,
+    valueCount: 3,
+    statusCount: 0,
+    gapCount: 0,
+    terminalReason: TelemetryTerminalReason.user,
+    elapsedDurationUs: 1000,
+    workerDebugName: 'detail-test-worker',
+    lanes: const [
+      TelemetryReplayLane(
+        pidId: '000:00FF#derived-horsepower',
+        name: '估算馬力',
+        unit: 'hp',
+        request: '00FF',
+        header: '000',
+        variant: 'derived-horsepower',
+        equation: 'wheelWatts',
+        minimum: 0,
+        maximum: 2000,
+        primitives: [
+          TelemetryReplayPrimitive(
+            kind: TelemetryReplayPrimitiveKind.value,
+            elapsedUs: 0,
+            value: 9999,
+            quality: 'outOfReferenceRange',
+          ),
+        ],
+      ),
+      TelemetryReplayLane(
+        pidId: '7E0:010C',
+        name: 'Engine RPM',
+        unit: 'rpm',
+        request: '010C',
+        evidenceKind: 'community',
+        minimum: 0,
+        maximum: 8000,
+        primitives: [
+          TelemetryReplayPrimitive(
+            kind: TelemetryReplayPrimitiveKind.value,
+            elapsedUs: 0,
+            value: 2100,
+          ),
+        ],
+      ),
+      TelemetryReplayLane(
+        pidId: 'custom:7E0:0105',
+        name: 'User coolant',
+        unit: '°C',
+        request: '0105',
+        isCustom: true,
+        evidenceKind: 'userSupplied',
+        minimum: -40,
+        maximum: 215,
+        primitives: [
+          TelemetryReplayPrimitive(
+            kind: TelemetryReplayPrimitiveKind.value,
+            elapsedUs: 0,
+            value: 90,
+          ),
+        ],
+      ),
+    ],
+  ),
+);
 
 final _replay = TelemetryReplayResult.success(
   TelemetrySessionReplay(

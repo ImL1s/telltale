@@ -39,6 +39,8 @@ abstract final class DerivedEstimates {
   );
 
   static const defaultReplayLaneLimit = 4;
+  static const reservedSignalCount = 2;
+  static const maxLiveSignals = maximumTelemetrySignals - reservedSignalCount;
 
   static bool isDerived(TelemetrySignalDefinition definition) =>
       isDerivedId(definition.id);
@@ -50,7 +52,14 @@ abstract final class DerivedEstimates {
     List<FrozenPidDefinition> signals, {
     VehicleProfile? profile,
   }) {
-    final extra = <FrozenPidDefinition>[
+    if (signals.length > maxLiveSignals) {
+      throw const TelemetryValidationException(
+        'derivedEstimatesNeedRoom',
+        field: 'signals',
+      );
+    }
+    return [
+      ...signals,
       freezePidDefinition(
         horsepower,
         assumptions: profile == null
@@ -59,6 +68,7 @@ abstract final class DerivedEstimates {
                 profile,
                 EstimateKind.horsepower,
               ),
+        assumptionsConfirmed: profile?.isConfirmed,
       ),
       freezePidDefinition(
         fuelRate,
@@ -68,11 +78,9 @@ abstract final class DerivedEstimates {
                 profile,
                 EstimateKind.fuel,
               ),
+        assumptionsConfirmed: profile?.isConfirmed,
       ),
     ];
-    final room = maximumTelemetrySignals - signals.length;
-    if (room <= 0) return signals;
-    return [...signals, ...extra.take(room)];
   }
 
   /// History replay keeps four lanes. Derived estimates sit after live PIDs
@@ -105,29 +113,47 @@ abstract final class DerivedEstimates {
     final rpm = snapshot.valueOf(PidLibrary.engineRpm, now: clock);
     final speed = snapshot.valueOf(PidLibrary.vehicleSpeed, now: clock);
     final accel = snapshot.accelerationMs2;
-    if (rpm == null || speed == null || accel == null) return const {};
-    final metrics = PhysicsEngine.derive(
-      profile: profile,
-      rpm: rpm,
-      speedKmh: speed,
-      accelMs2: accel,
-      mafSensorGps: snapshot.valueOf(PidLibrary.mafRate, now: clock),
-      mapKpa: snapshot.valueOf(PidLibrary.manifoldPressure, now: clock),
-      intakeTempC: snapshot.valueOf(PidLibrary.intakeAirTemp, now: clock),
-      fuelRateSensorLPerHour: snapshot.valueOf(
-        PidLibrary.engineFuelRate,
-        now: clock,
-      ),
-    );
+    final mafSensor = snapshot.valueOf(PidLibrary.mafRate, now: clock);
+    final mapKpa = snapshot.valueOf(PidLibrary.manifoldPressure, now: clock);
+    final intakeTempC = snapshot.valueOf(PidLibrary.intakeAirTemp, now: clock);
+    final fuelSensor = snapshot.valueOf(PidLibrary.engineFuelRate, now: clock);
     final values = <String, double>{};
-    if (metrics.engineHorsepower.isFinite) {
-      values[horsepower.id] = metrics.engineHorsepower;
+    if (rpm != null && speed != null && accel != null) {
+      final metrics = PhysicsEngine.derive(
+        profile: profile,
+        rpm: rpm,
+        speedKmh: speed,
+        accelMs2: accel,
+        mafSensorGps: mafSensor,
+        mapKpa: mapKpa,
+        intakeTempC: intakeTempC,
+        fuelRateSensorLPerHour: fuelSensor,
+      );
+      if (metrics.engineHorsepower.isFinite) {
+        values[horsepower.id] = metrics.engineHorsepower;
+      }
     }
-    if (metrics.fuelSource == FuelSource.stoichiometricEstimate &&
-        metrics.fuelRateLPerHour != null &&
-        metrics.fuelRateLPerHour!.isFinite) {
-      values[fuelRate.id] = metrics.fuelRateLPerHour!;
-    }
+    final measuredFuel =
+        fuelSensor != null && fuelSensor.isFinite && fuelSensor >= 0;
+    if (measuredFuel) return values;
+    final maf = mafSensor != null && mafSensor > 0
+        ? mafSensor
+        : rpm != null && mapKpa != null && intakeTempC != null
+        ? PhysicsEngine.speedDensityMaf(
+            rpm: rpm,
+            mapKpa: mapKpa,
+            intakeTempC: intakeTempC,
+            displacementL: profile.displacementL,
+            volumetricEfficiencyPct: profile.volumetricEfficiency,
+          )
+        : null;
+    if (maf == null || maf <= 0) return values;
+    final fuel = PhysicsEngine.fuelRateLPerHour(
+      mafGramsPerSecond: maf,
+      stoichAfr: profile.stoichAfr,
+      fuelDensityGPerL: profile.fuelDensityGPerL,
+    );
+    if (fuel.isFinite) values[fuelRate.id] = fuel;
     return values;
   }
 }

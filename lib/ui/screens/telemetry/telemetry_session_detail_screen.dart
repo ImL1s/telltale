@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../diagnostics/availability.dart';
 import '../../../state/telemetry_sessions.dart';
+import '../../../telemetry/session/telemetry_session.dart';
 import '../../widgets/panel.dart';
 import '../../widgets/telemetry/telemetry_status_copy.dart';
 import 'telemetry_export_sheet.dart';
@@ -88,11 +90,7 @@ class _TelemetrySessionDetailScreenState
     if (format == null || !mounted) return;
     final result = await ref
         .read(telemetrySessionActionsProvider)
-        .export(
-          widget.sessionId,
-          format,
-          sharePositionOrigin: origin,
-        );
+        .export(widget.sessionId, format, sharePositionOrigin: origin);
     if (!result.isSuccess &&
         result.failure != TelemetrySessionActionFailure.restartRequired) {
       _snack('匯出未完成：${result.message}');
@@ -253,6 +251,7 @@ class _ReplayBody extends StatelessWidget {
           lane: lane,
           position: position,
           durationUs: replay.elapsedDurationUs,
+          source: replay.source,
         ),
         const SizedBox(height: Spacing.sm),
       ],
@@ -282,11 +281,13 @@ class _ReplayLanePanel extends StatelessWidget {
     required this.lane,
     required this.position,
     required this.durationUs,
+    required this.source,
   });
 
   final TelemetryReplayLane lane;
   final double position;
   final int durationUs;
+  final TelemetrySource source;
 
   @override
   Widget build(BuildContext context) {
@@ -305,33 +306,39 @@ class _ReplayLanePanel extends StatelessWidget {
     final elapsedUs = (durationUs * position).round();
     double? currentValue;
     String? currentQuality;
+    String? currentStatus;
     for (final primitive in lane.primitives) {
       if (primitive.elapsedUs > elapsedUs) break;
       if (primitive.kind == TelemetryReplayPrimitiveKind.value) {
         currentValue = primitive.value;
         currentQuality = primitive.quality;
+        currentStatus = null;
       } else {
         currentValue = null;
         currentQuality = null;
+        currentStatus = primitive.status;
       }
     }
-    final outlier = currentQuality == 'outOfReferenceRange';
+    final status = _statusFor(
+      value: currentValue,
+      quality: currentQuality,
+      status: currentStatus,
+    );
     final valueLabel = currentValue?.toStringAsFixed(1) ?? '--';
+    final title = [
+      '${lane.name} · $valueLabel ${lane.unit}',
+      if (status.badgeText.isNotEmpty) status.badgeText,
+    ].join(' · ');
     return Semantics(
       key: ValueKey('telemetry-replay-lane-${lane.pidId}'),
       label:
-          '${lane.name}，$valueLabel ${lane.unit}'
-          '${outlier ? '，異常' : ''}，'
+          '$title，'
           '${lane.primitives.length} 個抽樣節點，$gaps 個中斷',
       child: Panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${lane.name} · $valueLabel ${lane.unit}'
-              '${outlier ? ' · 異常' : ''}',
-              style: context.texts.titleMedium,
-            ),
+            Text(title, style: context.texts.titleMedium),
             const SizedBox(height: Spacing.sm),
             SizedBox(
               height: 88,
@@ -351,6 +358,52 @@ class _ReplayLanePanel extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  DatumStatus _statusFor({
+    required double? value,
+    required String? quality,
+    required String? status,
+  }) {
+    final definition = lane.asDefinition();
+    if (value != null) {
+      return AvailabilityPolicy.forRecordedEvent(
+        definition: definition,
+        event: TelemetryEvent.value(
+          observedAtUtc: DateTime.utc(1970),
+          sourceTimestampUtc: DateTime.utc(1970),
+          elapsedUs: 0,
+          pidId: lane.pidId,
+          value: value,
+          quality: switch (quality) {
+            'outOfReferenceRange' => TelemetryQuality.outOfReferenceRange,
+            'tentativeDecode' => TelemetryQuality.tentativeDecode,
+            _ => TelemetryQuality.valid,
+          },
+        ),
+        source: source,
+      );
+    }
+    if (status != null) {
+      for (final named in TelemetryStatus.values) {
+        if (named.wireName == status) {
+          return AvailabilityPolicy.forRecordedEvent(
+            definition: definition,
+            event: TelemetryEvent.status(
+              observedAtUtc: DateTime.utc(1970),
+              elapsedUs: 0,
+              pidId: lane.pidId,
+              status: named,
+            ),
+            source: source,
+          );
+        }
+      }
+    }
+    return AvailabilityPolicy.forRecordedDefinition(
+      definition: definition,
+      source: source,
     );
   }
 }

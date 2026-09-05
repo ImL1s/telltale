@@ -180,12 +180,57 @@ final class TelemetryReplayLane {
     required this.name,
     required this.unit,
     required this.primitives,
+    this.shortName = '',
+    this.request = '',
+    this.header = '',
+    this.isCustom = false,
+    this.variant = '',
+    this.equation = '',
+    this.evidenceKind,
+    this.assumptions,
+    this.assumptionsConfirmed,
+    this.minimum,
+    this.maximum,
   });
 
   final String pidId;
   final String name;
   final String unit;
   final List<TelemetryReplayPrimitive> primitives;
+  final String shortName;
+  final String request;
+  final String header;
+  final bool isCustom;
+  final String variant;
+  final String equation;
+  final String? evidenceKind;
+  final String? assumptions;
+  final bool? assumptionsConfirmed;
+  final double? minimum;
+  final double? maximum;
+
+  TelemetrySignalDefinition asDefinition() => TelemetrySignalDefinition(
+    id: pidId,
+    name: name,
+    shortName: shortName.isEmpty ? name : shortName,
+    request: request.isEmpty ? '0100' : request,
+    header: header,
+    unit: unit,
+    unitProvenance: isCustom
+        ? UnitProvenance.userDefined
+        : variant.isNotEmpty || (header.isNotEmpty && header != '7E0')
+        ? UnitProvenance.shippedDerivedOrVariant
+        : UnitProvenance.standardDirectCanonical,
+    minimum: minimum,
+    maximum: maximum,
+    isCustom: isCustom,
+    variant: variant,
+    priority: 1,
+    equation: equation.isEmpty ? 'A' : equation,
+    evidenceKind: evidenceKind,
+    assumptions: assumptions,
+    assumptionsConfirmed: assumptionsConfirmed,
+  );
 }
 
 final class TelemetrySessionReplay {
@@ -1054,7 +1099,22 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
     lanes.add(<String, Object?>{
       'pidId': id,
       'name': definition.name,
+      'shortName': definition.shortName,
       'unit': definition.unit,
+      'request': definition.request,
+      'header': definition.header,
+      'isCustom': definition.isCustom,
+      'variant': definition.variant,
+      'equation': definition.equation,
+      if (definition.evidenceKind != null &&
+          definition.evidenceKind!.isNotEmpty)
+        'evidenceKind': definition.evidenceKind,
+      if (definition.assumptions != null && definition.assumptions!.isNotEmpty)
+        'assumptions': definition.assumptions,
+      if (definition.assumptionsConfirmed != null)
+        'assumptionsConfirmed': definition.assumptionsConfirmed,
+      if (definition.minimum != null) 'minimum': definition.minimum,
+      if (definition.maximum != null) 'maximum': definition.maximum,
       'primitives': accumulator.finish().map(_encodePrimitive).toList(),
     });
   }
@@ -1113,6 +1173,17 @@ TelemetryReplayResult _decodeReplay(Map<String, Object?> raw) {
           pidId: lane['pidId']! as String,
           name: lane['name']! as String,
           unit: lane['unit']! as String,
+          shortName: lane['shortName'] as String? ?? '',
+          request: lane['request'] as String? ?? '',
+          header: lane['header'] as String? ?? '',
+          isCustom: lane['isCustom'] as bool? ?? false,
+          variant: lane['variant'] as String? ?? '',
+          equation: lane['equation'] as String? ?? '',
+          evidenceKind: lane['evidenceKind'] as String?,
+          assumptions: lane['assumptions'] as String?,
+          assumptionsConfirmed: lane['assumptionsConfirmed'] as bool?,
+          minimum: (lane['minimum'] as num?)?.toDouble(),
+          maximum: (lane['maximum'] as num?)?.toDouble(),
           primitives: List.unmodifiable(
             (lane['primitives']! as List<Object?>).map((rawPrimitive) {
               final primitive = rawPrimitive! as Map<Object?, Object?>;

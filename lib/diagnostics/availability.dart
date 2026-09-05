@@ -475,38 +475,84 @@ abstract final class AvailabilityPolicy {
     }
   }
 
+  static bool _isDerivedId(String id) =>
+      id == '000:00FF#derived-horsepower' || id == '000:00FE#derived-fuel-rate';
+
+  static DatumOrigin _recordedOrigin({
+    required TelemetrySignalDefinition definition,
+    TelemetrySource? source,
+  }) {
+    if (_isDerivedId(definition.id)) return DatumOrigin.calculated;
+    if (source == TelemetrySource.demo) return DatumOrigin.demo;
+    if (definition.isCustom) return DatumOrigin.userEntered;
+    return DatumOrigin.ecuReported;
+  }
+
+  static EvidenceKind _recordedEvidence(TelemetrySignalDefinition definition) {
+    if (definition.isCustom) return EvidenceKind.userSupplied;
+    return switch (definition.evidenceKind) {
+      'community' => EvidenceKind.community,
+      'experimental' => EvidenceKind.experimental,
+      'fieldVerified' => EvidenceKind.fieldVerified,
+      'userSupplied' => EvidenceKind.userSupplied,
+      _ => EvidenceKind.notTested,
+    };
+  }
+
+  static Compatibility _recordedCompatibility(
+    TelemetrySignalDefinition definition,
+  ) {
+    if (_isDerivedId(definition.id) || definition.isCustom) {
+      return Compatibility.userSelected;
+    }
+    return switch (definition.evidenceKind) {
+      'community' || 'experimental' => Compatibility.candidate,
+      _ => Compatibility.unknown,
+    };
+  }
+
+  static String? _recordedEstimateReason(
+    TelemetrySignalDefinition definition,
+  ) => switch (definition.assumptionsConfirmed) {
+    true => null,
+    false => '假設尚未確認，仍可估算',
+    null => null,
+  };
+
+  /// Provenance for a frozen definition when no sample is under the playhead.
+  static DatumStatus forRecordedDefinition({
+    required TelemetrySignalDefinition definition,
+    TelemetrySource? source,
+  }) {
+    final derived = _isDerivedId(definition.id);
+    return DatumStatus(
+      availability: FeatureAvailability.usableWithNotice,
+      origin: _recordedOrigin(definition: definition, source: source),
+      evidence: _recordedEvidence(definition),
+      compatibility: _recordedCompatibility(definition),
+      quality: DatumQuality.valid,
+      operationRisk: derived
+          ? OperationRisk.display
+          : riskFor(definition.request),
+      reason: derived ? _recordedEstimateReason(definition) : null,
+      formula: derived ? definition.equation : null,
+      assumptions: derived
+          ? definition.assumptions != null && definition.assumptions!.isNotEmpty
+                ? definition.assumptions
+                : '估算使用記錄當下的車輛設定'
+          : null,
+    );
+  }
+
   static DatumStatus forRecordedEvent({
     required TelemetrySignalDefinition definition,
     required TelemetryEvent event,
     TelemetrySource? source,
   }) {
-    final derived =
-        definition.id == '000:00FF#derived-horsepower' ||
-        definition.id == '000:00FE#derived-fuel-rate';
-    final origin = derived
-        ? DatumOrigin.calculated
-        : source == TelemetrySource.demo
-        ? DatumOrigin.demo
-        : definition.isCustom
-        ? DatumOrigin.userEntered
-        : DatumOrigin.ecuReported;
-    final evidence = definition.isCustom
-        ? EvidenceKind.userSupplied
-        : switch (definition.evidenceKind) {
-            'community' => EvidenceKind.community,
-            'experimental' => EvidenceKind.experimental,
-            'fieldVerified' => EvidenceKind.fieldVerified,
-            'userSupplied' => EvidenceKind.userSupplied,
-            _ => EvidenceKind.notTested,
-          };
-    final compatibility = derived
-        ? Compatibility.userSelected
-        : definition.isCustom
-        ? Compatibility.userSelected
-        : switch (definition.evidenceKind) {
-            'community' || 'experimental' => Compatibility.candidate,
-            _ => Compatibility.unknown,
-          };
+    final derived = _isDerivedId(definition.id);
+    final origin = _recordedOrigin(definition: definition, source: source);
+    final evidence = _recordedEvidence(definition);
+    final compatibility = _recordedCompatibility(definition);
     if (event.kind == TelemetryEventKind.status) {
       return DatumStatus(
         availability: FeatureAvailability.unavailable,
@@ -553,7 +599,7 @@ abstract final class AvailabilityPolicy {
       compatibility: status.compatibility,
       quality: status.quality,
       operationRisk: status.operationRisk,
-      reason: status.reason ?? '假設尚未確認，仍可估算',
+      reason: status.reason ?? _recordedEstimateReason(definition),
       nextStep: status.nextStep,
       formula: definition.equation,
       assumptions:
