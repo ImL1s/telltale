@@ -169,7 +169,7 @@ abstract final class AvailabilityPolicy {
 
   static const fuelEstimateFormula =
       'L/h = (MAF g/s) / (AFR × fuel density g/L) × 3600; '
-      'MAF 可為 PID 0110 或 speed-density（RPM×MAP×IAT×排氣量×VE）； '
+      'MAF 可為 PID 0110 或 speed-density（RPM×MAP×排氣量×VE / T_K）； '
       'L/100km = (L/h) / speed_kmh × 100';
 
   /// Horsepower ceiling used by live estimates and the frozen derived PID.

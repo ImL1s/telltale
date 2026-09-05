@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 PHYSICAL_FIELD_KINDS = frozenset({"physicalVehicle", "fieldAppConnection"})
+REQUIRED_AVAILABILITY_LABELS = frozenset({"unverified", "partial", "estimated"})
 
 
 def _require_bool(evidence: dict, key: str) -> bool | None:
@@ -63,7 +64,14 @@ def evaluate(profile_id: str, profiles: dict, evidence: dict) -> tuple[int, str]
                 return 1, "invalid field artifact sha256"
         return 0, "field-qualified"
 
-    # Exit A: missing field artifacts is not a failure.
+    # Exit A: missing field artifacts is not a failure. Honest labels are.
+    labels = evidence.get("labels")
+    if not isinstance(labels, list):
+        return 1, "exit A requires labels"
+    present = {item for item in labels if isinstance(item, str)}
+    missing = REQUIRED_AVAILABILITY_LABELS - present
+    if missing:
+        return 1, "exit A missing labels: " + ", ".join(sorted(missing))
     return 0, "available"
 
 

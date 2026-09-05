@@ -678,10 +678,13 @@ class _DerivedStrip extends ConsumerWidget {
       quantity: '馬力',
       kind: EstimateKind.horsepower,
     );
+    const fuelPid = PidLibrary.engineFuelRate;
     final fuelStatus = metrics.fuelSource == FuelSource.measured
         ? AvailabilityPolicy.decodedValue(
             structurallyValid: true,
             value: metrics.fuelRateLPerHour,
+            min: fuelPid.minValue,
+            max: fuelPid.maxValue,
             origin: DatumOrigin.ecuReported,
             evidence: EvidenceKind.notTested,
           )
@@ -701,7 +704,7 @@ class _DerivedStrip extends ConsumerWidget {
           context,
           title: '估算公式與假設',
           status: hpStatus,
-          extra: [if (fuelStatus.formula != null) fuelStatus],
+          extra: [if (fuelStatus.badgeText.isNotEmpty) fuelStatus],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -735,7 +738,7 @@ class _DerivedStrip extends ConsumerWidget {
                       tone: StatusTone.neutral,
                       dense: true,
                     ),
-                  if (fuelStatus.isEstimate)
+                  if (fuelStatus.badgeText.isNotEmpty)
                     DatumStatusBadge(status: fuelStatus),
                 ],
               ),

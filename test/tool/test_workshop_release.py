@@ -68,6 +68,17 @@ class WorkshopReleaseTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("boolean", message)
 
+    def test_exit_a_requires_honest_labels(self):
+        evidence = {**self.available, "labels": ["partial"]}
+        code, message = evaluate("core-obd-available", self.profiles, evidence)
+        self.assertEqual(code, 1)
+        self.assertIn("labels", message)
+        missing = {**self.available}
+        missing.pop("labels")
+        code, message = evaluate("core-obd-available", self.profiles, missing)
+        self.assertEqual(code, 1)
+        self.assertIn("labels", message)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -169,6 +169,20 @@ void main() {
     expect(_onScreen('實測'), findsNothing);
   });
 
+  testWidgets('ECU-reported fuel still carries 未驗證 and range 異常', (
+    tester,
+  ) async {
+    await pumpDashboard(
+      tester,
+      snapshot: _snapshot(accel: 0.8, fuelRate: 80),
+      activePids: _activePids,
+    );
+
+    expect(_onScreen('未驗證'), findsWidgets);
+    expect(_onScreen('異常'), findsWidgets);
+    expect(_onScreen('實測'), findsNothing);
+  });
+
   testWidgets('unconfirmed profile preserves the ECU measured fuel path', (
     tester,
   ) async {

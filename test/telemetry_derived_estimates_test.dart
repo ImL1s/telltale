@@ -48,6 +48,18 @@ void main() {
     expect(lanes, hasLength(4));
     expect(lanes, contains(DerivedEstimates.horsepower.id));
     expect(lanes, contains(DerivedEstimates.fuelRate.id));
+    final withValues = DerivedEstimates.defaultReplayLaneIds(
+      signals.map((signal) => signal.definition),
+      recordedIds: {
+        PidLibrary.engineRpm.id,
+        PidLibrary.vehicleSpeed.id,
+        PidLibrary.coolantTemp.id,
+        PidLibrary.throttlePosition.id,
+        DerivedEstimates.horsepower.id,
+      },
+    );
+    expect(withValues, contains(DerivedEstimates.horsepower.id));
+    expect(withValues, isNot(contains(DerivedEstimates.fuelRate.id)));
   });
 
   test(

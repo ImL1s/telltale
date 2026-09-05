@@ -83,10 +83,13 @@ abstract final class DerivedEstimates {
   static List<String> defaultReplayLaneIds(
     Iterable<TelemetrySignalDefinition> signals, {
     int limit = defaultReplayLaneLimit,
+    Iterable<String>? recordedIds,
   }) {
+    final recorded = recordedIds?.toSet();
     final derived = <String>[];
     final others = <String>[];
     for (final signal in signals) {
+      if (recorded != null && !recorded.contains(signal.id)) continue;
       if (isDerived(signal)) {
         derived.add(signal.id);
       } else {

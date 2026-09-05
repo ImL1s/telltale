@@ -93,10 +93,14 @@ void main() {
     final replay = await service.replay(sessionId);
     expect(replay.failure, isNull);
     expect(replay.replay?.source, TelemetrySource.demo);
-    expect(replay.replay?.lanes, hasLength(4));
+    expect(replay.replay?.lanes, hasLength(3));
     expect(
       replay.replay!.lanes.map((lane) => lane.name),
-      containsAll(['Engine RPM', 'Vehicle Speed', '估算馬力', '估算油耗']),
+      containsAll(['Engine RPM', 'Vehicle Speed', '估算馬力']),
+    );
+    expect(
+      replay.replay!.lanes.map((lane) => lane.name),
+      isNot(contains('估算油耗')),
     );
     expect(replay.replay?.valueCount, 6);
 

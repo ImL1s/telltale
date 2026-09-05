@@ -942,6 +942,7 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
   var elapsedOriginUs = 0;
   var elapsedOriginCaptured = false;
   var elapsedDurationUs = 0;
+  final recordedValueIds = <String>{};
   const reader = TelemetrySessionReader();
   final result = await reader.read(
     FileTelemetryChunkSource(file),
@@ -955,12 +956,10 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
             .map((signal) => signal.definition.id)
             .toSet();
         if (selected.any((id) => !ids.contains(id))) invalidSelection = true;
-        final lanes = selected.isEmpty
-            ? DerivedEstimates.defaultReplayLaneIds(
-                header!.signals.map((signal) => signal.definition),
-              )
+        final laneIds = selected.isEmpty
+            ? header!.signals.map((signal) => signal.definition.id)
             : selected;
-        for (final id in lanes) {
+        for (final id in laneIds) {
           accumulators[id] = TimelineDownsampleAccumulator(
             maximumPrimitives: 1200,
           );
@@ -1015,6 +1014,7 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
             quality: quality is String ? quality : null,
           ),
         );
+        recordedValueIds.add(id);
         available[id] = true;
       }
     },
@@ -1040,14 +1040,22 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
     for (final signal in header!.signals)
       signal.definition.id: signal.definition,
   };
+  final outputIds = selected.isEmpty
+      ? DerivedEstimates.defaultReplayLaneIds(
+          header!.signals.map((signal) => signal.definition),
+          recordedIds: recordedValueIds,
+        )
+      : selected;
   final lanes = <Map<String, Object?>>[];
-  for (final entry in accumulators.entries) {
-    final definition = definitions[entry.key]!;
+  for (final id in outputIds) {
+    final accumulator = accumulators[id];
+    final definition = definitions[id];
+    if (accumulator == null || definition == null) continue;
     lanes.add(<String, Object?>{
-      'pidId': entry.key,
+      'pidId': id,
       'name': definition.name,
       'unit': definition.unit,
-      'primitives': entry.value.finish().map(_encodePrimitive).toList(),
+      'primitives': accumulator.finish().map(_encodePrimitive).toList(),
     });
   }
   return <String, Object?>{
