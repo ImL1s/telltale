@@ -57,6 +57,29 @@ class WorkshopReleaseTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(message, "field-qualified")
 
+    def test_ordinary_app_session_cannot_be_field(self):
+        evidence = {
+            **self.available,
+            "fieldArtifacts": [
+                {"kind": "fieldAppConnection", "sha256": "a" * 64},
+            ],
+        }
+        code, message = evaluate("field-qualified", self.profiles, evidence)
+        self.assertEqual(code, 1)
+        self.assertIn("kind", message)
+
+    def test_exit_b_requires_honest_labels(self):
+        evidence = {
+            **self.available,
+            "labels": ["partial"],
+            "fieldArtifacts": [
+                {"kind": "physicalVehicle", "sha256": "a" * 64},
+            ],
+        }
+        code, message = evaluate("field-qualified", self.profiles, evidence)
+        self.assertEqual(code, 1)
+        self.assertIn("labels", message)
+
     def test_software_skip_fails_a(self):
         evidence = {**self.available, "softwareSkipped": True}
         code, _ = evaluate("core-obd-available", self.profiles, evidence)

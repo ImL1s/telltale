@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-PHYSICAL_FIELD_KINDS = frozenset({"physicalVehicle", "fieldAppConnection"})
+PHYSICAL_FIELD_KINDS = frozenset({"physicalVehicle"})
 REQUIRED_AVAILABILITY_LABELS = frozenset({"unverified", "partial", "estimated"})
 
 
@@ -23,6 +23,17 @@ def _require_bool(evidence: dict, key: str) -> bool | None:
 
 def load_profiles(path: Path) -> dict:
     return json.loads(path.read_text())["profiles"]
+
+
+def _availability_labels_error(evidence: dict) -> str | None:
+    labels = evidence.get("labels")
+    if not isinstance(labels, list):
+        return "honest labels required"
+    present = {item for item in labels if isinstance(item, str)}
+    missing = REQUIRED_AVAILABILITY_LABELS - present
+    if missing:
+        return "missing labels: " + ", ".join(sorted(missing))
+    return None
 
 
 def evaluate(profile_id: str, profiles: dict, evidence: dict) -> tuple[int, str]:
@@ -62,16 +73,15 @@ def evaluate(profile_id: str, profiles: dict, evidence: dict) -> tuple[int, str]
                 ch not in "0123456789abcdef" for ch in digest
             ):
                 return 1, "invalid field artifact sha256"
+        labels_error = _availability_labels_error(evidence)
+        if labels_error:
+            return 1, labels_error
         return 0, "field-qualified"
 
     # Exit A: missing field artifacts is not a failure. Honest labels are.
-    labels = evidence.get("labels")
-    if not isinstance(labels, list):
-        return 1, "exit A requires labels"
-    present = {item for item in labels if isinstance(item, str)}
-    missing = REQUIRED_AVAILABILITY_LABELS - present
-    if missing:
-        return 1, "exit A missing labels: " + ", ".join(sorted(missing))
+    labels_error = _availability_labels_error(evidence)
+    if labels_error:
+        return 1, labels_error
     return 0, "available"
 
 
