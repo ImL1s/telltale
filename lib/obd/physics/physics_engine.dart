@@ -28,10 +28,10 @@ enum AirflowSource {
   unavailable;
 
   String get label => switch (this) {
-        AirflowSource.measured => 'MAF 感測器',
-        AirflowSource.speedDensity => 'Speed-Density 推算',
-        AirflowSource.unavailable => '無法取得',
-      };
+    AirflowSource.measured => 'MAF 感測器',
+    AirflowSource.speedDensity => 'Speed-Density 推算',
+    AirflowSource.unavailable => '無法取得',
+  };
 }
 
 /// Where a fuel figure came from.
@@ -48,10 +48,10 @@ enum FuelSource {
   unavailable;
 
   String get label => switch (this) {
-        FuelSource.measured => 'ECU 回報',
-        FuelSource.stoichiometricEstimate => '化學計量比推算',
-        FuelSource.unavailable => '無法取得',
-      };
+    FuelSource.measured => 'ECU 回報',
+    FuelSource.stoichiometricEstimate => '化學計量比推算',
+    FuelSource.unavailable => '無法取得',
+  };
 }
 
 class DerivedMetrics {
@@ -182,7 +182,10 @@ abstract final class PhysicsEngine {
     required double fuelDensityGPerL,
     double lambda = 1.0,
   }) {
-    if (mafGramsPerSecond <= 0 || stoichAfr <= 0 || fuelDensityGPerL <= 0 || lambda <= 0) {
+    if (mafGramsPerSecond <= 0 ||
+        stoichAfr <= 0 ||
+        fuelDensityGPerL <= 0 ||
+        lambda <= 0) {
       return 0;
     }
     final fuelMassGPerSecond = mafGramsPerSecond / (stoichAfr * lambda);
@@ -215,7 +218,10 @@ abstract final class PhysicsEngine {
   /// Crank torque from power and engine speed.
   ///
   /// `P = τ·ω` with ω in rad/s, so `τ = P / (2π·RPM/60)`.
-  static double torqueNmFromPower({required double powerWatts, required double rpm}) {
+  static double torqueNmFromPower({
+    required double powerWatts,
+    required double rpm,
+  }) {
     if (rpm <= 0 || powerWatts <= 0) return 0;
     final omega = 2 * math.pi * rpm / 60;
     return powerWatts / omega;
@@ -228,9 +234,9 @@ abstract final class PhysicsEngine {
   /// RPM instead.
   static DerivedMetrics derive({
     required VehicleProfile profile,
-    required double rpm,
     required double speedKmh,
     required double accelMs2,
+    double? rpm,
     double? mafSensorGps,
     double? mapKpa,
     double? intakeTempC,
@@ -253,7 +259,7 @@ abstract final class PhysicsEngine {
     } else {
       // Computed once, and the source is set from whether it produced an
       // answer rather than from whether the inputs were merely present.
-      final estimated = (mapKpa != null && intakeTempC != null)
+      final estimated = (rpm != null && mapKpa != null && intakeTempC != null)
           ? speedDensityMaf(
               rpm: rpm,
               mapKpa: mapKpa,
@@ -300,9 +306,7 @@ abstract final class PhysicsEngine {
 
     double? lPer100;
     double? mpg;
-    if (fuelRate != null &&
-        fuelRate > 0 &&
-        speedKmh > minSpeedForConsumption) {
+    if (fuelRate != null && fuelRate > 0 && speedKmh > minSpeedForConsumption) {
       lPer100 = fuelRate / speedKmh * 100;
       mpg = lPer100 > 0 ? mpgLper100kmProduct / lPer100 : null;
     }
@@ -320,7 +324,9 @@ abstract final class PhysicsEngine {
         ? wheelHp / profile.drivetrainEfficiency
         : wheelHp;
     final engineWatts = engineHp * wattsPerHp;
-    final torqueNm = torqueNmFromPower(powerWatts: engineWatts, rpm: rpm);
+    final torqueNm = rpm == null
+        ? 0.0
+        : torqueNmFromPower(powerWatts: engineWatts, rpm: rpm);
 
     return DerivedMetrics(
       mafGramsPerSecond: maf,
@@ -347,8 +353,8 @@ abstract final class PhysicsEngine {
 /// broken.
 class EmaFilter {
   EmaFilter({double initialValue = 0, double alpha = 0.25})
-      : _value = initialValue,
-        _alpha = alpha.clamp(0.01, 1.0);
+    : _value = initialValue,
+      _alpha = alpha.clamp(0.01, 1.0);
 
   double _value;
   final double _alpha;

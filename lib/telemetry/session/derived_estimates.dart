@@ -118,7 +118,7 @@ abstract final class DerivedEstimates {
     final intakeTempC = snapshot.valueOf(PidLibrary.intakeAirTemp, now: clock);
     final fuelSensor = snapshot.valueOf(PidLibrary.engineFuelRate, now: clock);
     final values = <String, double>{};
-    if (rpm != null && speed != null && accel != null) {
+    if (speed != null && accel != null) {
       final metrics = PhysicsEngine.derive(
         profile: profile,
         rpm: rpm,

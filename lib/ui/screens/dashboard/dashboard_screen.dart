@@ -632,16 +632,14 @@ class _DerivedStrip extends ConsumerWidget {
     final iat = snapshot.valueOf(PidLibrary.intakeAirTemp);
     final measuredFuelRate = snapshot.valueOf(PidLibrary.engineFuelRate);
 
-    // Every derived figure needs engine speed and road speed. Substituting
-    // zero for a missing input does not produce a conservative estimate — it
-    // produces a confident wrong one, and there is no way to tell it apart
-    // from a genuine reading on the tile.
-    // Acceleration joins the required inputs. It used to arrive as a
-    // non-nullable 0 whenever it was unknown, which the force terms consume as
-    // a real steady-cruise measurement — so a gap in speed replies produced
-    // confident horsepower derived from a number nobody measured.
+    // Horsepower needs road speed and acceleration. RPM is only for torque
+    // (`P = τ·ω`); inventing a crank speed would fabricate N·m. Acceleration
+    // used to arrive as a non-nullable 0 whenever it was unknown, which the
+    // force terms consume as a real steady-cruise measurement — so a gap in
+    // speed replies produced confident horsepower from a number nobody
+    // measured.
     final accel = snapshot.accelerationMs2;
-    final hasInputs = rpm != null && speed != null && accel != null;
+    final hasPowerInputs = speed != null && accel != null;
     DatumStatus measuredFuelStatus(double? value) =>
         AvailabilityPolicy.decodedValue(
           structurallyValid: true,
@@ -652,7 +650,7 @@ class _DerivedStrip extends ConsumerWidget {
           evidence: EvidenceKind.notTested,
         );
 
-    if (!hasInputs) {
+    if (!hasPowerInputs) {
       if (measuredFuelRate != null &&
           measuredFuelRate.isFinite &&
           measuredFuelRate >= 0) {
@@ -799,7 +797,7 @@ class _DerivedStrip extends ConsumerWidget {
                   ),
                   _DerivedCell(
                     label: '扭力',
-                    value: metrics.torqueNm.isFinite
+                    value: rpm != null && metrics.torqueNm.isFinite
                         ? metrics.torqueNm.toStringAsFixed(0)
                         : '--',
                     units: 'N·m',
@@ -1045,7 +1043,7 @@ class _FadeInUpState extends State<_FadeInUp>
 class _DerivedUnavailable extends StatelessWidget {
   const _DerivedUnavailable();
 
-  static const message = '等待引擎轉速與車速資料後才能推算馬力與扭力';
+  static const message = '等待車速與加速度資料後才能推算馬力';
 
   @override
   Widget build(BuildContext context) {

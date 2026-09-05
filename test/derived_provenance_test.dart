@@ -22,19 +22,39 @@ DerivedMetrics _derive({
   double? fuelRateSensor,
   double rpm = 3000,
   double speed = 60,
-}) =>
-    PhysicsEngine.derive(
-      profile: _profile,
-      rpm: rpm,
-      speedKmh: speed,
-      accelMs2: 0,
-      mafSensorGps: maf,
-      mapKpa: map,
-      intakeTempC: iat,
-      fuelRateSensorLPerHour: fuelRateSensor,
-    );
+}) => PhysicsEngine.derive(
+  profile: _profile,
+  rpm: rpm,
+  speedKmh: speed,
+  accelMs2: 0,
+  mafSensorGps: maf,
+  mapKpa: map,
+  intakeTempC: iat,
+  fuelRateSensorLPerHour: fuelRateSensor,
+);
 
 void main() {
+  test('horsepower does not require rpm; torque does', () {
+    final withoutRpm = PhysicsEngine.derive(
+      profile: _profile,
+      speedKmh: 60,
+      accelMs2: 0.8,
+    );
+    expect(withoutRpm.engineHorsepower, greaterThan(0));
+    expect(withoutRpm.torqueNm, 0);
+    final withRpm = PhysicsEngine.derive(
+      profile: _profile,
+      rpm: 3000,
+      speedKmh: 60,
+      accelMs2: 0.8,
+    );
+    expect(
+      withRpm.engineHorsepower,
+      closeTo(withoutRpm.engineHorsepower, 1e-9),
+    );
+    expect(withRpm.torqueNm, greaterThan(0));
+  });
+
   group('air mass', () {
     test('a sensor reading is used and labelled as measured', () {
       final m = _derive(maf: 12.5);
@@ -138,8 +158,11 @@ void main() {
       // nothing to check.
       final broken = _derive(map: 0, iat: 30);
       expect(broken.mafGramsPerSecond, isNull);
-      expect(broken.airflowSource, AirflowSource.unavailable,
-          reason: 'and it must not be labelled as an estimate that succeeded');
+      expect(
+        broken.airflowSource,
+        AirflowSource.unavailable,
+        reason: 'and it must not be labelled as an estimate that succeeded',
+      );
     });
 
     test('the row does not contradict itself about the same engine', () {
@@ -215,10 +238,14 @@ void main() {
 
     test('a negative or non-finite sensor value still falls back', () {
       // Those are not measurements. Only zero was being misread as one.
-      expect(_derive(fuelRateSensor: -1, maf: 12.5).fuelRateLPerHour,
-          greaterThan(0));
-      expect(_derive(fuelRateSensor: double.nan, maf: 12.5).fuelRateLPerHour,
-          greaterThan(0));
+      expect(
+        _derive(fuelRateSensor: -1, maf: 12.5).fuelRateLPerHour,
+        greaterThan(0),
+      );
+      expect(
+        _derive(fuelRateSensor: double.nan, maf: 12.5).fuelRateLPerHour,
+        greaterThan(0),
+      );
     });
   });
 }

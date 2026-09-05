@@ -94,6 +94,28 @@ void main() {
     expect(values[DerivedEstimates.fuelRate.id], greaterThan(0));
   });
 
+  test('horsepower estimate does not require RPM', () {
+    final now = DateTime.now();
+    final values = DerivedEstimates.valuesFor(
+      snapshot: TelemetrySnapshot(
+        readings: {
+          PidLibrary.vehicleSpeed.id: Reading(
+            pid: PidLibrary.vehicleSpeed,
+            value: 60,
+            rawBytes: const [60],
+            timestamp: now,
+          ),
+        },
+        accelerationMs2: 0.8,
+        capturedAt: now,
+      ),
+      profile: const VehicleProfile(),
+    );
+    expect(values[DerivedEstimates.horsepower.id], isNotNull);
+    expect(values[DerivedEstimates.horsepower.id]!.isFinite, isTrue);
+    expect(values.containsKey(PidLibrary.engineRpm.id), isFalse);
+  });
+
   test('measured 015E does not suppress the derived fuel estimate lane', () {
     final now = DateTime.utc(2026);
     final values = DerivedEstimates.valuesFor(

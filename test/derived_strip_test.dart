@@ -62,7 +62,7 @@ TelemetrySnapshot _snapshot({
 /// against a screen that renders nothing at all.
 final _activePids = [PidLibrary.engineRpm];
 
-const _waiting = '等待引擎轉速與車速資料';
+const _waiting = '等待車速與加速度資料';
 const _confirmedProfile = VehicleProfile(isConfirmed: true);
 
 void main() {
@@ -89,7 +89,9 @@ void main() {
       expect(_label('油耗'), findsOneWidget);
     });
 
-    testWidgets('no engine speed means no horsepower', (tester) async {
+    testWidgets('no engine speed still shows horsepower, not torque', (
+      tester,
+    ) async {
       await pumpDashboard(
         tester,
         snapshot: _snapshot(accel: 0.4, withRpm: false),
@@ -97,8 +99,11 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(_label('hp'), findsNothing);
-      expect(_label('估算油耗'), findsOneWidget);
+      expect(_label('引擎馬力'), findsOneWidget);
+      expect(_label('hp'), findsOneWidget);
+      expect(_label('扭力'), findsOneWidget);
+      expect(_label('N·m'), findsOneWidget);
+      expect(_label('--'), findsWidgets);
     });
 
     testWidgets('no road speed means no horsepower', (tester) async {
