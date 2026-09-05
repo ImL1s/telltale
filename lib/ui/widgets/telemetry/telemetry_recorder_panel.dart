@@ -186,7 +186,8 @@ class _TelemetryRecorderPanelState
               Expanded(
                 child: Text(
                   '只紀錄已啟用的 OBD 訊號，不含位置、VIN 或帳號資料。'
-                  '趨勢圖最多顯示 4 項，錄製會保留全部 ${activePids.length} 項已啟用訊號。',
+                  '趨勢圖最多顯示 4 項，錄製會保留全部 ${activePids.length} 項已啟用訊號，'
+                  '並自動加上估算馬力與估算油耗（含車輛假設）。',
                   style: context.texts.bodySmall,
                 ),
               ),

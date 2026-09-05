@@ -25,6 +25,7 @@ import '../../../state/obd_session.dart';
 import '../../../state/pid_registry.dart';
 import '../../../state/settings.dart';
 import '../../../state/telemetry_sessions.dart';
+import '../../../telemetry/session/derived_estimates.dart';
 import '../../../state/vehicle_identity.dart';
 import '../../widgets/gauges/dial_gauge.dart';
 import '../../widgets/panel.dart';
@@ -660,6 +661,25 @@ class _DerivedStrip extends ConsumerWidget {
           status: measuredFuelStatus(measuredFuelRate),
         );
       }
+      final estimatedFuel = DerivedEstimates.valuesFor(
+        snapshot: snapshot,
+        profile: profile,
+      )[DerivedEstimates.fuelRate.id];
+      if (estimatedFuel != null) {
+        final fuelStatus = AvailabilityPolicy.forEstimate(
+          profile: profile,
+          value: estimatedFuel,
+          formula: AvailabilityPolicy.fuelEstimateFormula,
+          quantity: '油耗',
+          kind: EstimateKind.fuel,
+        );
+        return _MeasuredFuelStrip(
+          title: '估算油耗',
+          fuelRateLPerHour: estimatedFuel,
+          speedKmh: speed,
+          status: fuelStatus,
+        );
+      }
       return const _DerivedUnavailable();
     }
 
@@ -830,11 +850,13 @@ class _MeasuredFuelStrip extends StatelessWidget {
     required this.fuelRateLPerHour,
     required this.speedKmh,
     required this.status,
+    this.title = 'ECU 油耗資料',
   });
 
   final double fuelRateLPerHour;
   final double? speedKmh;
   final DatumStatus status;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -852,6 +874,8 @@ class _MeasuredFuelStrip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
       child: Panel(
         accent: palette.derived,
+        onTap: () =>
+            showDatumStatusDetails(context, title: title, status: status),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -860,7 +884,7 @@ class _MeasuredFuelStrip extends StatelessWidget {
                 Icon(Icons.local_gas_station, size: 15, color: palette.derived),
                 const SizedBox(width: Spacing.sm),
                 Text(
-                  'ECU 油耗資料',
+                  title,
                   style: context.texts.labelSmall?.copyWith(
                     color: palette.derived,
                   ),
@@ -1020,7 +1044,7 @@ class _FadeInUpState extends State<_FadeInUp>
 class _DerivedUnavailable extends StatelessWidget {
   const _DerivedUnavailable();
 
-  static const message = '等待引擎轉速與車速資料後才能推算馬力、扭力與油耗';
+  static const message = '等待引擎轉速與車速資料後才能推算馬力與扭力';
 
   @override
   Widget build(BuildContext context) {

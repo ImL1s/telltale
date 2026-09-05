@@ -85,6 +85,13 @@ class WorkshopReleaseTest(unittest.TestCase):
         code, _ = evaluate("core-obd-available", self.profiles, evidence)
         self.assertEqual(code, 1)
 
+    def test_omitted_software_skipped_does_not_pass(self):
+        evidence = {**self.available}
+        evidence.pop("softwareSkipped")
+        code, message = evaluate("core-obd-available", self.profiles, evidence)
+        self.assertEqual(code, 1)
+        self.assertIn("software", message)
+
     def test_string_false_does_not_pass_software(self):
         evidence = {**self.available, "softwarePass": "false"}
         code, message = evaluate("core-obd-available", self.profiles, evidence)

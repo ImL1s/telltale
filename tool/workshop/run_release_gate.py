@@ -50,9 +50,7 @@ def evaluate(profile_id: str, profiles: dict, evidence: dict) -> tuple[int, str]
         return 1, str(error)
 
     if profile.get("requiresSoftwarePass"):
-        if software_ok is not True:
-            return 1, "software tests did not pass"
-        if skipped is True:
+        if software_ok is not True or skipped is not False:
             return 1, "software tests did not pass"
 
     if evidence.get("unknownTransactionMarkedSuccess"):

@@ -81,14 +81,15 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(_onScreen(_waiting), findsOneWidget);
       expect(_label('引擎馬力'), findsNothing);
       expect(_label('hp'), findsNothing);
       expect(_label('扭力'), findsNothing);
       expect(_label('N·m'), findsNothing);
+      expect(_label('估算油耗'), findsOneWidget);
+      expect(_label('油耗'), findsOneWidget);
     });
 
-    testWidgets('no engine speed means no derived figures', (tester) async {
+    testWidgets('no engine speed means no horsepower', (tester) async {
       await pumpDashboard(
         tester,
         snapshot: _snapshot(accel: 0.4, withRpm: false),
@@ -96,11 +97,11 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(_onScreen(_waiting), findsOneWidget);
       expect(_label('hp'), findsNothing);
+      expect(_label('估算油耗'), findsOneWidget);
     });
 
-    testWidgets('no road speed means no derived figures', (tester) async {
+    testWidgets('no road speed means no horsepower', (tester) async {
       await pumpDashboard(
         tester,
         snapshot: _snapshot(accel: 0.4, withSpeed: false),
@@ -108,8 +109,8 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(_onScreen(_waiting), findsOneWidget);
       expect(_label('hp'), findsNothing);
+      expect(_label('估算油耗'), findsOneWidget);
     });
   });
 
@@ -200,6 +201,24 @@ void main() {
     expect(_label('引擎馬力'), findsNothing);
     expect(_label('扭力'), findsNothing);
   });
+
+  testWidgets(
+    'MAF without horsepower inputs still shows an estimated fuel rate',
+    (tester) async {
+      await pumpDashboard(
+        tester,
+        snapshot: _snapshot(accel: null),
+        activePids: _activePids,
+        profile: _confirmedProfile,
+      );
+
+      expect(_label('估算油耗'), findsOneWidget);
+      expect(_onScreen('估算'), findsWidgets);
+      expect(_label('引擎馬力'), findsNothing);
+      expect(_label('扭力'), findsNothing);
+      expect(_onScreen(_waiting), findsNothing);
+    },
+  );
 
   testWidgets('measured-fuel fallback keeps 異常 when 015E is out of range', (
     tester,
