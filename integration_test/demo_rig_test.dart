@@ -409,7 +409,7 @@ Future<void> _recordAndInspectTelemetryJourney(WidgetTester tester) async {
       'VIN',
       'GPS',
       'account',
-      'vehicleProfile',
+      'fullVehicleProfile',
       'adapterAddress',
       'rawDiagnosticTraffic',
     ]),

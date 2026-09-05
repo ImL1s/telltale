@@ -80,6 +80,7 @@ abstract final class PowertrainProfilePidInstaller {
             dataOffsetBytes: signal.offset,
             dataLengthBytes: signal.width,
             responseDataLengthBytes: command.payloadLength,
+            evidenceKind: profile.status.name,
           ),
         );
       }

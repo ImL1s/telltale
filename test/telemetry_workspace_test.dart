@@ -389,6 +389,8 @@ void main() {
 
     expect(find.textContaining('不含位置、VIN 或帳號資料'), findsOneWidget);
     expect(find.textContaining('全部 2 項已啟用訊號'), findsOneWidget);
+    expect(find.textContaining('估算馬力與估算油耗'), findsOneWidget);
+    expect(find.textContaining('車輛假設'), findsOneWidget);
     expect(find.text('243 筆有效值'), findsOneWidget);
     expect(find.text('8.0 KiB / 1.0 MiB'), findsOneWidget);
     expect(find.text('00:42'), findsOneWidget);

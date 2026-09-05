@@ -9,9 +9,11 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../state/obd_session.dart';
 import '../../../state/pid_registry.dart';
+import '../../../state/settings.dart';
 import '../../../state/telemetry_recorder.dart';
 import '../../../state/telemetry_runtime.dart';
 import '../../../state/telemetry_sessions.dart';
+import '../../../telemetry/session/derived_estimates.dart';
 import '../../../telemetry/session/telemetry_recorder.dart';
 import '../../widgets/panel.dart';
 import 'telemetry_status_copy.dart';
@@ -184,7 +186,8 @@ class _TelemetryRecorderPanelState
               Expanded(
                 child: Text(
                   '只紀錄已啟用的 OBD 訊號，不含位置、VIN 或帳號資料。'
-                  '趨勢圖最多顯示 4 項，錄製會保留全部 ${activePids.length} 項已啟用訊號。',
+                  '趨勢圖最多顯示 4 項，錄製會保留全部 ${activePids.length} 項已啟用訊號，'
+                  '並自動加上估算馬力與估算油耗（含車輛假設）。',
                   style: context.texts.bodySmall,
                 ),
               ),
@@ -246,6 +249,7 @@ class _TelemetryRecorderPanelState
             transport: evidence.transport,
             protocol: evidence.protocol,
             activePids: ref.read(activePidsProvider),
+            vehicleProfile: ref.read(vehicleProfileProvider),
           ),
         );
     if (!mounted) return;
@@ -275,7 +279,9 @@ class _TelemetryRecorderPanelState
     }
     if (speedKmh > 5) return '請停車後操作';
     if (activeCount == 0) return '請先啟用至少一項 PID';
-    if (activeCount > 32) return '錄製最多包含 32 項訊號，請先減少 PID';
+    if (activeCount > DerivedEstimates.maxLiveSignals) {
+      return '錄製需保留估算馬力與估算油耗欄位，請先停用 PID';
+    }
     return null;
   }
 

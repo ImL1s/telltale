@@ -14,17 +14,23 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../diagnostics/availability.dart';
 import '../../../obd/physics/physics_engine.dart';
 import '../../../obd/pid/pid.dart';
 import '../../../obd/pid/pid_library.dart';
+import '../../../obd/powertrain_battery/powertrain_battery_profile.dart';
 import '../../../obd/telemetry.dart';
+import '../../../obd/transport/obd_transport.dart';
 import '../../../state/obd_session.dart';
 import '../../../state/pid_registry.dart';
 import '../../../state/settings.dart';
 import '../../../state/telemetry_sessions.dart';
+import '../../../telemetry/session/derived_estimates.dart';
+import '../../../state/vehicle_identity.dart';
 import '../../widgets/gauges/dial_gauge.dart';
 import '../../widgets/panel.dart';
 import '../../widgets/powertrain_profile_confirm_banner.dart';
+import '../../widgets/status/datum_status_badge.dart';
 import '../../widgets/telemetry/telemetry_recorder_panel.dart';
 import '../pids/pid_manager_screen.dart';
 import 'telemetry_workspace.dart';
@@ -138,7 +144,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   Spacing.lg,
                   Spacing.md,
                 ),
-                sliver: _GaugeGrid(pids: activePids, snapshot: snapshot),
+                sliver: _GaugeGrid(
+                  pids: activePids,
+                  snapshot: snapshot,
+                  demo: connection.kind == TransportKind.demo,
+                ),
               ),
             if (_mode == DashboardWorkspaceMode.gauges)
               SliverToBoxAdapter(child: _DerivedStrip(snapshot: snapshot)),
@@ -242,10 +252,15 @@ class _WorkspaceToolbar extends StatelessWidget {
 }
 
 class _GaugeGrid extends StatelessWidget {
-  const _GaugeGrid({required this.pids, required this.snapshot});
+  const _GaugeGrid({
+    required this.pids,
+    required this.snapshot,
+    this.demo = false,
+  });
 
   final List<Pid> pids;
   final TelemetrySnapshot snapshot;
+  final bool demo;
 
   @override
   Widget build(BuildContext context) {
@@ -277,16 +292,25 @@ class _GaugeGrid extends StatelessWidget {
             final pid = pids[index];
             final reading = snapshot[pid.id];
             final fault = snapshot.faults[pid.id];
+            final stale = snapshot.isStale(pid);
             return _GaugeTile(
               pid: pid,
               reading: reading,
               fault: fault,
-              // Computed here, where the snapshot's own capture time is in
-              // scope, so every tile in a frame judges age against the same
-              // instant rather than each reading the clock separately.
-              isStale: snapshot.isStale(pid),
-              // Stagger the entrance so the wall assembles rather than
-              // popping in all at once.
+              isStale: stale,
+              status: AvailabilityPolicy.forPid(
+                pid: pid,
+                reading: reading,
+                fault: fault,
+                isStale: stale,
+                demo: demo,
+                catalogStatus: switch (pid.evidenceKind) {
+                  'community' => PowertrainProfileStatus.community,
+                  'experimental' => PowertrainProfileStatus.experimental,
+                  'ready' => PowertrainProfileStatus.ready,
+                  _ => null,
+                },
+              ),
               delay: Duration(milliseconds: 28 * index),
             );
           }),
@@ -296,12 +320,27 @@ class _GaugeGrid extends StatelessWidget {
   }
 }
 
+String? _gaugeFootnote(PidFault? fault, DatumStatus status) {
+  final faultLabel = switch (fault) {
+    PidFault.formulaError => '公式錯誤',
+    PidFault.busError => '匯流排錯誤',
+    PidFault.noAnswer => '無回應，稍後重試',
+    PidFault.headerNotOnThisBus => '標頭不符本車匯流排',
+    PidFault.refusedUnsafeService => '此服務不是唯讀查詢，已停止發送',
+    PidFault.unsupported || null => null,
+  };
+  final badge = status.badgeText.isEmpty ? null : status.badgeText;
+  if (faultLabel != null && badge != null) return '$badge · $faultLabel';
+  return faultLabel ?? badge;
+}
+
 class _GaugeTile extends StatelessWidget {
   const _GaugeTile({
     required this.pid,
     required this.reading,
     required this.fault,
     required this.isStale,
+    required this.status,
     required this.delay,
   });
 
@@ -309,6 +348,7 @@ class _GaugeTile extends StatelessWidget {
   final Reading? reading;
   final PidFault? fault;
   final bool isStale;
+  final DatumStatus status;
   final Duration delay;
 
   @override
@@ -323,7 +363,7 @@ class _GaugeTile extends StatelessWidget {
         accent: accent,
         padding: const EdgeInsets.all(Spacing.sm),
         child: isUnsupported
-            ? _UnsupportedTile(pid: pid)
+            ? _UnsupportedTile(pid: pid, status: status)
             : DialGauge(
                 value: reading?.value,
                 minValue: pid.minValue,
@@ -335,22 +375,7 @@ class _GaugeTile extends StatelessWidget {
                 // A value older than its PID's own refresh target is not live,
                 // however plausible it looks.
                 isStale: isStale,
-                footnote: switch (fault) {
-                  PidFault.formulaError => '公式錯誤',
-                  PidFault.busError => '匯流排錯誤',
-                  // Not "unsupported": nothing has established that. The
-                  // sensor stopped answering and will be tried again.
-                  PidFault.noAnswer => '無回應，稍後重試',
-                  // Nor this one, which is about the definition rather than
-                  // the car — and the fix is in a field the user can edit.
-                  PidFault.headerNotOnThisBus => '標頭不符本車匯流排',
-                  // Nor this one, and least of all this one: the request was
-                  // never transmitted, so the vehicle has not been consulted at
-                  // all. The dial stays, because the definition — not the car —
-                  // is what has to change.
-                  PidFault.refusedUnsafeService => '此服務不是唯讀查詢，已停止發送',
-                  _ => null,
-                },
+                footnote: _gaugeFootnote(fault, status),
               ),
       ),
     );
@@ -358,13 +383,15 @@ class _GaugeTile extends StatelessWidget {
 }
 
 class _UnsupportedTile extends StatelessWidget {
-  const _UnsupportedTile({required this.pid});
+  const _UnsupportedTile({required this.pid, required this.status});
 
   final Pid pid;
+  final DatumStatus status;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final badge = status.badgeText;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(Spacing.sm),
@@ -382,7 +409,7 @@ class _UnsupportedTile extends StatelessWidget {
             ),
             const SizedBox(height: Spacing.xs),
             Text(
-              '此車輛不支援',
+              badge.isEmpty ? '此車輛不支援' : '$badge · 此車輛不支援',
               textAlign: TextAlign.center,
               style: context.texts.bodySmall?.copyWith(
                 color: palette.textTertiary,
@@ -396,14 +423,18 @@ class _UnsupportedTile extends StatelessWidget {
 }
 
 /// Connection identity, throughput and battery voltage.
-class _StatusStrip extends StatelessWidget {
+class _StatusStrip extends ConsumerWidget {
   const _StatusStrip({required this.connection, required this.snapshot});
 
   final ObdConnectionState connection;
   final TelemetrySnapshot snapshot;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final identity = ref.watch(vehicleIdentityProvider);
+    final sessionStatus = AvailabilityPolicy.genericObdSession(
+      identity: identity,
+    );
     // Null means the adapter has not reported a plausible supply voltage, so
     // the pill is omitted rather than showing a number nobody measured.
     // No fallback to the handshake reading. Ageing the live value in the
@@ -457,6 +488,14 @@ class _StatusStrip extends StatelessWidget {
             spacing: Spacing.sm,
             runSpacing: Spacing.sm,
             children: [
+              StatusPill(
+                label: identity.vin == null ? '通用 OBD' : '已讀 VIN',
+                tone: identity.vin == null
+                    ? StatusTone.neutral
+                    : StatusTone.good,
+              ),
+              if (sessionStatus.reason != null)
+                StatusPill(label: sessionStatus.reason!, tone: StatusTone.warn),
               StatusPill(
                 label: '${snapshot.pidsPerSecond.round()} PIDs/s',
                 icon: Icons.bolt,
@@ -584,6 +623,7 @@ class _DerivedStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
     final profile = ref.watch(vehicleProfileProvider);
+    final demo = ref.watch(obdSessionProvider).kind == TransportKind.demo;
 
     final rpm = snapshot.valueOf(PidLibrary.engineRpm);
     final speed = snapshot.valueOf(PidLibrary.vehicleSpeed);
@@ -592,37 +632,53 @@ class _DerivedStrip extends ConsumerWidget {
     final iat = snapshot.valueOf(PidLibrary.intakeAirTemp);
     final measuredFuelRate = snapshot.valueOf(PidLibrary.engineFuelRate);
 
-    // The defaults are not vehicle identification. They are only starting
-    // values for the settings form, so showing a number before the driver has
-    // reviewed them would make an arbitrary 1500 kg/FWD profile look like a
-    // measured fact on every vehicle.
-    if (!profile.isConfirmed) {
-      // PID 015E is the ECU's own volumetric fuel-rate reading. Preserve that
-      // measurement (and its speed-only L/100 km conversion) without
-      // authorising any value that depends on generic mass, VE, aero or
-      // drivetrain defaults.
+    // Horsepower needs road speed and acceleration. RPM is only for torque
+    // (`P = τ·ω`); inventing a crank speed would fabricate N·m. Acceleration
+    // used to arrive as a non-nullable 0 whenever it was unknown, which the
+    // force terms consume as a real steady-cruise measurement — so a gap in
+    // speed replies produced confident horsepower from a number nobody
+    // measured.
+    final accel = snapshot.accelerationMs2;
+    final hasPowerInputs = speed != null && accel != null;
+    DatumStatus measuredFuelStatus(double? value) =>
+        AvailabilityPolicy.decodedValue(
+          structurallyValid: true,
+          value: value,
+          min: PidLibrary.engineFuelRate.minValue,
+          max: PidLibrary.engineFuelRate.maxValue,
+          origin: demo ? DatumOrigin.demo : DatumOrigin.ecuReported,
+          evidence: EvidenceKind.notTested,
+        );
+
+    if (!hasPowerInputs) {
       if (measuredFuelRate != null &&
           measuredFuelRate.isFinite &&
           measuredFuelRate >= 0) {
         return _MeasuredFuelStrip(
           fuelRateLPerHour: measuredFuelRate,
           speedKmh: speed,
+          status: measuredFuelStatus(measuredFuelRate),
         );
       }
-      return const _DerivedUnavailable(message: '先到設定確認車輛資料，才會顯示馬力、扭力與油耗推算');
-    }
-
-    // Every derived figure needs engine speed and road speed. Substituting
-    // zero for a missing input does not produce a conservative estimate — it
-    // produces a confident wrong one, and there is no way to tell it apart
-    // from a genuine reading on the tile.
-    // Acceleration joins the required inputs. It used to arrive as a
-    // non-nullable 0 whenever it was unknown, which the force terms consume as
-    // a real steady-cruise measurement — so a gap in speed replies produced
-    // confident horsepower derived from a number nobody measured.
-    final accel = snapshot.accelerationMs2;
-    final hasInputs = rpm != null && speed != null && accel != null;
-    if (!hasInputs) {
+      final estimatedFuel = DerivedEstimates.valuesFor(
+        snapshot: snapshot,
+        profile: profile,
+      )[DerivedEstimates.fuelRate.id];
+      if (estimatedFuel != null) {
+        final fuelStatus = AvailabilityPolicy.forEstimate(
+          profile: profile,
+          value: estimatedFuel,
+          formula: AvailabilityPolicy.fuelEstimateFormula,
+          quantity: '油耗',
+          kind: EstimateKind.fuel,
+        );
+        return _MeasuredFuelStrip(
+          title: '估算油耗',
+          fuelRateLPerHour: estimatedFuel,
+          speedKmh: speed,
+          status: fuelStatus,
+        );
+      }
       return const _DerivedUnavailable();
     }
 
@@ -645,11 +701,33 @@ class _DerivedStrip extends ConsumerWidget {
         ? metrics.litresPer100Km!.toStringAsFixed(1)
         : metrics.fuelRateLPerHour?.toStringAsFixed(1) ?? '--';
     final consumptionUnits = metrics.isMoving ? 'L/100km' : 'L/h';
+    final hpStatus = AvailabilityPolicy.forEstimate(
+      profile: profile,
+      value: metrics.engineHorsepower,
+      formula: AvailabilityPolicy.horsepowerFormula,
+      quantity: '馬力',
+      kind: EstimateKind.horsepower,
+    );
+    final fuelStatus = metrics.fuelSource == FuelSource.measured
+        ? measuredFuelStatus(metrics.fuelRateLPerHour)
+        : AvailabilityPolicy.forEstimate(
+            profile: profile,
+            value: metrics.fuelRateLPerHour,
+            formula: AvailabilityPolicy.fuelEstimateFormula,
+            quantity: '油耗',
+            kind: EstimateKind.fuel,
+          );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
       child: Panel(
         accent: palette.derived,
+        onTap: () => showDatumStatusDetails(
+          context,
+          title: '估算公式與假設',
+          status: hpStatus,
+          extra: [if (fuelStatus.badgeText.isNotEmpty) fuelStatus],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -664,19 +742,29 @@ class _DerivedStrip extends ConsumerWidget {
                   ),
                 ),
                 const Spacer(),
-                // Provenance, not decoration: a speed-density figure and a
-                // sensor reading look identical on the tile, and one of them
-                // depends on a volumetric-efficiency number the user typed in.
-                if (metrics.airflowSource != AirflowSource.unavailable)
-                  StatusPill(
-                    label: metrics.fuelSource == FuelSource.measured
-                        ? metrics.airflowSource.label
-                        : '${metrics.airflowSource.label} · ${metrics.fuelSource.label}',
-                    tone: StatusTone.neutral,
-                    dense: true,
-                  ),
+                Flexible(child: DatumStatusBadge(status: hpStatus)),
               ],
             ),
+            if (metrics.airflowSource != AirflowSource.unavailable ||
+                fuelStatus.badgeText.isNotEmpty) ...[
+              const SizedBox(height: Spacing.xs),
+              Wrap(
+                spacing: Spacing.sm,
+                runSpacing: Spacing.xs,
+                children: [
+                  if (metrics.airflowSource != AirflowSource.unavailable)
+                    StatusPill(
+                      label: metrics.fuelSource == FuelSource.measured
+                          ? metrics.airflowSource.label
+                          : '${metrics.airflowSource.label} · ${metrics.fuelSource.label}',
+                      tone: StatusTone.neutral,
+                      dense: true,
+                    ),
+                  if (fuelStatus.badgeText.isNotEmpty)
+                    DatumStatusBadge(status: fuelStatus),
+                ],
+              ),
+            ],
             const SizedBox(height: Spacing.md),
             // Reflows instead of shrinking.
             //
@@ -702,14 +790,16 @@ class _DerivedStrip extends ConsumerWidget {
                   ),
                   _DerivedCell(
                     label: '引擎馬力',
-                    value: metrics.engineHorsepower
-                        .clamp(0, 2000)
-                        .toStringAsFixed(0),
+                    value: metrics.engineHorsepower.isFinite
+                        ? metrics.engineHorsepower.toStringAsFixed(0)
+                        : '--',
                     units: 'hp',
                   ),
                   _DerivedCell(
                     label: '扭力',
-                    value: metrics.torqueNm.clamp(0, 5000).toStringAsFixed(0),
+                    value: rpm != null && metrics.torqueNm.isFinite
+                        ? metrics.torqueNm.toStringAsFixed(0)
+                        : '--',
                     units: 'N·m',
                   ),
                 ];
@@ -758,10 +848,14 @@ class _MeasuredFuelStrip extends StatelessWidget {
   const _MeasuredFuelStrip({
     required this.fuelRateLPerHour,
     required this.speedKmh,
+    required this.status,
+    this.title = 'ECU 油耗資料',
   });
 
   final double fuelRateLPerHour;
   final double? speedKmh;
+  final DatumStatus status;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -779,6 +873,8 @@ class _MeasuredFuelStrip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
       child: Panel(
         accent: palette.derived,
+        onTap: () =>
+            showDatumStatusDetails(context, title: title, status: status),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -787,21 +883,22 @@ class _MeasuredFuelStrip extends StatelessWidget {
                 Icon(Icons.local_gas_station, size: 15, color: palette.derived),
                 const SizedBox(width: Spacing.sm),
                 Text(
-                  'ECU 油耗資料',
+                  title,
                   style: context.texts.labelSmall?.copyWith(
                     color: palette.derived,
                   ),
                 ),
                 const Spacer(),
-                const StatusPill(
-                  label: 'ECU 回報',
-                  tone: StatusTone.neutral,
-                  dense: true,
-                ),
+                if (status.badgeText.isNotEmpty)
+                  DatumStatusBadge(status: status)
+                else
+                  const StatusPill(
+                    label: 'ECU 回報',
+                    tone: StatusTone.neutral,
+                    dense: true,
+                  ),
               ],
             ),
-            const SizedBox(height: Spacing.sm),
-            Text('車輛設定未確認；馬力、扭力與設定檔估算已隱藏。', style: context.texts.bodySmall),
             const SizedBox(height: Spacing.md),
             Row(
               children: [
@@ -944,9 +1041,9 @@ class _FadeInUpState extends State<_FadeInUp>
 /// this out yet" and "your engine is producing no power" look identical when
 /// both render as 0 hp.
 class _DerivedUnavailable extends StatelessWidget {
-  const _DerivedUnavailable({this.message = '等待引擎轉速與車速資料後才能推算馬力、扭力與油耗'});
+  const _DerivedUnavailable();
 
-  final String message;
+  static const message = '等待車速與加速度資料後才能推算馬力';
 
   @override
   Widget build(BuildContext context) {

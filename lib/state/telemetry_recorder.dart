@@ -5,13 +5,16 @@ export '../telemetry/session/telemetry_session_writer.dart'
     show TelemetryAppendResult;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../obd/physics/vehicle_profile.dart';
 import '../obd/pid/pid.dart';
 import '../obd/session_boundary.dart';
 import '../obd/telemetry.dart';
 import '../obd/transport/obd_transport.dart';
+import '../telemetry/session/derived_estimates.dart';
 import '../telemetry/session/telemetry_recorder.dart';
 import '../telemetry/session/telemetry_session.dart';
 import '../telemetry/session/telemetry_session_codec.dart';
@@ -21,6 +24,7 @@ import 'artifact_operation_gate.dart';
 import 'obd_session.dart';
 import 'pid_mutation_lock.dart';
 import 'pid_registry.dart';
+import 'settings.dart';
 
 const telemetryRecorderDurationLimit = Duration(minutes: 60);
 
@@ -85,12 +89,14 @@ final class TelemetryStartRequest {
     required this.transport,
     required this.protocol,
     required List<Pid> activePids,
+    this.vehicleProfile,
   }) : activePids = List<Pid>.unmodifiable(activePids);
 
   final TelemetrySource source;
   final TransportKind transport;
   final String protocol;
   final List<Pid> activePids;
+  final VehicleProfile? vehicleProfile;
 }
 
 /// A synchronous view of all values that can revoke Start preparation.
@@ -287,6 +293,7 @@ final class RootTelemetryRecorder {
   int? _recordingEndedElapsedUs;
   String? _sessionId;
   int? _effectiveSessionLimit;
+  VehicleProfile? _frozenProfile;
 
   TelemetryRecorderState get state => _recorder.state;
   Stream<TelemetryRecorderState> get states => _states.stream;
@@ -366,10 +373,18 @@ final class RootTelemetryRecorder {
 
     late final List<FrozenPidDefinition> definitions;
     try {
-      if (request.activePids.isEmpty || request.activePids.length > 32) {
-        throw const TelemetryValidationException('signalCount');
+      if (request.activePids.isEmpty ||
+          request.activePids.length > DerivedEstimates.maxLiveSignals) {
+        throw TelemetryValidationException(
+          request.activePids.isEmpty
+              ? 'signalCount'
+              : 'derivedEstimatesNeedRoom',
+        );
       }
-      definitions = request.activePids.map(freezePidDefinition).toList();
+      definitions = DerivedEstimates.appendTo(
+        request.activePids.map(freezePidDefinition).toList(),
+        profile: request.vehicleProfile,
+      );
       if (definitions.map((value) => value.definition.id).toSet().length !=
           definitions.length) {
         throw const TelemetryValidationException('duplicateSignal');
@@ -509,6 +524,7 @@ final class RootTelemetryRecorder {
         );
       }
       _recordingStartedElapsedUs = elapsedUs();
+      _frozenProfile = request.vehicleProfile;
       _armDurationLimit();
       _releaseCommand();
       _publish();
@@ -532,11 +548,18 @@ final class RootTelemetryRecorder {
     }
   }
 
-  void onTelemetry(TelemetrySnapshot snapshot) {
+  void onTelemetry(TelemetrySnapshot snapshot, {VehicleProfile? profile}) {
     if (_expireDurationLimitIfDue()) return;
     if (!_recorder.isAccepting) return;
+    _frozenProfile ??= profile;
+    final frozen = _frozenProfile;
     try {
-      _recorder.ingest(snapshot);
+      _recorder.ingest(
+        snapshot,
+        derivedValues: frozen == null
+            ? const <String, double>{}
+            : DerivedEstimates.valuesFor(snapshot: snapshot, profile: frozen),
+      );
     } on _EventRejected catch (rejected) {
       _beginFinalization(rejected.reason);
     }
@@ -814,7 +837,19 @@ final class RootTelemetryRecorder {
     _recordingEndedElapsedUs = null;
     _sessionId = null;
     _effectiveSessionLimit = null;
+    _frozenProfile = null;
     _recorder = _newRecorder();
+  }
+
+  void onVehicleProfileChanged(VehicleProfile next) {
+    if (!isAccepting) return;
+    final frozen = _frozenProfile;
+    if (frozen == null) {
+      _frozenProfile = next;
+      return;
+    }
+    if (jsonEncode(frozen.toJson()) == jsonEncode(next.toJson())) return;
+    _beginFinalization(TelemetryTerminalReason.configurationChanged);
   }
 
   void _invalidateAppendFailureHandler() {
@@ -962,6 +997,9 @@ final telemetryRecorderControllerProvider = Provider<RootTelemetryRecorder>((
   ref.listen(telemetryProvider, (_, next) {
     final value = authoritativeTelemetryValue(next);
     if (value != null) controller.onTelemetry(value);
+  });
+  ref.listen(vehicleProfileProvider, (_, next) {
+    controller.onVehicleProfileChanged(next);
   });
   final boundaries = ref
       .read(telemetryRecorderBoundaryStreamProvider)

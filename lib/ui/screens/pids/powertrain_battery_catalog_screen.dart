@@ -210,6 +210,20 @@ class _PowertrainBatteryCatalogScreenState
     setState(() {});
   }
 
+  static String _installDisclosure(PowertrainBatteryProfile profile) {
+    const prefix =
+        '安裝只是把唯讀電池 PID 加進 PID 管理。開始讀取前，'
+        '每次連線都要在儀表板確認「這台車就是這個車型」。';
+    return switch (profile.status) {
+      PowertrainProfileStatus.community =>
+        '$prefix資料來自社群來源並經獨立比對，仍非原廠保證。',
+      PowertrainProfileStatus.experimental =>
+        '$prefix這是實驗解碼，沒有獨立佐證要求，本車未驗證，仍非原廠保證。',
+      PowertrainProfileStatus.ready => '$prefix來源資料較完整，仍非原廠保證。',
+      PowertrainProfileStatus.researchOnly => '$prefix此列僅供研究，不應安裝。',
+    };
+  }
+
   Future<int?> _confirmInstall(PowertrainBatteryProfile profile) =>
       showDialog<int>(
         context: context,
@@ -244,9 +258,7 @@ class _PowertrainBatteryCatalogScreenState
                       ),
                     const SizedBox(height: Spacing.sm),
                     Text(
-                      '安裝只是把唯讀電池 PID 加進 PID 管理。開始讀取前，'
-                      '每次連線都要在儀表板確認「這台車就是這個車型」。'
-                      '資料來自社群來源並經獨立比對，仍非原廠保證。',
+                      _installDisclosure(profile),
                       key: const Key('powertrain_install_disclosure'),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
@@ -737,8 +749,10 @@ class _ProfileCard extends StatelessWidget {
         : '${profile.yearFrom}–${profile.yearTo}';
     final status = switch (profile.status) {
       PowertrainProfileStatus.ready => ('來源較完整', StatusTone.good),
-      PowertrainProfileStatus.community => ('社群資料', StatusTone.accent),
-      PowertrainProfileStatus.experimental => ('實驗單次唯讀', StatusTone.warn),
+      PowertrainProfileStatus.community => ('社群資料 · 未驗證', StatusTone.accent),
+      PowertrainProfileStatus.experimental => installable
+          ? ('實驗 · 未驗證', StatusTone.warn)
+          : ('實驗單次唯讀', StatusTone.warn),
       PowertrainProfileStatus.researchOnly => ('僅研究', StatusTone.neutral),
     };
     final evidence = switch (profile.evidence) {

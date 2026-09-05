@@ -182,16 +182,20 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('installer gates', () {
-    test('experimental and research profiles cannot become runtime PIDs', () {
-      for (final status in ['experimental', 'researchOnly']) {
-        final json = _profileJson(status: status);
-        if (status == 'researchOnly') json['commands'] = <Object?>[];
-        expect(
-          () => PowertrainProfilePidInstaller.build(_profileOf(json)),
-          throwsA(isA<PowertrainProfileInstallException>()),
-          reason: status,
-        );
-      }
+    test('research-only profiles cannot become runtime PIDs', () {
+      final json = _profileJson(status: 'researchOnly')
+        ..['commands'] = <Object?>[];
+      expect(
+        () => PowertrainProfilePidInstaller.build(_profileOf(json)),
+        throwsA(isA<PowertrainProfileInstallException>()),
+      );
+    });
+
+    test('experimental Mode 22 profiles become unverified runtime PIDs', () {
+      final pids = PowertrainProfilePidInstaller.build(
+        _profileOf(_profileJson(status: 'experimental')),
+      );
+      expect(pids, isNotEmpty);
     });
 
     test('community without independent corroboration cannot install', () {
@@ -476,7 +480,9 @@ void main() {
 
       // The surviving profile has been downgraded below installable.
       await registry.restoreInstalledProfiles(
-        snapshotOfProfiles([_profileJson(status: 'experimental')]).catalog,
+        snapshotOfProfiles([
+          _profileJson(status: 'researchOnly')..['commands'] = <Object?>[],
+        ]).catalog,
       );
 
       expect(registry.profilePids, isEmpty);
@@ -819,7 +825,7 @@ void main() {
       );
       final community = snapshotOfProfiles([_profileJson()]);
       final downgraded = snapshotOfProfiles([
-        _profileJson(status: 'experimental'),
+        _profileJson(status: 'researchOnly')..['commands'] = <Object?>[],
       ]);
 
       authorizations.authorize(

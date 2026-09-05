@@ -2,9 +2,12 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:torque_obd/obd/physics/vehicle_profile.dart';
+import 'package:torque_obd/obd/pid/pid.dart';
 import 'package:torque_obd/obd/pid/pid_library.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
 import 'package:torque_obd/state/telemetry_sessions.dart';
+import 'package:torque_obd/telemetry/session/derived_estimates.dart';
 import 'package:torque_obd/telemetry/session/telemetry_recorder.dart';
 import 'package:torque_obd/telemetry/session/telemetry_session.dart';
 import 'package:torque_obd/telemetry/session/telemetry_session_codec.dart';
@@ -35,7 +38,9 @@ Future<String> _writeReplay(
     final elapsed = elapsedOriginUs + index * 2000;
     events.add(
       TelemetryEvent.value(
-        observedAtUtc: started.add(Duration(microseconds: elapsed - elapsedOriginUs)),
+        observedAtUtc: started.add(
+          Duration(microseconds: elapsed - elapsedOriginUs),
+        ),
         sourceTimestampUtc: started.add(
           Duration(microseconds: elapsed - elapsedOriginUs),
         ),
@@ -227,4 +232,274 @@ void main() {
 
     expect(result.failure, TelemetryReplayFailure.damaged);
   });
+
+  test('replay keeps out-of-range quality on the selected datum', () async {
+    final documents = await Directory.systemTemp.createTemp('replay-quality');
+    addTearDown(() => documents.delete(recursive: true));
+    const id = '10000000000000000000000000000004';
+    final started = DateTime.utc(2026, 8, 30, 3);
+    final definition = freezePidDefinition(PidLibrary.coolantTemp);
+    final header = TelemetrySessionHeader(
+      sessionId: id,
+      startedAtUtc: started,
+      source: TelemetrySource.demo,
+      transport: TransportKind.demo,
+      protocol: 'AUTO',
+      signals: [definition],
+    );
+    final events = [
+      TelemetryEvent.value(
+        observedAtUtc: started,
+        sourceTimestampUtc: started,
+        elapsedUs: 0,
+        pidId: definition.definition.id,
+        value: 999,
+        quality: TelemetryQuality.outOfReferenceRange,
+      ),
+    ];
+    final prefix = TelemetrySessionCodec.encodePrefix(header, events);
+    final root = Directory('${documents.path}/telltale-telemetry');
+    await root.create(recursive: true);
+    await File('${root.path}/$id.ndjson').writeAsBytes(
+      TelemetrySessionCodec.encode(
+        TelemetrySession(
+          header: header,
+          events: events,
+          footer: TelemetrySessionFooter(
+            endedAtUtc: started.add(const Duration(seconds: 1)),
+            terminalReason: TelemetryTerminalReason.user,
+            valueCount: 1,
+            statusCount: 0,
+            gapCount: 0,
+            bytesBeforeFooter: prefix.length,
+          ),
+        ),
+      ),
+    );
+
+    final result = await TelemetrySessionLibraryService(
+      documentsDirectory: () async => documents,
+    ).replay(id);
+
+    final primitive = result.replay!.lanes.single.primitives.single;
+    expect(primitive.kind, TelemetryReplayPrimitiveKind.value);
+    expect(primitive.value, 999);
+    expect(primitive.quality, 'outOfReferenceRange');
+  });
+
+  test('replay lanes carry frozen evidence provenance', () async {
+    final documents = await Directory.systemTemp.createTemp(
+      'replay-provenance',
+    );
+    addTearDown(() => documents.delete(recursive: true));
+    const id = '10000000000000000000000000000007';
+    final started = DateTime.utc(2026, 8, 30, 6);
+    final community = freezePidDefinition(
+      PidLibrary.engineRpm.copyWith(evidenceKind: 'community'),
+    );
+    final user = freezePidDefinition(
+      const Pid(
+        name: 'User coolant',
+        shortName: 'cool',
+        modeAndPid: '0105',
+        equation: 'A-40',
+        minValue: -40,
+        maxValue: 215,
+        units: '°C',
+        isCustom: true,
+      ),
+    );
+    final header = TelemetrySessionHeader(
+      sessionId: id,
+      startedAtUtc: started,
+      source: TelemetrySource.fieldAppConnection,
+      transport: TransportKind.wifi,
+      protocol: 'AUTO',
+      signals: [community, user],
+    );
+    final events = [
+      TelemetryEvent.value(
+        observedAtUtc: started,
+        sourceTimestampUtc: started,
+        elapsedUs: 0,
+        pidId: community.definition.id,
+        value: 2100,
+      ),
+      TelemetryEvent.value(
+        observedAtUtc: started,
+        sourceTimestampUtc: started,
+        elapsedUs: 0,
+        pidId: user.definition.id,
+        value: 90,
+      ),
+    ];
+    final prefix = TelemetrySessionCodec.encodePrefix(header, events);
+    final root = Directory('${documents.path}/telltale-telemetry');
+    await root.create(recursive: true);
+    await File('${root.path}/$id.ndjson').writeAsBytes(
+      TelemetrySessionCodec.encode(
+        TelemetrySession(
+          header: header,
+          events: events,
+          footer: TelemetrySessionFooter(
+            endedAtUtc: started.add(const Duration(seconds: 1)),
+            terminalReason: TelemetryTerminalReason.user,
+            valueCount: 2,
+            statusCount: 0,
+            gapCount: 0,
+            bytesBeforeFooter: prefix.length,
+          ),
+        ),
+      ),
+    );
+
+    final result = await TelemetrySessionLibraryService(
+      documentsDirectory: () async => documents,
+    ).replay(id);
+    expect(result.failure, isNull);
+    final byId = {for (final lane in result.replay!.lanes) lane.pidId: lane};
+    expect(byId[community.definition.id]?.evidenceKind, 'community');
+    expect(byId[community.definition.id]?.isCustom, isFalse);
+    expect(byId[user.definition.id]?.isCustom, isTrue);
+    expect(byId[user.definition.id]?.evidenceKind, 'userSupplied');
+  });
+
+  test(
+    'default History replay keeps derived lanes when more than four PIDs',
+    () async {
+      final documents = await Directory.systemTemp.createTemp('replay-derived');
+      addTearDown(() => documents.delete(recursive: true));
+      const id = '10000000000000000000000000000005';
+      final started = DateTime.utc(2026, 8, 30, 4);
+      const profile = VehicleProfile(massKg: 1280);
+      final signals = DerivedEstimates.appendTo(
+        [
+          PidLibrary.engineRpm,
+          PidLibrary.vehicleSpeed,
+          PidLibrary.coolantTemp,
+          PidLibrary.throttlePosition,
+        ].map(freezePidDefinition).toList(),
+        profile: profile,
+      );
+      expect(signals, hasLength(6));
+      final header = TelemetrySessionHeader(
+        sessionId: id,
+        startedAtUtc: started,
+        source: TelemetrySource.demo,
+        transport: TransportKind.demo,
+        protocol: 'AUTO',
+        signals: signals,
+      );
+      final events = [
+        for (var index = 0; index < signals.length; index++)
+          TelemetryEvent.value(
+            observedAtUtc: started,
+            sourceTimestampUtc: started,
+            elapsedUs: index,
+            pidId: signals[index].definition.id,
+            value: index.toDouble(),
+          ),
+      ];
+      final prefix = TelemetrySessionCodec.encodePrefix(header, events);
+      final root = Directory('${documents.path}/telltale-telemetry');
+      await root.create(recursive: true);
+      await File('${root.path}/$id.ndjson').writeAsBytes(
+        TelemetrySessionCodec.encode(
+          TelemetrySession(
+            header: header,
+            events: events,
+            footer: TelemetrySessionFooter(
+              endedAtUtc: started.add(const Duration(seconds: 1)),
+              terminalReason: TelemetryTerminalReason.user,
+              valueCount: events.length,
+              statusCount: 0,
+              gapCount: 0,
+              bytesBeforeFooter: prefix.length,
+            ),
+          ),
+        ),
+      );
+
+      final result = await TelemetrySessionLibraryService(
+        documentsDirectory: () async => documents,
+      ).replay(id);
+
+      expect(result.failure, isNull);
+      expect(result.replay!.signalCount, 6);
+      expect(result.replay!.lanes, hasLength(4));
+      expect(
+        result.replay!.lanes.map((lane) => lane.name),
+        containsAll(['估算馬力', '估算油耗']),
+      );
+    },
+  );
+
+  test(
+    'default replay skips a derived lane that never recorded a value',
+    () async {
+      final documents = await Directory.systemTemp.createTemp(
+        'replay-empty-fuel',
+      );
+      addTearDown(() => documents.delete(recursive: true));
+      const id = '10000000000000000000000000000006';
+      final started = DateTime.utc(2026, 8, 30, 5);
+      final signals = DerivedEstimates.appendTo(
+        [
+          PidLibrary.engineRpm,
+          PidLibrary.vehicleSpeed,
+          PidLibrary.coolantTemp,
+          PidLibrary.throttlePosition,
+        ].map(freezePidDefinition).toList(),
+      );
+      final header = TelemetrySessionHeader(
+        sessionId: id,
+        startedAtUtc: started,
+        source: TelemetrySource.demo,
+        transport: TransportKind.demo,
+        protocol: 'AUTO',
+        signals: signals,
+      );
+      final events = [
+        for (final signal in signals)
+          if (signal.definition.id != DerivedEstimates.fuelRate.id)
+            TelemetryEvent.value(
+              observedAtUtc: started,
+              sourceTimestampUtc: started,
+              elapsedUs: 0,
+              pidId: signal.definition.id,
+              value: 1,
+            ),
+      ];
+      final prefix = TelemetrySessionCodec.encodePrefix(header, events);
+      final root = Directory('${documents.path}/telltale-telemetry');
+      await root.create(recursive: true);
+      await File('${root.path}/$id.ndjson').writeAsBytes(
+        TelemetrySessionCodec.encode(
+          TelemetrySession(
+            header: header,
+            events: events,
+            footer: TelemetrySessionFooter(
+              endedAtUtc: started.add(const Duration(seconds: 1)),
+              terminalReason: TelemetryTerminalReason.user,
+              valueCount: events.length,
+              statusCount: 0,
+              gapCount: 0,
+              bytesBeforeFooter: prefix.length,
+            ),
+          ),
+        ),
+      );
+
+      final result = await TelemetrySessionLibraryService(
+        documentsDirectory: () async => documents,
+      ).replay(id);
+
+      expect(result.failure, isNull);
+      expect(result.replay!.lanes.map((lane) => lane.name), contains('估算馬力'));
+      expect(
+        result.replay!.lanes.map((lane) => lane.name),
+        isNot(contains('估算油耗')),
+      );
+    },
+  );
 }

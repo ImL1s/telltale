@@ -284,7 +284,7 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('Engine RPM · -- rpm'), findsOneWidget);
+    expect(find.textContaining('Engine RPM · -- rpm'), findsOneWidget);
     expect(find.byType(CustomPaint), findsWidgets);
 
     final fourthLane = find.byKey(

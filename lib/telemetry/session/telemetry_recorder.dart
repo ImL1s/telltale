@@ -2,6 +2,7 @@ library;
 
 import '../../obd/pid/pid.dart';
 import '../../obd/telemetry.dart';
+import 'derived_estimates.dart';
 import 'telemetry_session.dart';
 
 enum TelemetryRecorderPhase {
@@ -57,7 +58,11 @@ class TelemetryRecorderState {
 }
 
 /// Converts the live PID definition to the exact immutable recording form.
-FrozenPidDefinition freezePidDefinition(Pid pid) {
+FrozenPidDefinition freezePidDefinition(
+  Pid pid, {
+  String? assumptions,
+  bool? assumptionsConfirmed,
+}) {
   final provenance = pid.isCustom
       ? UnitProvenance.userDefined
       : pid.isMode01 && pid.header == kDefaultHeader && pid.variant == null
@@ -78,6 +83,9 @@ FrozenPidDefinition freezePidDefinition(Pid pid) {
       variant: pid.variant ?? '',
       priority: pid.priority.index,
       equation: pid.equation,
+      evidenceKind: pid.isCustom ? 'userSupplied' : pid.evidenceKind,
+      assumptions: assumptions,
+      assumptionsConfirmed: assumptionsConfirmed,
     ),
   );
 }
@@ -134,7 +142,10 @@ class TelemetryRecorder {
     return true;
   }
 
-  void ingest(TelemetrySnapshot snapshot) {
+  void ingest(
+    TelemetrySnapshot snapshot, {
+    Map<String, double> derivedValues = const {},
+  }) {
     if (!isAccepting) return;
 
     // Validate every live definition before accepting any value from this
@@ -172,6 +183,46 @@ class TelemetryRecorder {
       if (!isAccepting) return;
       final id = entry.key;
       final reading = snapshot.readings[id];
+      if (DerivedEstimates.isDerived(entry.value.definition)) {
+        final derived = derivedValues[id];
+        if (derived == null || !derived.isFinite) {
+          if (!(_available[id] ?? false)) continue;
+          const status = TelemetryStatus.noAnswer;
+          if (_lastStatus[id] == status) continue;
+          _available[id] = false;
+          _lastStatus[id] = status;
+          onEvent(
+            TelemetryEvent.status(
+              observedAtUtc: observedAt,
+              elapsedUs: elapsed,
+              pidId: id,
+              status: status,
+            ),
+          );
+          _refreshCounts(statusDelta: 1, gapDelta: 1);
+          continue;
+        }
+        _available[id] = true;
+        _lastStatus.remove(id);
+        final definition = entry.value.definition;
+        final outOfRange =
+            (definition.minimum != null && derived < definition.minimum!) ||
+            (definition.maximum != null && derived > definition.maximum!);
+        onEvent(
+          TelemetryEvent.value(
+            observedAtUtc: observedAt,
+            sourceTimestampUtc: observedAt,
+            elapsedUs: elapsed,
+            pidId: id,
+            value: derived,
+            quality: outOfRange
+                ? TelemetryQuality.outOfReferenceRange
+                : TelemetryQuality.valid,
+          ),
+        );
+        _refreshCounts(valueDelta: 1);
+        continue;
+      }
       final isFresh =
           reading != null && _isFreshReading(reading, observedAt, started);
       if (isFresh) {
@@ -190,6 +241,11 @@ class TelemetryRecorder {
         }
         _available[id] = true;
         _lastStatus.remove(id);
+        final definition = entry.value.definition;
+        final outOfRange =
+            (definition.minimum != null &&
+                reading.value < definition.minimum!) ||
+            (definition.maximum != null && reading.value > definition.maximum!);
         onEvent(
           TelemetryEvent.value(
             observedAtUtc: observedAt,
@@ -197,6 +253,9 @@ class TelemetryRecorder {
             elapsedUs: elapsed,
             pidId: id,
             value: reading.value,
+            quality: outOfRange
+                ? TelemetryQuality.outOfReferenceRange
+                : TelemetryQuality.valid,
           ),
         );
         _refreshCounts(valueDelta: 1);

@@ -3880,20 +3880,11 @@ class PollingEngine {
           requester: request.pid,
           now: now,
         );
-        // Catalog profile ranges are part of the reviewed source contract,
-        // not merely gauge display bounds. A correctly attributed frame can
-        // still be the wrong variant, firmware or byte layout; publishing a
-        // numerically valid but source-impossible value would turn that
-        // mismatch into confident telemetry. Fail before either cache can
-        // make the value visible to this PID or a dependent formula.
-        //
-        // Ordinary built-in and user-authored PIDs retain their historical
-        // behavior: their min/max values are presentation bounds and may be
-        // exceeded by a real sensor or a deliberately wider formula.
-        if (request.pid.ownerProfileId != null &&
-            (!value.isFinite ||
-                value < request.pid.minValue ||
-                value > request.pid.maxValue)) {
+        // Non-finite results are not numbers. Finite values outside a
+        // catalog or gauge range stay visible as outliers (USABILITY-R2);
+        // hiding them as formulaError deleted the reading a technician
+        // most needs to see. Wrong SID/ECU/length still fail before this.
+        if (!value.isFinite) {
           _invalidate(request.pid.id, PidFault.formulaError);
           continue;
         }

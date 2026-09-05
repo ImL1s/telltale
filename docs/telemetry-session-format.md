@@ -63,9 +63,12 @@ and footer/count mismatches.
 
 Each signal stores the complete frozen definition (`id`, names, request,
 header, unit, unit provenance, range, custom/variant flags, priority, and
-equation) plus its own fingerprint. A live definition must match both its exact
-canonical bytes and fingerprint. The FNV value is an integrity/equality check,
-not a cryptographic signature and not authorization by itself.
+equation) plus its own fingerprint. Optional `evidenceKind` and `assumptions`
+are omitted when empty so older recordings keep their fingerprints. Derived
+horsepower / fuel-rate signals freeze the Start vehicle-parameter disclosure
+into `assumptions`. A live definition must match both its exact canonical bytes
+and fingerprint. The FNV value is an integrity/equality check, not a
+cryptographic signature and not authorization by itself.
 
 Source labels are evidence labels, not compatibility claims:
 
@@ -82,13 +85,25 @@ Both event kinds contain `observedAtUtc`, a nondecreasing monotonic
 
 | Type | Additional fields | Meaning |
 | --- | --- | --- |
-| `value` | `sourceTimestampUtc`, finite numeric `value` | A fresh value whose frozen PID definition still matches Start |
+| `value` | `sourceTimestampUtc`, finite numeric `value`, optional `quality` | A fresh value whose frozen PID definition still matches Start |
 | `status` | `status` | The signal is unavailable for the named reason |
 
 The status wire values are `stale`, `unsupported`, `noAnswer`, `formulaError`,
 `busError`, `headerMismatch`, and `unsafeServiceRefusal`. Repeated identical
 status events are suppressed. A `gap` is counted only when a signal that had
 an available value becomes unavailable; initial unavailability is not a gap.
+
+`quality` on a value event is omitted when `valid` so existing recordings
+round-trip. `outOfReferenceRange` keeps the finite number and labels it 異常;
+it is not a reason to drop the sample or to mark the whole file 已驗證.
+
+CSV export version 2 adds `availability`, `origin`, `evidence`, `quality`,
+`operation_risk`, `formula`, and `assumptions` columns from the same
+USABILITY-R2 policy the live UI uses. Mixed evidence is never upgraded to
+`fieldVerified`. Estimate `assumptions` may include vehicle parameters used
+for 馬力/油耗 (mass, drag, displacement, fuel). The full vehicle-profile
+document, VIN, GPS, account, adapter address, and raw diagnostic traffic
+remain excluded; the CSV header records `estimate_assumptions=included`.
 
 `observedAtUtc` is when the recorder inspected the snapshot.
 `sourceTimestampUtc` is the timestamp carried by the accepted reading.

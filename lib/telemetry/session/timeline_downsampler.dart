@@ -15,12 +15,14 @@ final class TimelineValue extends TimelinePrimitive {
     this.segmentId = '',
     this.breakBefore = false,
     this.omittedGapCountBefore = 0,
+    this.quality,
   });
 
   final double value;
   final String segmentId;
   final bool breakBefore;
   final int omittedGapCountBefore;
+  final String? quality;
 
   TimelineValue withOmittedGaps(int count) => TimelineValue(
     elapsedUs: elapsedUs,
@@ -28,6 +30,7 @@ final class TimelineValue extends TimelinePrimitive {
     segmentId: segmentId,
     breakBefore: breakBefore || count > 0,
     omittedGapCountBefore: omittedGapCountBefore + count,
+    quality: quality,
   );
 }
 

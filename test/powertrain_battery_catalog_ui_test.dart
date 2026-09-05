@@ -228,7 +228,7 @@ void main() {
     final card = find.byKey(const Key('powertrain_profile_mg-zs-ev'));
     await tester.ensureVisible(card);
     expect(
-      find.descendant(of: card, matching: find.text('社群資料')),
+      find.descendant(of: card, matching: find.text('社群資料 · 未驗證')),
       findsOneWidget,
     );
 

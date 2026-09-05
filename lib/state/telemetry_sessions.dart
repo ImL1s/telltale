@@ -9,6 +9,7 @@ import 'dart:ui' show Rect;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../telemetry/session/derived_estimates.dart';
 import '../telemetry/session/telemetry_recorder.dart';
 import '../telemetry/session/telemetry_session.dart';
 import '../telemetry/session/telemetry_session_codec.dart';
@@ -25,7 +26,7 @@ import 'telemetry_runtime.dart';
 
 const telemetryReplayDisclaimer = '預覽已抽樣；匯出保留完整已記錄事件';
 const telemetryExportDisclosure =
-    '匯出內容包含訊號名稱、數值、觀測與來源時間、傳輸類型、通訊協定，以及凍結的 PID 標籤、單位與公式。JSON 可能包含使用者自訂標籤、單位、公式與完整凍結定義。匯出內容不含 VIN、GPS、帳號、轉接器位址、車輛設定檔或原始診斷流量。';
+    '匯出內容包含訊號名稱、數值、觀測與來源時間、傳輸類型、通訊協定、凍結的 PID 標籤／單位／公式，以及估算假設（車重、空氣阻力、排氣量、燃料等參數）。JSON 可能包含使用者自訂標籤、單位、公式與完整凍結定義。匯出內容不含 VIN、GPS、帳號、轉接器位址、完整車輛設定檔或原始診斷流量。';
 
 enum TelemetryHistoryAccess {
   permitted,
@@ -105,9 +106,8 @@ final class TelemetrySessionProjection {
   /// recovery time and can inflate overnight gaps into the history label.
   final int elapsedDurationUs;
 
-  Duration get duration => Duration(
-    microseconds: elapsedDurationUs < 0 ? 0 : elapsedDurationUs,
-  );
+  Duration get duration =>
+      Duration(microseconds: elapsedDurationUs < 0 ? 0 : elapsedDurationUs);
   String get sourceLabel => telemetrySourceLabel(source);
 }
 
@@ -162,6 +162,7 @@ final class TelemetryReplayPrimitive {
     this.status,
     this.breakBefore = false,
     this.omittedGapCountBefore = 0,
+    this.quality,
   });
 
   final TelemetryReplayPrimitiveKind kind;
@@ -170,6 +171,7 @@ final class TelemetryReplayPrimitive {
   final String? status;
   final bool breakBefore;
   final int omittedGapCountBefore;
+  final String? quality;
 }
 
 final class TelemetryReplayLane {
@@ -178,12 +180,57 @@ final class TelemetryReplayLane {
     required this.name,
     required this.unit,
     required this.primitives,
+    this.shortName = '',
+    this.request = '',
+    this.header = '',
+    this.isCustom = false,
+    this.variant = '',
+    this.equation = '',
+    this.evidenceKind,
+    this.assumptions,
+    this.assumptionsConfirmed,
+    this.minimum,
+    this.maximum,
   });
 
   final String pidId;
   final String name;
   final String unit;
   final List<TelemetryReplayPrimitive> primitives;
+  final String shortName;
+  final String request;
+  final String header;
+  final bool isCustom;
+  final String variant;
+  final String equation;
+  final String? evidenceKind;
+  final String? assumptions;
+  final bool? assumptionsConfirmed;
+  final double? minimum;
+  final double? maximum;
+
+  TelemetrySignalDefinition asDefinition() => TelemetrySignalDefinition(
+    id: pidId,
+    name: name,
+    shortName: shortName.isEmpty ? name : shortName,
+    request: request.isEmpty ? '0100' : request,
+    header: header,
+    unit: unit,
+    unitProvenance: isCustom
+        ? UnitProvenance.userDefined
+        : variant.isNotEmpty || (header.isNotEmpty && header != '7E0')
+        ? UnitProvenance.shippedDerivedOrVariant
+        : UnitProvenance.standardDirectCanonical,
+    minimum: minimum,
+    maximum: maximum,
+    isCustom: isCustom,
+    variant: variant,
+    priority: 1,
+    equation: equation.isEmpty ? 'A' : equation,
+    evidenceKind: evidenceKind,
+    assumptions: assumptions,
+    assumptionsConfirmed: assumptionsConfirmed,
+  );
 }
 
 final class TelemetrySessionReplay {
@@ -543,9 +590,7 @@ final telemetrySessionLibraryServiceProvider =
       (ref) => TelemetrySessionLibraryService(),
     );
 
-bool telemetryRecorderPhaseBlocksLibraryReload(
-  TelemetryRecorderPhase phase,
-) =>
+bool telemetryRecorderPhaseBlocksLibraryReload(TelemetryRecorderPhase phase) =>
     phase == TelemetryRecorderPhase.preparing ||
     phase == TelemetryRecorderPhase.recording ||
     phase == TelemetryRecorderPhase.finalizing;
@@ -558,21 +603,21 @@ final telemetrySessionLibraryProvider = FutureProvider<TelemetrySessionLibrary>(
     // `_scanLibraryWorker` (full library validate + re-read) while the writer
     // was opening/appending. Explicit invalidations (delete, recovery,
     // pull-to-refresh) still apply.
-    ref.listen<TelemetryRecorderProgress>(
-      telemetryRecorderProgressProvider,
-      (previous, next) {
-        if (previous == null) return;
-        final wasActive = telemetryRecorderPhaseBlocksLibraryReload(
-          previous.state.phase,
-        );
-        final nowSettled = !telemetryRecorderPhaseBlocksLibraryReload(
-          next.state.phase,
-        );
-        if (wasActive && nowSettled) {
-          ref.invalidateSelf();
-        }
-      },
-    );
+    ref.listen<TelemetryRecorderProgress>(telemetryRecorderProgressProvider, (
+      previous,
+      next,
+    ) {
+      if (previous == null) return;
+      final wasActive = telemetryRecorderPhaseBlocksLibraryReload(
+        previous.state.phase,
+      );
+      final nowSettled = !telemetryRecorderPhaseBlocksLibraryReload(
+        next.state.phase,
+      );
+      if (wasActive && nowSettled) {
+        ref.invalidateSelf();
+      }
+    });
     return ref.watch(telemetrySessionLibraryServiceProvider).load();
   },
 );
@@ -942,6 +987,7 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
   var elapsedOriginUs = 0;
   var elapsedOriginCaptured = false;
   var elapsedDurationUs = 0;
+  final recordedValueIds = <String>{};
   const reader = TelemetrySessionReader();
   final result = await reader.read(
     FileTelemetryChunkSource(file),
@@ -955,13 +1001,10 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
             .map((signal) => signal.definition.id)
             .toSet();
         if (selected.any((id) => !ids.contains(id))) invalidSelection = true;
-        final lanes = selected.isEmpty
-            ? header!.signals
-                  .take(4)
-                  .map((signal) => signal.definition.id)
-                  .toList()
+        final laneIds = selected.isEmpty
+            ? header!.signals.map((signal) => signal.definition.id)
             : selected;
-        for (final id in lanes) {
+        for (final id in laneIds) {
           accumulators[id] = TimelineDownsampleAccumulator(
             maximumPrimitives: 1200,
           );
@@ -1005,6 +1048,7 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
       } else {
         final value = line.object['value'];
         if (value is! num) return;
+        final quality = line.object['quality'];
         final breakBefore = !(available[id] ?? false) && (segment[id] ?? 0) > 0;
         accumulator.add(
           TimelineValue(
@@ -1012,8 +1056,10 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
             value: value.toDouble(),
             segmentId: '$id:${segment[id] ?? 0}',
             breakBefore: breakBefore,
+            quality: quality is String ? quality : null,
           ),
         );
+        recordedValueIds.add(id);
         available[id] = true;
       }
     },
@@ -1039,14 +1085,37 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
     for (final signal in header!.signals)
       signal.definition.id: signal.definition,
   };
+  final outputIds = selected.isEmpty
+      ? DerivedEstimates.defaultReplayLaneIds(
+          header!.signals.map((signal) => signal.definition),
+          recordedIds: recordedValueIds,
+        )
+      : selected;
   final lanes = <Map<String, Object?>>[];
-  for (final entry in accumulators.entries) {
-    final definition = definitions[entry.key]!;
+  for (final id in outputIds) {
+    final accumulator = accumulators[id];
+    final definition = definitions[id];
+    if (accumulator == null || definition == null) continue;
     lanes.add(<String, Object?>{
-      'pidId': entry.key,
+      'pidId': id,
       'name': definition.name,
+      'shortName': definition.shortName,
       'unit': definition.unit,
-      'primitives': entry.value.finish().map(_encodePrimitive).toList(),
+      'request': definition.request,
+      'header': definition.header,
+      'isCustom': definition.isCustom,
+      'variant': definition.variant,
+      'equation': definition.equation,
+      if (definition.evidenceKind != null &&
+          definition.evidenceKind!.isNotEmpty)
+        'evidenceKind': definition.evidenceKind,
+      if (definition.assumptions != null && definition.assumptions!.isNotEmpty)
+        'assumptions': definition.assumptions,
+      if (definition.assumptionsConfirmed != null)
+        'assumptionsConfirmed': definition.assumptionsConfirmed,
+      if (definition.minimum != null) 'minimum': definition.minimum,
+      if (definition.maximum != null) 'maximum': definition.maximum,
+      'primitives': accumulator.finish().map(_encodePrimitive).toList(),
     });
   }
   return <String, Object?>{
@@ -1075,6 +1144,8 @@ Map<String, Object?> _encodePrimitive(TimelinePrimitive primitive) =>
         'value': value.value,
         'breakBefore': value.breakBefore,
         'omittedGapCountBefore': value.omittedGapCountBefore,
+        if (value.quality != null && value.quality!.isNotEmpty)
+          'quality': value.quality,
       },
       TimelineStatus status => <String, Object?>{
         'kind': 'status',
@@ -1102,6 +1173,17 @@ TelemetryReplayResult _decodeReplay(Map<String, Object?> raw) {
           pidId: lane['pidId']! as String,
           name: lane['name']! as String,
           unit: lane['unit']! as String,
+          shortName: lane['shortName'] as String? ?? '',
+          request: lane['request'] as String? ?? '',
+          header: lane['header'] as String? ?? '',
+          isCustom: lane['isCustom'] as bool? ?? false,
+          variant: lane['variant'] as String? ?? '',
+          equation: lane['equation'] as String? ?? '',
+          evidenceKind: lane['evidenceKind'] as String?,
+          assumptions: lane['assumptions'] as String?,
+          assumptionsConfirmed: lane['assumptionsConfirmed'] as bool?,
+          minimum: (lane['minimum'] as num?)?.toDouble(),
+          maximum: (lane['maximum'] as num?)?.toDouble(),
           primitives: List.unmodifiable(
             (lane['primitives']! as List<Object?>).map((rawPrimitive) {
               final primitive = rawPrimitive! as Map<Object?, Object?>;
@@ -1115,6 +1197,7 @@ TelemetryReplayResult _decodeReplay(Map<String, Object?> raw) {
                 breakBefore: primitive['breakBefore'] as bool? ?? false,
                 omittedGapCountBefore:
                     primitive['omittedGapCountBefore'] as int? ?? 0,
+                quality: primitive['quality'] as String?,
               );
             }),
           ),

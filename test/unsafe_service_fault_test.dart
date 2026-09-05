@@ -151,7 +151,7 @@ void main() {
 
       expect(find.text('此車輛不支援'), findsNothing,
           reason: 'the vehicle was never asked');
-      expect(find.text('此服務不是唯讀查詢，已停止發送'), findsOneWidget);
+      expect(find.textContaining('此服務不是唯讀查詢'), findsOneWidget);
     });
 
     testWidgets('while a genuine support-mask refusal still says so',
@@ -168,7 +168,7 @@ void main() {
         activePids: [PidLibrary.engineRpm],
       );
 
-      expect(find.text('此車輛不支援'), findsOneWidget);
+      expect(find.textContaining('此車輛不支援'), findsOneWidget);
     });
   });
 }

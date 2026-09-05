@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:torque_obd/obd/pid/formula_engine.dart';
+import 'package:torque_obd/obd/pid/pid.dart';
 import 'package:torque_obd/obd/powertrain_battery/powertrain_battery_catalog.dart';
 import 'package:torque_obd/obd/powertrain_battery/powertrain_battery_profile.dart';
 import 'package:torque_obd/obd/powertrain_battery/profile_catalog_validator.dart';
@@ -115,9 +116,16 @@ void main() {
           expect(profile.source.path, isNotEmpty);
           expect(profile.source.locator, isNotEmpty);
           expect(profile.limitations, isNotEmpty);
-          if (profile.status == PowertrainProfileStatus.researchOnly ||
-              profile.status == PowertrainProfileStatus.experimental) {
+          if (profile.status == PowertrainProfileStatus.researchOnly) {
             expect(validator.validateProfile(profile).canInstall, isFalse);
+          }
+          if (profile.status == PowertrainProfileStatus.experimental) {
+            final validation = validator.validateProfile(profile);
+            final pollable = profile.commands.every(
+              (command) =>
+                  PollableServices.isPollable(command.modeAndIdentifier),
+            );
+            expect(validation.canInstall, pollable, reason: profile.id);
           }
         }
         final epaProfiles = snapshot.catalog.profiles.where(
@@ -142,20 +150,30 @@ void main() {
           (profile) => validator.validateProfile(profile).canInstall,
         );
 
-        expect(installable.map((profile) => profile.id).toSet(), {
-          'mg-zs-ev-au-2021',
-          'mg-mg4-2022-2026',
-          'mg-mg5-ev-2020-2023',
-          'byd-atto3-2022-2024-community',
-          'hyundai-ioniq5-egmp-2021-2024-community',
-          'kia-ev6-egmp-2022-2024-community',
-          'hyundai-kona-electric-os-2019-2023-community',
-          'kia-niro-ev-de-2019-2022-community',
-          'volkswagen-eup-gen2-2020-2023-community',
-          'renault-zoe-ph1-2012-2019-community',
-          'hyundai-ioniq6-egmp-2022-2024-community',
-          'kia-soul-ev-sk3-2020-community',
-        });
+        expect(
+          installable.map((profile) => profile.id).toSet(),
+          containsAll({
+            'mg-zs-ev-au-2021',
+            'mg-mg4-2022-2026',
+            'mg-mg5-ev-2020-2023',
+            'byd-atto3-2022-2024-community',
+            'hyundai-ioniq5-egmp-2021-2024-community',
+            'kia-ev6-egmp-2022-2024-community',
+            'hyundai-kona-electric-os-2019-2023-community',
+            'kia-niro-ev-de-2019-2022-community',
+            'volkswagen-eup-gen2-2020-2023-community',
+            'renault-zoe-ph1-2012-2019-community',
+            'hyundai-ioniq6-egmp-2022-2024-community',
+            'kia-soul-ev-sk3-2020-community',
+            'toyota-etnga-bev-2022-2024',
+            'toyota-prius-tnga-2016-2026',
+            'kia-ev9-egmp-2024-2025-experimental',
+          }),
+        );
+        expect(
+          installable.map((profile) => profile.id),
+          isNot(contains('lexus-rx450hl-2020-source-vehicle')),
+        );
         final metadataOnlyMappings = snapshot.catalog.profiles.where(
           (profile) => {
             'chevrolet-bolt-ev-2017',

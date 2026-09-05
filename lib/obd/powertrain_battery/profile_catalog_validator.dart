@@ -2,6 +2,7 @@
 library;
 
 import '../pid/formula_engine.dart';
+import '../pid/pid.dart';
 import 'powertrain_battery_profile.dart';
 import 'profile_wire_contract.dart';
 
@@ -537,18 +538,24 @@ final class PowertrainBatteryProfileValidation {
 
   /// Whether this profile may be installed as dashboard PID definitions.
   ///
-  /// Open only for a profile that passed every gate of a reviewed tier:
-  /// `ready` (all identity evidence exact) or `community` (exact identity
-  /// plus at least one independent corroborating source and a pinned source
-  /// artifact hash). An injected catalog entry cannot reach here without
-  /// first passing the bundle's SHA-256 manifest verification, and a profile
-  /// that merely labels itself `ready`/`community` still fails on the
-  /// evidence issues collected above.
-  bool get canInstall =>
-      issues.isEmpty &&
-      (profile.status == PowertrainProfileStatus.ready ||
-          profile.status == PowertrainProfileStatus.community) &&
-      profile.commands.isNotEmpty;
+  /// Evidence is not the gate. A profile that passed structural validation
+  /// and carries only pollable bounded-read commands may install when it is
+  /// `ready`, `community`, or `experimental`. Mode 21 stays probe-only
+  /// because [PollableServices] refuses it as a gauge service — that is
+  /// command risk, not a missing field log. `researchOnly` has no commands.
+  bool get canInstall {
+    if (issues.isNotEmpty || profile.commands.isEmpty) return false;
+    switch (profile.status) {
+      case PowertrainProfileStatus.ready:
+      case PowertrainProfileStatus.community:
+      case PowertrainProfileStatus.experimental:
+        return profile.commands.every(
+          (command) => PollableServices.isPollable(command.modeAndIdentifier),
+        );
+      case PowertrainProfileStatus.researchOnly:
+        return false;
+    }
+  }
 
   /// Whether the one-shot probe flow may read this profile's commands.
   ///

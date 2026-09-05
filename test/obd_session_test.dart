@@ -154,7 +154,7 @@ void main() {
     });
 
     test(
-      'unconfirmed profiles poll only profile-independent derived inputs',
+      'unconfirmed profiles still poll derived inputs as labelled 估算',
       () async {
         final container = await _container();
         addTearDown(container.dispose);
@@ -171,9 +171,9 @@ void main() {
         expect(measuredOnly.valueOf(PidLibrary.engineFuelRate), isNotNull);
         expect(
           measuredOnly.readings,
-          isNot(contains(PidLibrary.manifoldPressure.id)),
+          contains(PidLibrary.manifoldPressure.id),
         );
-        expect(measuredOnly.readings, isNot(contains(PidLibrary.mafRate.id)));
+        expect(measuredOnly.readings, contains(PidLibrary.mafRate.id));
 
         await container.read(vehicleProfileProvider.notifier).confirm();
         final confirmed = await session.telemetryStream

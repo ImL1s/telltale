@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/obd/pid/pid_library.dart';
 import 'package:torque_obd/obd/telemetry.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
+import 'package:torque_obd/telemetry/session/derived_estimates.dart';
 import 'package:torque_obd/telemetry/session/telemetry_recorder.dart';
 import 'package:torque_obd/telemetry/session/telemetry_session.dart';
 
@@ -70,6 +71,75 @@ void main() {
     expect(footer.valueCount, 1);
     expect(footer.statusCount, 0);
     expect(footer.gapCount, 0);
+  });
+
+  test('derived estimates are recorded without inventing a missing-PID gap', () {
+    final hp = freezePidDefinition(DerivedEstimates.horsepower);
+    final header = TelemetrySessionHeader(
+      sessionId: '0123456789abcdef0123456789abcdef',
+      startedAtUtc: wall,
+      source: TelemetrySource.demo,
+      transport: TransportKind.demo,
+      protocol: 'AUTO, CAN 11/500',
+      signals: [freezePidDefinition(PidLibrary.engineRpm), hp],
+    );
+    expect(recorder.prepare(header), isTrue);
+    expect(recorder.openAcceptance(), isTrue);
+    recorder.ingest(
+      TelemetrySnapshot(
+        readings: {PidLibrary.engineRpm.id: _rpm(1726, wall)},
+        capturedAt: wall,
+      ),
+      derivedValues: {hp.definition.id: 145},
+    );
+    expect(
+      emitted.where((event) => event.pidId == hp.definition.id).single.value,
+      145,
+    );
+    expect(
+      emitted.where((event) => event.kind == TelemetryEventKind.status),
+      isEmpty,
+    );
+  });
+
+  test('derived lanes close with a local gap when inputs disappear', () {
+    final hp = freezePidDefinition(DerivedEstimates.horsepower);
+    final header = TelemetrySessionHeader(
+      sessionId: '0123456789abcdef0123456789abcdef',
+      startedAtUtc: wall,
+      source: TelemetrySource.demo,
+      transport: TransportKind.demo,
+      protocol: 'AUTO, CAN 11/500',
+      signals: [freezePidDefinition(PidLibrary.engineRpm), hp],
+    );
+    expect(recorder.prepare(header), isTrue);
+    expect(recorder.openAcceptance(), isTrue);
+    recorder.ingest(
+      TelemetrySnapshot(
+        readings: {PidLibrary.engineRpm.id: _rpm(1726, wall)},
+        capturedAt: wall,
+      ),
+      derivedValues: {hp.definition.id: 145},
+    );
+    elapsed = 1000;
+    wall = wall.add(const Duration(milliseconds: 1));
+    recorder.ingest(
+      TelemetrySnapshot(
+        readings: {PidLibrary.engineRpm.id: _rpm(1800, wall)},
+        capturedAt: wall,
+      ),
+    );
+    expect(
+      emitted.where(
+        (event) =>
+            event.pidId == hp.definition.id &&
+            event.kind == TelemetryEventKind.status,
+      ),
+      hasLength(1),
+    );
+    recorder.stop();
+    final footer = recorder.complete(bytesBeforeFooter: 321);
+    expect(footer.gapCount, 1);
   });
 
   test('complete keeps endedAtUtc at or after startedAtUtc after clock skew', () {
