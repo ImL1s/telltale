@@ -97,9 +97,13 @@ an available value becomes unavailable; initial unavailability is not a gap.
 round-trip. `outOfReferenceRange` keeps the finite number and labels it 異常;
 it is not a reason to drop the sample or to mark the whole file 已驗證.
 
-CSV export version 2 adds `availability`, `origin`, `evidence`, `quality`, and
-`operation_risk` columns from the same USABILITY-R2 policy the live UI uses.
-Mixed evidence is never upgraded to `fieldVerified`.
+CSV export version 2 adds `availability`, `origin`, `evidence`, `quality`,
+`operation_risk`, `formula`, and `assumptions` columns from the same
+USABILITY-R2 policy the live UI uses. Mixed evidence is never upgraded to
+`fieldVerified`. Estimate `assumptions` may include vehicle parameters used
+for 馬力/油耗 (mass, drag, displacement, fuel). The full vehicle-profile
+document, VIN, GPS, account, adapter address, and raw diagnostic traffic
+remain excluded; the CSV header records `estimate_assumptions=included`.
 
 `observedAtUtc` is when the recorder inspected the snapshot.
 `sourceTimestampUtc` is the timestamp carried by the accepted reading.

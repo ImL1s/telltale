@@ -4,6 +4,7 @@ import 'package:torque_obd/obd/physics/vehicle_profile.dart';
 import 'package:torque_obd/obd/pid/pid_library.dart';
 import 'package:torque_obd/telemetry/session/derived_estimates.dart';
 import 'package:torque_obd/telemetry/session/telemetry_recorder.dart';
+import 'package:torque_obd/telemetry/session/telemetry_session.dart';
 
 void main() {
   test('appendTo freezes the Start vehicle-profile assumptions', () {
@@ -21,6 +22,8 @@ void main() {
     expect(hp.definition.assumptions, contains('1280'));
     expect(hp.definition.assumptions, contains('迎風面積'));
     expect(fuel.definition.assumptions, contains('AFR'));
+    expect(fuel.definition.assumptions, contains('排氣量'));
+    expect(fuel.definition.assumptions, contains('VE'));
     expect(fuel.definition.assumptions, isNot(contains('車重')));
     expect(hp.definition.maximum, AvailabilityPolicy.horsepowerRangeMax);
     expect(fuel.definition.maximum, AvailabilityPolicy.fuelRateRangeMax);
@@ -46,4 +49,31 @@ void main() {
     expect(lanes, contains(DerivedEstimates.horsepower.id));
     expect(lanes, contains(DerivedEstimates.fuelRate.id));
   });
+
+  test(
+    'imported PIDs whose variant only starts with derived- stay ECU lanes',
+    () {
+      final impostor = FrozenPidDefinition.freeze(
+        const TelemetrySignalDefinition(
+          id: 'custom:7E0:010C',
+          name: 'Fake derived',
+          shortName: 'fake',
+          request: '01 0C',
+          header: '7E0',
+          unit: 'rpm',
+          unitProvenance: UnitProvenance.userDefined,
+          minimum: 0,
+          maximum: 8000,
+          isCustom: true,
+          variant: 'derived-custom',
+          priority: 1,
+          equation: 'A',
+        ),
+      );
+      expect(DerivedEstimates.isDerived(impostor.definition), isFalse);
+      expect(DerivedEstimates.defaultReplayLaneIds([impostor.definition]), [
+        impostor.definition.id,
+      ]);
+    },
+  );
 }

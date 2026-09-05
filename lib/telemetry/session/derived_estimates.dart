@@ -41,7 +41,9 @@ abstract final class DerivedEstimates {
   static const defaultReplayLaneLimit = 4;
 
   static bool isDerived(TelemetrySignalDefinition definition) =>
-      definition.variant.startsWith('derived-');
+      isDerivedId(definition.id) ||
+      definition.variant == horsepowerVariant ||
+      definition.variant == fuelVariant;
 
   static bool isDerivedId(String id) =>
       id == horsepower.id || id == fuelRate.id;

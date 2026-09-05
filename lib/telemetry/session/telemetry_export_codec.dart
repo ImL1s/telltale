@@ -10,6 +10,21 @@ import 'telemetry_session.dart';
 import 'telemetry_session_codec.dart';
 
 abstract final class TelemetryExportCodec {
+  static const privacyExclusions = <String>[
+    'VIN',
+    'GPS',
+    'account',
+    'fullVehicleProfile',
+    'adapterAddress',
+    'rawDiagnosticTraffic',
+  ];
+
+  static const csvPrivacyExclusions =
+      'VIN;GPS;account;full_vehicle_profile;adapter_address;raw_diagnostic_traffic';
+
+  static const jsonDisclosure =
+      'fullFrozenDefinitions may contain user-authored labels, units, equations, and estimate assumptions (mass, drag, displacement, fuel). The full vehicle-profile document is excluded.';
+
   static const csvColumns = <String>[
     'observed_at_utc',
     'source_timestamp_utc',
@@ -57,8 +72,9 @@ abstract final class TelemetryExportCodec {
       '# status_count=${session.footer.statusCount}',
       '# gap_count=${session.footer.gapCount}',
       '# preview=預覽已抽樣；匯出保留完整已記錄事件',
-      '# privacy_exclusions=VIN;GPS;account;vehicle_profile;adapter_address;raw_diagnostic_traffic',
-      '# json_disclosure=JSON may include user-authored PID labels, units, equations, and full frozen definitions',
+      '# privacy_exclusions=$csvPrivacyExclusions',
+      '# estimate_assumptions=included',
+      '# json_disclosure=$jsonDisclosure',
       '# mixed_evidence_upgrade=never',
       '# usability_r2=labels_follow_datum',
     ];
@@ -96,15 +112,8 @@ abstract final class TelemetryExportCodec {
     };
     final preamble = <String, Object?>{
       'exportVersion': 1,
-      'privacyExclusions': const <String>[
-        'VIN',
-        'GPS',
-        'account',
-        'vehicleProfile',
-        'adapterAddress',
-        'rawDiagnosticTraffic',
-      ],
-      'disclosure': 'fullFrozenDefinitions may contain user-authored labels, units, and equations',
+      'privacyExclusions': privacyExclusions,
+      'disclosure': jsonDisclosure,
     };
     final encodedPreamble = jsonEncode(preamble);
     yield Uint8List.fromList(
@@ -127,11 +136,7 @@ abstract final class TelemetryExportCodec {
       yield Uint8List.fromList(
         utf8.encode(
           jsonEncode(
-            jsonEventObject(
-              event,
-              definition,
-              source: session.header.source,
-            ),
+            jsonEventObject(event, definition, source: session.header.source),
           ),
         ),
       );

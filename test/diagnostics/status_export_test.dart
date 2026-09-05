@@ -125,6 +125,8 @@ void main() {
         File(dump).writeAsStringSync(csv);
       }
       expect(csv, contains('telltale_telemetry_csv_version=2'));
+      expect(csv, contains('estimate_assumptions=included'));
+      expect(csv, contains('full_vehicle_profile'));
       expect(csv, contains('mixed_evidence_upgrade=never'));
       expect(csv, contains('outOfReferenceRange'));
       expect(csv, contains('userSupplied'));
@@ -193,6 +195,19 @@ void main() {
         ),
       );
       expect(clearStatus.operationRisk, OperationRisk.clear);
+      expect(clearStatus.quality, DatumQuality.partial);
+
+      final staleStatus = AvailabilityPolicy.forRecordedEvent(
+        definition: community.definition,
+        event: TelemetryEvent.status(
+          observedAtUtc: DateTime.utc(2026),
+          elapsedUs: 3000,
+          pidId: community.definition.id,
+          status: TelemetryStatus.stale,
+        ),
+      );
+      expect(staleStatus.quality, DatumQuality.stale);
+      expect(staleStatus.badgeLabels, contains('過期'));
 
       final demoCustom = AvailabilityPolicy.forRecordedEvent(
         definition: user.definition,

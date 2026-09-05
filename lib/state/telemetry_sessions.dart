@@ -26,7 +26,7 @@ import 'telemetry_runtime.dart';
 
 const telemetryReplayDisclaimer = '預覽已抽樣；匯出保留完整已記錄事件';
 const telemetryExportDisclosure =
-    '匯出內容包含訊號名稱、數值、觀測與來源時間、傳輸類型、通訊協定，以及凍結的 PID 標籤、單位與公式。JSON 可能包含使用者自訂標籤、單位、公式與完整凍結定義。匯出內容不含 VIN、GPS、帳號、轉接器位址、車輛設定檔或原始診斷流量。';
+    '匯出內容包含訊號名稱、數值、觀測與來源時間、傳輸類型、通訊協定、凍結的 PID 標籤／單位／公式，以及估算假設（車重、空氣阻力、排氣量、燃料等參數）。JSON 可能包含使用者自訂標籤、單位、公式與完整凍結定義。匯出內容不含 VIN、GPS、帳號、轉接器位址、完整車輛設定檔或原始診斷流量。';
 
 enum TelemetryHistoryAccess {
   permitted,

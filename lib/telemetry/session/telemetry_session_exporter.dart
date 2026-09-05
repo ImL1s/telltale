@@ -282,8 +282,9 @@ Iterable<Uint8List> _csvPreamble(
     '# status_count=${footer.statusCount}',
     '# gap_count=${footer.gapCount}',
     '# preview=預覽已抽樣；匯出保留完整已記錄事件',
-    '# privacy_exclusions=VIN;GPS;account;vehicle_profile;adapter_address;raw_diagnostic_traffic',
-    '# json_disclosure=JSON may include user-authored PID labels, units, equations, and full frozen definitions',
+    '# privacy_exclusions=${TelemetryExportCodec.csvPrivacyExclusions}',
+    '# estimate_assumptions=included',
+    '# json_disclosure=${TelemetryExportCodec.jsonDisclosure}',
     '# mixed_evidence_upgrade=never',
     '# usability_r2=labels_follow_datum',
     for (final signal in header.signals)
@@ -311,15 +312,8 @@ Uint8List _csvEvent(
 Uint8List _jsonPreambleStart() {
   final preamble = <String, Object?>{
     'exportVersion': 1,
-    'privacyExclusions': const <String>[
-      'VIN',
-      'GPS',
-      'account',
-      'vehicleProfile',
-      'adapterAddress',
-      'rawDiagnosticTraffic',
-    ],
-    'disclosure': 'fullFrozenDefinitions may contain user-authored labels, units, and equations',
+    'privacyExclusions': TelemetryExportCodec.privacyExclusions,
+    'disclosure': TelemetryExportCodec.jsonDisclosure,
   };
   final encoded = jsonEncode(preamble);
   return Uint8List.fromList(

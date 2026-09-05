@@ -139,6 +139,9 @@ void main() {
       );
       expect(fuel.assumptions, contains('AFR'));
       expect(fuel.assumptions, contains('密度'));
+      expect(fuel.assumptions, contains('排氣量'));
+      expect(fuel.assumptions, contains('VE'));
+      expect(fuel.formula, contains('speed-density'));
       expect(fuel.assumptions, isNot(contains('車重')));
       expect(fuel.quality, DatumQuality.valid);
       final fuelOutlier = AvailabilityPolicy.forEstimate(

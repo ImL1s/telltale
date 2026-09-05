@@ -169,6 +169,7 @@ abstract final class AvailabilityPolicy {
 
   static const fuelEstimateFormula =
       'L/h = (MAF g/s) / (AFR × fuel density g/L) × 3600; '
+      'MAF 可為 PID 0110 或 speed-density（RPM×MAP×IAT×排氣量×VE）； '
       'L/100km = (L/h) / speed_kmh × 100';
 
   /// Horsepower ceiling used by live estimates and the frozen derived PID.
@@ -386,7 +387,9 @@ abstract final class AvailabilityPolicy {
       EstimateKind.fuel =>
         '${_fieldNote('燃料', profile.fuelType.label, profile.fuelTypeField.origin)}；'
             'AFR ${profile.stoichAfr.toStringAsFixed(1)}；'
-            '密度 ${profile.fuelDensityGPerL.toStringAsFixed(0)} g/L',
+            '密度 ${profile.fuelDensityGPerL.toStringAsFixed(0)} g/L；'
+            '${_fieldNote('排氣量', '${profile.displacementL.toStringAsFixed(1)} L', profile.displacementField.origin)}；'
+            '${_fieldNote('VE', '${profile.volumetricEfficiency.toStringAsFixed(0)}%', profile.volumetricEfficiencyField.origin)}',
     };
   }
 
@@ -477,7 +480,9 @@ abstract final class AvailabilityPolicy {
     required TelemetryEvent event,
     TelemetrySource? source,
   }) {
-    final derived = definition.variant.startsWith('derived-');
+    final derived =
+        definition.variant == 'derived-horsepower' ||
+        definition.variant == 'derived-fuel-rate';
     final origin = derived
         ? DatumOrigin.calculated
         : source == TelemetrySource.demo
@@ -508,7 +513,9 @@ abstract final class AvailabilityPolicy {
         origin: origin,
         evidence: evidence,
         compatibility: compatibility,
-        quality: DatumQuality.partial,
+        quality: event.status == TelemetryStatus.stale
+            ? DatumQuality.stale
+            : DatumQuality.partial,
         operationRisk: derived
             ? OperationRisk.display
             : riskFor(definition.request),

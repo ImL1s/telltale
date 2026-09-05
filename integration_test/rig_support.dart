@@ -575,7 +575,7 @@ const _privacyExclusions = <String>[
   'VIN',
   'GPS',
   'account',
-  'vehicleProfile',
+  'fullVehicleProfile',
   'adapterAddress',
   'rawDiagnosticTraffic',
 ];
