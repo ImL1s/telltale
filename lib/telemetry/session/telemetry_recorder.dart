@@ -179,7 +179,23 @@ class TelemetryRecorder {
       final reading = snapshot.readings[id];
       if (DerivedEstimates.isDerived(entry.value.definition)) {
         final derived = derivedValues[id];
-        if (derived == null || !derived.isFinite) continue;
+        if (derived == null || !derived.isFinite) {
+          if (!(_available[id] ?? false)) continue;
+          const status = TelemetryStatus.noAnswer;
+          if (_lastStatus[id] == status) continue;
+          _available[id] = false;
+          _lastStatus[id] = status;
+          onEvent(
+            TelemetryEvent.status(
+              observedAtUtc: observedAt,
+              elapsedUs: elapsed,
+              pidId: id,
+              status: status,
+            ),
+          );
+          _refreshCounts(statusDelta: 1, gapDelta: 1);
+          continue;
+        }
         _available[id] = true;
         _lastStatus.remove(id);
         final definition = entry.value.definition;

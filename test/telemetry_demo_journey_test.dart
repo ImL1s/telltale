@@ -51,18 +51,19 @@ void main() {
       elapsedUs: () => elapsedUs,
     );
 
+    const profile = VehicleProfile(massKg: 1280, isConfirmed: false);
     final started = await recorder.start(
       TelemetryStartRequest(
         source: TelemetrySource.demo,
         transport: TransportKind.demo,
         protocol: 'Demo',
         activePids: [PidLibrary.vehicleSpeed, PidLibrary.engineRpm],
+        vehicleProfile: profile,
       ),
     );
     expect(started.outcome, TelemetryStartOutcome.recording);
     now = now.add(const Duration(milliseconds: 100));
     elapsedUs += 100000;
-    const profile = VehicleProfile(massKg: 1280, isConfirmed: false);
     recorder.onTelemetry(
       _snapshot(now, speed: 0, rpm: 1726, accel: 0),
       profile: profile,
@@ -183,6 +184,62 @@ void main() {
     expect(emptyLibrary.damaged, isEmpty);
     expect(quota.groupCount, 0);
     expect(quota.recognizedBytes, 0);
+  });
+
+  test('editing vehicle settings during a recording stops the session', () async {
+    final documents = await Directory.systemTemp.createTemp('profile-freeze-');
+    addTearDown(() => documents.delete(recursive: true));
+    const sessionId = '00000000000000000000000000000022';
+    var now = DateTime.utc(2026, 8, 30, 1);
+    var elapsedUs = 1000000;
+    final store = TelemetrySessionStore(
+      documentsDirectory: () async => documents,
+      idSource: () => sessionId,
+      nowUtc: () => now,
+    );
+    final environment = LiveTelemetryStartEnvironment(
+      readConnection: () => const TelemetryConnectionSnapshot(
+        connected: true,
+        foreground: true,
+        connectionGeneration: 1,
+        foregroundEpoch: 1,
+      ),
+      utcNow: () => now,
+      elapsedUs: () => elapsedUs,
+    )..observeTelemetry(_snapshot(now, speed: 0, rpm: 900, accel: 0));
+    final recorder = RootTelemetryRecorder(
+      environment: environment,
+      storage: FileTelemetryRecorderStorage(store),
+      startCommandMutex: StartCommandMutex(),
+      artifactGate: ArtifactOperationGate(),
+      pidMutationLock: PidMutationLock(),
+      utcNow: () => now,
+      elapsedUs: () => elapsedUs,
+    );
+    const profile = VehicleProfile(massKg: 1280);
+    expect(
+      (await recorder.start(
+        TelemetryStartRequest(
+          source: TelemetrySource.demo,
+          transport: TransportKind.demo,
+          protocol: 'Demo',
+          activePids: [PidLibrary.vehicleSpeed, PidLibrary.engineRpm],
+          vehicleProfile: profile,
+        ),
+      )).outcome,
+      TelemetryStartOutcome.recording,
+    );
+    recorder.onTelemetry(
+      _snapshot(now, speed: 8, rpm: 2100, accel: 0.8),
+      profile: profile,
+    );
+    recorder.onVehicleProfileChanged(const VehicleProfile(massKg: 1800));
+    await recorder.drainFinalization();
+    expect(recorder.progress.state.phase, TelemetryRecorderPhase.completed);
+    expect(
+      recorder.progress.state.terminalReason,
+      TelemetryTerminalReason.configurationChanged,
+    );
   });
 }
 

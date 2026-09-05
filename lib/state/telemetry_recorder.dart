@@ -5,6 +5,7 @@ export '../telemetry/session/telemetry_session_writer.dart'
     show TelemetryAppendResult;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -88,12 +89,14 @@ final class TelemetryStartRequest {
     required this.transport,
     required this.protocol,
     required List<Pid> activePids,
+    this.vehicleProfile,
   }) : activePids = List<Pid>.unmodifiable(activePids);
 
   final TelemetrySource source;
   final TransportKind transport;
   final String protocol;
   final List<Pid> activePids;
+  final VehicleProfile? vehicleProfile;
 }
 
 /// A synchronous view of all values that can revoke Start preparation.
@@ -290,6 +293,7 @@ final class RootTelemetryRecorder {
   int? _recordingEndedElapsedUs;
   String? _sessionId;
   int? _effectiveSessionLimit;
+  VehicleProfile? _frozenProfile;
 
   TelemetryRecorderState get state => _recorder.state;
   Stream<TelemetryRecorderState> get states => _states.stream;
@@ -514,6 +518,7 @@ final class RootTelemetryRecorder {
         );
       }
       _recordingStartedElapsedUs = elapsedUs();
+      _frozenProfile = request.vehicleProfile;
       _armDurationLimit();
       _releaseCommand();
       _publish();
@@ -540,14 +545,16 @@ final class RootTelemetryRecorder {
   void onTelemetry(TelemetrySnapshot snapshot, {VehicleProfile? profile}) {
     if (_expireDurationLimitIfDue()) return;
     if (!_recorder.isAccepting) return;
+    _frozenProfile ??= profile;
+    final frozen = _frozenProfile;
     try {
       _recorder.ingest(
         snapshot,
-        derivedValues: profile == null
+        derivedValues: frozen == null
             ? const <String, double>{}
             : DerivedEstimates.valuesFor(
                 snapshot: snapshot,
-                profile: profile,
+                profile: frozen,
               ),
       );
     } on _EventRejected catch (rejected) {
@@ -827,7 +834,19 @@ final class RootTelemetryRecorder {
     _recordingEndedElapsedUs = null;
     _sessionId = null;
     _effectiveSessionLimit = null;
+    _frozenProfile = null;
     _recorder = _newRecorder();
+  }
+
+  void onVehicleProfileChanged(VehicleProfile next) {
+    if (!isAccepting) return;
+    final frozen = _frozenProfile;
+    if (frozen == null) {
+      _frozenProfile = next;
+      return;
+    }
+    if (jsonEncode(frozen.toJson()) == jsonEncode(next.toJson())) return;
+    _beginFinalization(TelemetryTerminalReason.configurationChanged);
   }
 
   void _invalidateAppendFailureHandler() {
@@ -974,12 +993,10 @@ final telemetryRecorderControllerProvider = Provider<RootTelemetryRecorder>((
   );
   ref.listen(telemetryProvider, (_, next) {
     final value = authoritativeTelemetryValue(next);
-    if (value != null) {
-      controller.onTelemetry(
-        value,
-        profile: ref.read(vehicleProfileProvider),
-      );
-    }
+    if (value != null) controller.onTelemetry(value);
+  });
+  ref.listen(vehicleProfileProvider, (_, next) {
+    controller.onVehicleProfileChanged(next);
   });
   final boundaries = ref
       .read(telemetryRecorderBoundaryStreamProvider)

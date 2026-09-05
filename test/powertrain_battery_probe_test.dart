@@ -60,23 +60,26 @@ void main() {
         snapshot.catalog.profiles
             .where((profile) => validator.validateProfile(profile).canInstall)
             .map((profile) => profile.id),
-        [
+        unorderedEquals([
           'byd-atto3-2022-2024-community',
           'mg-mg4-2022-2026',
           'mg-mg5-ev-2020-2023',
           'mg-zs-ev-au-2021',
+          'toyota-etnga-bev-2022-2024',
           'hyundai-ioniq5-egmp-2021-2024-community',
           'kia-ev6-egmp-2022-2024-community',
           'hyundai-kona-electric-os-2019-2023-community',
           'kia-niro-ev-de-2019-2022-community',
+          'toyota-prius-tnga-2016-2026',
           'volkswagen-eup-gen2-2020-2023-community',
           'renault-zoe-ph1-2012-2019-community',
           'hyundai-ioniq6-egmp-2022-2024-community',
           'kia-soul-ev-sk3-2020-community',
-        ],
+          'kia-ev9-egmp-2024-2025-experimental',
+        ]),
         reason:
-            'only the cross-corroborated community entries may reach the '
-            'installer; the experimental entry stays probe-only',
+            'community and pollable experimental Mode 22 maps may install; '
+            'Mode 21 stays probe-only',
       );
     },
   );

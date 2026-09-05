@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../state/obd_session.dart';
 import '../../../state/pid_registry.dart';
+import '../../../state/settings.dart';
 import '../../../state/telemetry_recorder.dart';
 import '../../../state/telemetry_runtime.dart';
 import '../../../state/telemetry_sessions.dart';
@@ -246,6 +247,7 @@ class _TelemetryRecorderPanelState
             transport: evidence.transport,
             protocol: evidence.protocol,
             activePids: ref.read(activePidsProvider),
+            vehicleProfile: ref.read(vehicleProfileProvider),
           ),
         );
     if (!mounted) return;

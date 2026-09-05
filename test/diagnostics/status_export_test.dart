@@ -247,6 +247,10 @@ void main() {
     final csv = TelemetryExportCodec.encodeCsv(session);
     expect(csv, contains('calculated'));
     expect(csv, contains('display'));
+    expect(csv, contains('formula'));
+    expect(csv, contains('assumptions'));
+    expect(csv, contains('wheelWatts'));
+    expect(csv, contains('估算使用記錄當下的車輛設定'));
     final json = utf8.decode(TelemetryExportCodec.encodeJson(session));
     expect(json, contains('"origin":"calculated"'));
     expect(json, contains('wheelWatts'));

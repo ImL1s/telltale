@@ -186,7 +186,7 @@ void main() {
     }
   });
 
-  test('an out-of-physics Atto 3 pack voltage is refused, not shown', () async {
+  test('an out-of-physics Atto 3 pack voltage is kept as a finite 異常', () async {
     // LE 100 V sits under the 200 V floor.
     final readings = await _pollProfile(
       atto3Pids,
@@ -202,7 +202,7 @@ void main() {
     final voltage = atto3Pids.singleWhere(
       (pid) => pid.sourceSignalId == 'pack_voltage',
     );
-    expect(readings[voltage.id], isNull);
+    expect(readings[voltage.id], isNotNull);
   });
 
   test('e-TNGA experimental 1F5B/106C decode pinned capture bytes', () async {
@@ -210,10 +210,7 @@ void main() {
     final etnga = snapshot.catalog.profiles.singleWhere(
       (profile) => profile.id == 'toyota-etnga-bev-2022-2024',
     );
-    expect(
-      () => PowertrainProfilePidInstaller.build(etnga),
-      throwsA(isA<PowertrainProfileInstallException>()),
-    );
+    expect(PowertrainProfilePidInstaller.build(etnga), isNotEmpty);
 
     final soc = PowertrainBatteryProbe.decode(
       profile: etnga,

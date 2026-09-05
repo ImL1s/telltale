@@ -102,6 +102,46 @@ void main() {
     );
   });
 
+  test('derived lanes close with a local gap when inputs disappear', () {
+    final hp = freezePidDefinition(DerivedEstimates.horsepower);
+    final header = TelemetrySessionHeader(
+      sessionId: '0123456789abcdef0123456789abcdef',
+      startedAtUtc: wall,
+      source: TelemetrySource.demo,
+      transport: TransportKind.demo,
+      protocol: 'AUTO, CAN 11/500',
+      signals: [freezePidDefinition(PidLibrary.engineRpm), hp],
+    );
+    expect(recorder.prepare(header), isTrue);
+    expect(recorder.openAcceptance(), isTrue);
+    recorder.ingest(
+      TelemetrySnapshot(
+        readings: {PidLibrary.engineRpm.id: _rpm(1726, wall)},
+        capturedAt: wall,
+      ),
+      derivedValues: {hp.definition.id: 145},
+    );
+    elapsed = 1000;
+    wall = wall.add(const Duration(milliseconds: 1));
+    recorder.ingest(
+      TelemetrySnapshot(
+        readings: {PidLibrary.engineRpm.id: _rpm(1800, wall)},
+        capturedAt: wall,
+      ),
+    );
+    expect(
+      emitted.where(
+        (event) =>
+            event.pidId == hp.definition.id &&
+            event.kind == TelemetryEventKind.status,
+      ),
+      hasLength(1),
+    );
+    recorder.stop();
+    final footer = recorder.complete(bytesBeforeFooter: 321);
+    expect(footer.gapCount, 1);
+  });
+
   test('complete keeps endedAtUtc at or after startedAtUtc after clock skew', () {
     final started = wall;
     expect(recorder.prepare(_header(started)), isTrue);

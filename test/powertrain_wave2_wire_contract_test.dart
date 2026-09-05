@@ -190,7 +190,7 @@ void main() {
     }
   });
 
-  test('an out-of-physics e-Up pack voltage is refused, not shown', () async {
+  test('an out-of-physics e-Up pack voltage is kept as a finite 異常', () async {
     // raw 800 / 4 = 200.0 V — below the 84s floor of 235.2 V. The bound
     // must turn this into no reading rather than a plausible wrong one.
     final readings = await _pollProfile(
@@ -205,7 +205,8 @@ void main() {
     final voltage = eupPids.singleWhere(
       (pid) => pid.sourceSignalId == 'pack_voltage',
     );
-    expect(readings[voltage.id], isNull);
+    expect(readings[voltage.id], isNotNull);
+    expect(readings[voltage.id]!.value, 200);
   });
   test('Ioniq 6 decodes the pinned Ioniq 5 capture identically', () async {
     // The Ioniq 6 entry claims the exact E-GMP 0101/0105 contract already

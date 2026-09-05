@@ -25,6 +25,8 @@ abstract final class TelemetryExportCodec {
     'evidence',
     'quality',
     'operation_risk',
+    'formula',
+    'assumptions',
   ];
 
   static final Csv _csv = Csv(lineDelimiter: '\r\n');
@@ -197,6 +199,12 @@ abstract final class TelemetryExportCodec {
       status.evidence.name,
       status.quality.name,
       status.operationRisk.name,
+      event.kind == TelemetryEventKind.value
+          ? protectCsvCell(status.formula ?? '')
+          : '',
+      event.kind == TelemetryEventKind.value
+          ? protectCsvCell(status.assumptions ?? '')
+          : '',
     ];
   }
 
