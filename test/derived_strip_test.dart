@@ -170,7 +170,7 @@ void main() {
     expect(_onScreen('實測'), findsNothing);
   });
 
-  testWidgets('ECU-reported fuel still carries 未驗證 and range 異常', (
+  testWidgets('ECU-reported fuel still carries 示範 and range 異常', (
     tester,
   ) async {
     await pumpDashboard(
@@ -179,7 +179,7 @@ void main() {
       activePids: _activePids,
     );
 
-    expect(_onScreen('未驗證'), findsWidgets);
+    expect(_onScreen('示範'), findsWidgets);
     expect(_onScreen('異常'), findsWidgets);
     expect(_onScreen('實測'), findsNothing);
   });
@@ -194,7 +194,7 @@ void main() {
     );
 
     expect(_label('ECU 油耗資料'), findsOneWidget);
-    expect(_onScreen('未驗證'), findsWidgets);
+    expect(_onScreen('示範'), findsWidgets);
     expect(_label('油耗'), findsOneWidget);
     expect(_label('10.0'), findsOneWidget);
     expect(_label('L/100km'), findsOneWidget);
@@ -230,7 +230,7 @@ void main() {
     );
 
     expect(_label('ECU 油耗資料'), findsOneWidget);
-    expect(_onScreen('未驗證'), findsWidgets);
+    expect(_onScreen('示範'), findsWidgets);
     expect(_onScreen('異常'), findsWidgets);
   });
 }

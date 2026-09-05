@@ -94,6 +94,32 @@ void main() {
     expect(values[DerivedEstimates.fuelRate.id], greaterThan(0));
   });
 
+  test('measured 015E does not suppress the derived fuel estimate lane', () {
+    final now = DateTime.utc(2026);
+    final values = DerivedEstimates.valuesFor(
+      snapshot: TelemetrySnapshot(
+        readings: {
+          PidLibrary.mafRate.id: Reading(
+            pid: PidLibrary.mafRate,
+            value: 25,
+            rawBytes: const [0x09, 0xc4],
+            timestamp: now,
+          ),
+          PidLibrary.engineFuelRate.id: Reading(
+            pid: PidLibrary.engineFuelRate,
+            value: 6,
+            rawBytes: const [0x00, 0x78],
+            timestamp: now,
+          ),
+        },
+        capturedAt: now,
+      ),
+      profile: const VehicleProfile(),
+    );
+    expect(values[DerivedEstimates.fuelRate.id], isNotNull);
+    expect(values[DerivedEstimates.fuelRate.id], greaterThan(0));
+  });
+
   test('default replay lanes prefer derived estimates over header order', () {
     final signals = DerivedEstimates.appendTo(
       [

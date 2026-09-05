@@ -623,6 +623,7 @@ class _DerivedStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
     final profile = ref.watch(vehicleProfileProvider);
+    final demo = ref.watch(obdSessionProvider).kind == TransportKind.demo;
 
     final rpm = snapshot.valueOf(PidLibrary.engineRpm);
     final speed = snapshot.valueOf(PidLibrary.vehicleSpeed);
@@ -647,7 +648,7 @@ class _DerivedStrip extends ConsumerWidget {
           value: value,
           min: PidLibrary.engineFuelRate.minValue,
           max: PidLibrary.engineFuelRate.maxValue,
-          origin: DatumOrigin.ecuReported,
+          origin: demo ? DatumOrigin.demo : DatumOrigin.ecuReported,
           evidence: EvidenceKind.notTested,
         );
 

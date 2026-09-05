@@ -133,9 +133,6 @@ abstract final class DerivedEstimates {
         values[horsepower.id] = metrics.engineHorsepower;
       }
     }
-    final measuredFuel =
-        fuelSensor != null && fuelSensor.isFinite && fuelSensor >= 0;
-    if (measuredFuel) return values;
     final maf = mafSensor != null && mafSensor > 0
         ? mafSensor
         : rpm != null && mapKpa != null && intakeTempC != null
