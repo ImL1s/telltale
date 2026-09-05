@@ -14,6 +14,7 @@ TelemetrySignalDefinition makeSignal({
   String unit = 'rpm',
   String variant = '',
   String equation = 'A',
+  String? assumptions,
 }) => TelemetrySignalDefinition(
   id: id,
   name: name,
@@ -30,6 +31,7 @@ TelemetrySignalDefinition makeSignal({
   variant: variant,
   priority: 0,
   equation: equation,
+  assumptions: assumptions,
 );
 
 String utf8Sized(int bytes) {
@@ -70,6 +72,7 @@ void main() {
         ('unit', 64, (value) => makeSignal(unit: value)),
         ('variant', 128, (value) => makeSignal(variant: value)),
         ('equation', 4096, (value) => makeSignal(equation: value)),
+        ('assumptions', 1024, (value) => makeSignal(assumptions: value)),
       ];
       for (final (field, limit, build) in cases) {
         final atLimit = switch (field) {

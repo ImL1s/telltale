@@ -9,6 +9,7 @@ import 'dart:ui' show Rect;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../telemetry/session/derived_estimates.dart';
 import '../telemetry/session/telemetry_recorder.dart';
 import '../telemetry/session/telemetry_session.dart';
 import '../telemetry/session/telemetry_session_codec.dart';
@@ -105,9 +106,8 @@ final class TelemetrySessionProjection {
   /// recovery time and can inflate overnight gaps into the history label.
   final int elapsedDurationUs;
 
-  Duration get duration => Duration(
-    microseconds: elapsedDurationUs < 0 ? 0 : elapsedDurationUs,
-  );
+  Duration get duration =>
+      Duration(microseconds: elapsedDurationUs < 0 ? 0 : elapsedDurationUs);
   String get sourceLabel => telemetrySourceLabel(source);
 }
 
@@ -545,9 +545,7 @@ final telemetrySessionLibraryServiceProvider =
       (ref) => TelemetrySessionLibraryService(),
     );
 
-bool telemetryRecorderPhaseBlocksLibraryReload(
-  TelemetryRecorderPhase phase,
-) =>
+bool telemetryRecorderPhaseBlocksLibraryReload(TelemetryRecorderPhase phase) =>
     phase == TelemetryRecorderPhase.preparing ||
     phase == TelemetryRecorderPhase.recording ||
     phase == TelemetryRecorderPhase.finalizing;
@@ -560,21 +558,21 @@ final telemetrySessionLibraryProvider = FutureProvider<TelemetrySessionLibrary>(
     // `_scanLibraryWorker` (full library validate + re-read) while the writer
     // was opening/appending. Explicit invalidations (delete, recovery,
     // pull-to-refresh) still apply.
-    ref.listen<TelemetryRecorderProgress>(
-      telemetryRecorderProgressProvider,
-      (previous, next) {
-        if (previous == null) return;
-        final wasActive = telemetryRecorderPhaseBlocksLibraryReload(
-          previous.state.phase,
-        );
-        final nowSettled = !telemetryRecorderPhaseBlocksLibraryReload(
-          next.state.phase,
-        );
-        if (wasActive && nowSettled) {
-          ref.invalidateSelf();
-        }
-      },
-    );
+    ref.listen<TelemetryRecorderProgress>(telemetryRecorderProgressProvider, (
+      previous,
+      next,
+    ) {
+      if (previous == null) return;
+      final wasActive = telemetryRecorderPhaseBlocksLibraryReload(
+        previous.state.phase,
+      );
+      final nowSettled = !telemetryRecorderPhaseBlocksLibraryReload(
+        next.state.phase,
+      );
+      if (wasActive && nowSettled) {
+        ref.invalidateSelf();
+      }
+    });
     return ref.watch(telemetrySessionLibraryServiceProvider).load();
   },
 );
@@ -958,10 +956,9 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
             .toSet();
         if (selected.any((id) => !ids.contains(id))) invalidSelection = true;
         final lanes = selected.isEmpty
-            ? header!.signals
-                  .take(4)
-                  .map((signal) => signal.definition.id)
-                  .toList()
+            ? DerivedEstimates.defaultReplayLaneIds(
+                header!.signals.map((signal) => signal.definition),
+              )
             : selected;
         for (final id in lanes) {
           accumulators[id] = TimelineDownsampleAccumulator(

@@ -18,6 +18,7 @@ TelemetrySignalDefinition signal({
   String variant = '',
   int priority = 0,
   String equation = '(A*256+B)/4',
+  String? assumptions,
 }) => TelemetrySignalDefinition(
   id: id,
   name: name,
@@ -32,6 +33,7 @@ TelemetrySignalDefinition signal({
   variant: variant,
   priority: priority,
   equation: equation,
+  assumptions: assumptions,
 );
 
 void main() {
@@ -42,6 +44,14 @@ void main() {
       '{"id":"rpm","name":"引擎轉速","shortName":"RPM","request":"01 0C","header":"","unit":"rpm","unitProvenance":"standardDirectCanonical","minimum":0.0,"maximum":8000.0,"isCustom":false,"variant":"","priority":0,"equation":"(A*256+B)/4"}',
     );
     expect(frozen.fingerprint, matches(RegExp(r'^fnv1a64:[0-9a-f]{16}$')));
+    final withAssumptions = FrozenPidDefinition.freeze(
+      signal(assumptions: '車重 1280 kg（通用預設）'),
+    );
+    expect(
+      utf8.decode(withAssumptions.canonicalBytes),
+      contains('"assumptions":"車重 1280 kg（通用預設）"'),
+    );
+    expect(utf8.decode(frozen.canonicalBytes), isNot(contains('assumptions')));
     expect(frozen.matchesExact(FrozenPidDefinition.freeze(signal())), isTrue);
     expect(
       frozen.matchesExact(FrozenPidDefinition.freeze(signal(name: 'other'))),

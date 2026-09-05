@@ -22,7 +22,7 @@ abstract final class DerivedEstimates {
     variant: horsepowerVariant,
     equation: AvailabilityPolicy.horsepowerFormula,
     minValue: 0,
-    maxValue: 2000,
+    maxValue: AvailabilityPolicy.horsepowerRangeMax,
     units: 'hp',
   );
 
@@ -34,9 +34,11 @@ abstract final class DerivedEstimates {
     variant: fuelVariant,
     equation: AvailabilityPolicy.fuelEstimateFormula,
     minValue: 0,
-    maxValue: 100,
+    maxValue: AvailabilityPolicy.fuelRateRangeMax,
     units: 'L/h',
   );
+
+  static const defaultReplayLaneLimit = 4;
 
   static bool isDerived(TelemetrySignalDefinition definition) =>
       definition.variant.startsWith('derived-');
@@ -45,15 +47,51 @@ abstract final class DerivedEstimates {
       id == horsepower.id || id == fuelRate.id;
 
   static List<FrozenPidDefinition> appendTo(
-    List<FrozenPidDefinition> signals,
-  ) {
+    List<FrozenPidDefinition> signals, {
+    VehicleProfile? profile,
+  }) {
     final extra = <FrozenPidDefinition>[
-      freezePidDefinition(horsepower),
-      freezePidDefinition(fuelRate),
+      freezePidDefinition(
+        horsepower,
+        assumptions: profile == null
+            ? null
+            : AvailabilityPolicy.estimateAssumptions(
+                profile,
+                EstimateKind.horsepower,
+              ),
+      ),
+      freezePidDefinition(
+        fuelRate,
+        assumptions: profile == null
+            ? null
+            : AvailabilityPolicy.estimateAssumptions(
+                profile,
+                EstimateKind.fuel,
+              ),
+      ),
     ];
     final room = maximumTelemetrySignals - signals.length;
     if (room <= 0) return signals;
     return [...signals, ...extra.take(room)];
+  }
+
+  /// History replay keeps four lanes. Derived estimates sit after live PIDs
+  /// in the frozen header, so the default set prefers them instead of
+  /// `signals.take(4)`.
+  static List<String> defaultReplayLaneIds(
+    Iterable<TelemetrySignalDefinition> signals, {
+    int limit = defaultReplayLaneLimit,
+  }) {
+    final derived = <String>[];
+    final others = <String>[];
+    for (final signal in signals) {
+      if (isDerived(signal)) {
+        derived.add(signal.id);
+      } else {
+        others.add(signal.id);
+      }
+    }
+    return [...derived, ...others].take(limit).toList(growable: false);
   }
 
   static Map<String, double> valuesFor({

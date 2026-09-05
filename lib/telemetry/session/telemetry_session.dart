@@ -107,6 +107,7 @@ final class TelemetrySignalDefinition {
     required this.priority,
     required this.equation,
     this.evidenceKind,
+    this.assumptions,
   });
 
   final String id;
@@ -127,6 +128,9 @@ final class TelemetrySignalDefinition {
   /// existing recordings keep their fingerprints.
   final String? evidenceKind;
 
+  /// Frozen estimate disclosure captured at Start. Omitted when null.
+  final String? assumptions;
+
   Map<String, Object?> toCanonicalJson() {
     final json = <String, Object?>{
       'id': id,
@@ -145,6 +149,9 @@ final class TelemetrySignalDefinition {
     };
     if (evidenceKind != null && evidenceKind!.isNotEmpty) {
       json['evidenceKind'] = evidenceKind;
+    }
+    if (assumptions != null && assumptions!.isNotEmpty) {
+      json['assumptions'] = assumptions;
     }
     return json;
   }
@@ -197,6 +204,9 @@ final class FrozenPidDefinition {
     _checkText(value.unit, 64, 'unit');
     _checkText(value.variant, 128, 'variant');
     _checkText(value.equation, 4096, 'equation', allowEmpty: false);
+    if (value.assumptions != null) {
+      _checkText(value.assumptions!, 1024, 'assumptions');
+    }
     if ((value.minimum != null && !value.minimum!.isFinite) ||
         (value.maximum != null && !value.maximum!.isFinite)) {
       throw const TelemetryValidationException(

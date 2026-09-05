@@ -378,6 +378,7 @@ final class RootTelemetryRecorder {
       }
       definitions = DerivedEstimates.appendTo(
         request.activePids.map(freezePidDefinition).toList(),
+        profile: request.vehicleProfile,
       );
       if (definitions.map((value) => value.definition.id).toSet().length !=
           definitions.length) {
@@ -552,10 +553,7 @@ final class RootTelemetryRecorder {
         snapshot,
         derivedValues: frozen == null
             ? const <String, double>{}
-            : DerivedEstimates.valuesFor(
-                snapshot: snapshot,
-                profile: frozen,
-              ),
+            : DerivedEstimates.valuesFor(snapshot: snapshot, profile: frozen),
       );
     } on _EventRejected catch (rejected) {
       _beginFinalization(rejected.reason);

@@ -171,6 +171,12 @@ abstract final class AvailabilityPolicy {
       'L/h = (MAF g/s) / (AFR × fuel density g/L) × 3600; '
       'L/100km = (L/h) / speed_kmh × 100';
 
+  /// Horsepower ceiling used by live estimates and the frozen derived PID.
+  static const horsepowerRangeMax = 2000.0;
+
+  /// Fuel-rate ceiling in L/h; not the horsepower scale.
+  static const fuelRateRangeMax = 100.0;
+
   /// Generic OBD is available without a catalog match, VIN, or year.
   static DatumStatus genericObdSession({
     required VehicleIdentity identity,
@@ -333,7 +339,7 @@ abstract final class AvailabilityPolicy {
     String quantity = '估算',
     EstimateKind kind = EstimateKind.horsepower,
   }) {
-    final assumptions = _estimateAssumptions(profile, kind);
+    final assumptions = estimateAssumptions(profile, kind);
     if (value == null || !value.isFinite) {
       return DatumStatus(
         availability: FeatureAvailability.unavailable,
@@ -348,7 +354,11 @@ abstract final class AvailabilityPolicy {
         assumptions: assumptions,
       );
     }
-    final outOfRange = value < 0 || value > 2000;
+    final max = switch (kind) {
+      EstimateKind.horsepower => horsepowerRangeMax,
+      EstimateKind.fuel => fuelRateRangeMax,
+    };
+    final outOfRange = value < 0 || value > max;
     return DatumStatus(
       availability: FeatureAvailability.usableWithNotice,
       origin: DatumOrigin.calculated,
@@ -365,18 +375,18 @@ abstract final class AvailabilityPolicy {
     );
   }
 
-  static String _estimateAssumptions(VehicleProfile profile, EstimateKind kind) {
+  static String estimateAssumptions(VehicleProfile profile, EstimateKind kind) {
     return switch (kind) {
       EstimateKind.horsepower =>
         '${_fieldNote('車重', '${profile.massKg.toStringAsFixed(0)} kg', profile.massField.origin)}；'
-        '${_fieldNote('Cd', profile.dragCoefficient.toStringAsFixed(2), profile.dragCoefficientField.origin)}；'
-        '${_fieldNote('迎風面積', '${profile.frontalAreaM2.toStringAsFixed(1)} m²', profile.frontalAreaField.origin)}；'
-        '${_fieldNote('滾動阻力', profile.rollingResistance.toStringAsFixed(3), profile.rollingResistanceField.origin)}；'
-        '${_fieldNote('傳動效率', '${(profile.drivetrainEfficiency * 100).toStringAsFixed(0)}% ${profile.drivetrain.label}', profile.drivetrainField.origin)}',
+            '${_fieldNote('Cd', profile.dragCoefficient.toStringAsFixed(2), profile.dragCoefficientField.origin)}；'
+            '${_fieldNote('迎風面積', '${profile.frontalAreaM2.toStringAsFixed(1)} m²', profile.frontalAreaField.origin)}；'
+            '${_fieldNote('滾動阻力', profile.rollingResistance.toStringAsFixed(3), profile.rollingResistanceField.origin)}；'
+            '${_fieldNote('傳動效率', '${(profile.drivetrainEfficiency * 100).toStringAsFixed(0)}% ${profile.drivetrain.label}', profile.drivetrainField.origin)}',
       EstimateKind.fuel =>
         '${_fieldNote('燃料', profile.fuelType.label, profile.fuelTypeField.origin)}；'
-        'AFR ${profile.stoichAfr.toStringAsFixed(1)}；'
-        '密度 ${profile.fuelDensityGPerL.toStringAsFixed(0)} g/L',
+            'AFR ${profile.stoichAfr.toStringAsFixed(1)}；'
+            '密度 ${profile.fuelDensityGPerL.toStringAsFixed(0)} g/L',
     };
   }
 
@@ -506,25 +516,26 @@ abstract final class AvailabilityPolicy {
         nextStep: '失敗只影響此項，其他讀值照用',
       );
     }
-    final status = decodedValue(
-      structurallyValid: true,
-      value: event.value,
-      min: definition.minimum,
-      max: definition.maximum,
-      origin: origin,
-      evidence: evidence,
-      compatibility: compatibility,
-      operationRisk: derived
-          ? OperationRisk.display
-          : OperationRisk.boundedRead,
-      freshnessLabel: null,
-    ).letQuality(
-      event.quality == TelemetryQuality.outOfReferenceRange
-          ? DatumQuality.outOfReferenceRange
-          : event.quality == TelemetryQuality.tentativeDecode
-          ? DatumQuality.tentativeDecode
-          : null,
-    );
+    final status =
+        decodedValue(
+          structurallyValid: true,
+          value: event.value,
+          min: definition.minimum,
+          max: definition.maximum,
+          origin: origin,
+          evidence: evidence,
+          compatibility: compatibility,
+          operationRisk: derived
+              ? OperationRisk.display
+              : OperationRisk.boundedRead,
+          freshnessLabel: null,
+        ).letQuality(
+          event.quality == TelemetryQuality.outOfReferenceRange
+              ? DatumQuality.outOfReferenceRange
+              : event.quality == TelemetryQuality.tentativeDecode
+              ? DatumQuality.tentativeDecode
+              : null,
+        );
     if (!derived) return status;
     return DatumStatus(
       availability: status.availability,
@@ -536,7 +547,10 @@ abstract final class AvailabilityPolicy {
       reason: status.reason ?? '假設尚未確認，仍可估算',
       nextStep: status.nextStep,
       formula: definition.equation,
-      assumptions: '估算使用記錄當下的車輛設定',
+      assumptions:
+          definition.assumptions != null && definition.assumptions!.isNotEmpty
+          ? definition.assumptions
+          : '估算使用記錄當下的車輛設定',
       freshnessLabel: status.freshnessLabel,
     );
   }

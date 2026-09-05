@@ -546,6 +546,9 @@ abstract final class TelemetrySessionCodec {
     evidenceKind: map['evidenceKind'] is String
         ? _string(map, 'evidenceKind')
         : null,
+    assumptions: map['assumptions'] is String
+        ? _string(map, 'assumptions')
+        : null,
   );
 
   static TelemetryEvent _decodeEvent(Map<String, Object?> map) =>

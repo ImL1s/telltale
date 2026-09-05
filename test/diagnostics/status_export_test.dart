@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:torque_obd/diagnostics/availability.dart';
+import 'package:torque_obd/obd/physics/vehicle_profile.dart';
 import 'package:torque_obd/obd/transport/obd_transport.dart';
 import 'package:torque_obd/telemetry/session/derived_estimates.dart';
 import 'package:torque_obd/telemetry/session/telemetry_export_codec.dart';
@@ -213,7 +214,14 @@ void main() {
   );
 
   test('derived estimates export as 估算 with formula', () {
-    final hp = freezePidDefinition(DerivedEstimates.horsepower);
+    const profile = VehicleProfile(massKg: 1280);
+    final hp = freezePidDefinition(
+      DerivedEstimates.horsepower,
+      assumptions: AvailabilityPolicy.estimateAssumptions(
+        profile,
+        EstimateKind.horsepower,
+      ),
+    );
     final header = TelemetrySessionHeader(
       sessionId: '0123456789abcdef0123456789abcdef',
       startedAtUtc: DateTime.utc(2026),
@@ -250,10 +258,13 @@ void main() {
     expect(csv, contains('formula'));
     expect(csv, contains('assumptions'));
     expect(csv, contains('wheelWatts'));
-    expect(csv, contains('估算使用記錄當下的車輛設定'));
+    expect(csv, contains('1280'));
+    expect(csv, contains('迎風面積'));
+    expect(csv, isNot(contains('估算使用記錄當下的車輛設定')));
     final json = utf8.decode(TelemetryExportCodec.encodeJson(session));
     expect(json, contains('"origin":"calculated"'));
     expect(json, contains('wheelWatts'));
+    expect(json, contains('1280'));
     final status = AvailabilityPolicy.forRecordedEvent(
       definition: hp.definition,
       event: events.single,
@@ -262,6 +273,13 @@ void main() {
     expect(status.origin, DatumOrigin.calculated);
     expect(status.badgeLabels, contains('估算'));
     expect(status.formula, AvailabilityPolicy.horsepowerFormula);
+    expect(status.assumptions, contains('1280'));
+    final legacy = AvailabilityPolicy.forRecordedEvent(
+      definition: freezePidDefinition(DerivedEstimates.horsepower).definition,
+      event: events.single,
+      source: TelemetrySource.demo,
+    );
+    expect(legacy.assumptions, '估算使用記錄當下的車輛設定');
   });
 }
 

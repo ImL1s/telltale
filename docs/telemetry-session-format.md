@@ -63,9 +63,12 @@ and footer/count mismatches.
 
 Each signal stores the complete frozen definition (`id`, names, request,
 header, unit, unit provenance, range, custom/variant flags, priority, and
-equation) plus its own fingerprint. A live definition must match both its exact
-canonical bytes and fingerprint. The FNV value is an integrity/equality check,
-not a cryptographic signature and not authorization by itself.
+equation) plus its own fingerprint. Optional `evidenceKind` and `assumptions`
+are omitted when empty so older recordings keep their fingerprints. Derived
+horsepower / fuel-rate signals freeze the Start vehicle-parameter disclosure
+into `assumptions`. A live definition must match both its exact canonical bytes
+and fingerprint. The FNV value is an integrity/equality check, not a
+cryptographic signature and not authorization by itself.
 
 Source labels are evidence labels, not compatibility claims:
 

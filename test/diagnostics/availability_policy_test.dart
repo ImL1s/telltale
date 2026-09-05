@@ -140,6 +140,30 @@ void main() {
       expect(fuel.assumptions, contains('AFR'));
       expect(fuel.assumptions, contains('密度'));
       expect(fuel.assumptions, isNot(contains('車重')));
+      expect(fuel.quality, DatumQuality.valid);
+      final fuelOutlier = AvailabilityPolicy.forEstimate(
+        profile: profile,
+        value: 150,
+        formula: AvailabilityPolicy.fuelEstimateFormula,
+        quantity: '油耗',
+        kind: EstimateKind.fuel,
+      );
+      expect(fuelOutlier.quality, DatumQuality.outOfReferenceRange);
+      expect(fuelOutlier.badgeLabels, contains('異常'));
+      final hpInRange = AvailabilityPolicy.forEstimate(
+        profile: profile,
+        value: 1500,
+        formula: AvailabilityPolicy.horsepowerFormula,
+        quantity: '馬力',
+      );
+      expect(hpInRange.quality, DatumQuality.valid);
+      final hpOutlier = AvailabilityPolicy.forEstimate(
+        profile: profile,
+        value: 2500,
+        formula: AvailabilityPolicy.horsepowerFormula,
+        quantity: '馬力',
+      );
+      expect(hpOutlier.quality, DatumQuality.outOfReferenceRange);
     });
 
     test('finite out-of-range coolant is kept as 異常', () {
