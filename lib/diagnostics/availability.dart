@@ -513,9 +513,11 @@ abstract final class AvailabilityPolicy {
         origin: origin,
         evidence: evidence,
         compatibility: compatibility,
-        quality: event.status == TelemetryStatus.stale
-            ? DatumQuality.stale
-            : DatumQuality.partial,
+        quality: switch (event.status) {
+          TelemetryStatus.stale => DatumQuality.stale,
+          TelemetryStatus.unsafeServiceRefusal => DatumQuality.invalid,
+          _ => DatumQuality.partial,
+        },
         operationRisk: derived
             ? OperationRisk.display
             : riskFor(definition.request),

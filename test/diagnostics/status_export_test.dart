@@ -209,6 +209,18 @@ void main() {
       expect(staleStatus.quality, DatumQuality.stale);
       expect(staleStatus.badgeLabels, contains('過期'));
 
+      final refused = AvailabilityPolicy.forRecordedEvent(
+        definition: user.definition,
+        event: TelemetryEvent.status(
+          observedAtUtc: DateTime.utc(2026),
+          elapsedUs: 4000,
+          pidId: user.definition.id,
+          status: TelemetryStatus.unsafeServiceRefusal,
+        ),
+      );
+      expect(refused.quality, DatumQuality.invalid);
+      expect(refused.badgeLabels, contains('無效'));
+
       final demoCustom = AvailabilityPolicy.forRecordedEvent(
         definition: user.definition,
         event: events[1],
