@@ -162,6 +162,7 @@ final class TelemetryReplayPrimitive {
     this.status,
     this.breakBefore = false,
     this.omittedGapCountBefore = 0,
+    this.quality,
   });
 
   final TelemetryReplayPrimitiveKind kind;
@@ -170,6 +171,7 @@ final class TelemetryReplayPrimitive {
   final String? status;
   final bool breakBefore;
   final int omittedGapCountBefore;
+  final String? quality;
 }
 
 final class TelemetryReplayLane {
@@ -1005,6 +1007,7 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
       } else {
         final value = line.object['value'];
         if (value is! num) return;
+        final quality = line.object['quality'];
         final breakBefore = !(available[id] ?? false) && (segment[id] ?? 0) > 0;
         accumulator.add(
           TimelineValue(
@@ -1012,6 +1015,7 @@ Future<Map<String, Object?>> _replayWorker(Map<String, Object?> request) async {
             value: value.toDouble(),
             segmentId: '$id:${segment[id] ?? 0}',
             breakBefore: breakBefore,
+            quality: quality is String ? quality : null,
           ),
         );
         available[id] = true;
@@ -1075,6 +1079,8 @@ Map<String, Object?> _encodePrimitive(TimelinePrimitive primitive) =>
         'value': value.value,
         'breakBefore': value.breakBefore,
         'omittedGapCountBefore': value.omittedGapCountBefore,
+        if (value.quality != null && value.quality!.isNotEmpty)
+          'quality': value.quality,
       },
       TimelineStatus status => <String, Object?>{
         'kind': 'status',
@@ -1115,6 +1121,7 @@ TelemetryReplayResult _decodeReplay(Map<String, Object?> raw) {
                 breakBefore: primitive['breakBefore'] as bool? ?? false,
                 omittedGapCountBefore:
                     primitive['omittedGapCountBefore'] as int? ?? 0,
+                quality: primitive['quality'] as String?,
               );
             }),
           ),

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:csv/csv.dart';
 
+import '../../diagnostics/availability.dart';
 import 'telemetry_session.dart';
 import 'telemetry_session_codec.dart';
 
@@ -19,6 +20,11 @@ abstract final class TelemetryExportCodec {
     'value',
     'unit',
     'status',
+    'availability',
+    'origin',
+    'evidence',
+    'quality',
+    'operation_risk',
   ];
 
   static final Csv _csv = Csv(lineDelimiter: '\r\n');
@@ -38,7 +44,7 @@ abstract final class TelemetryExportCodec {
         signal.definition.id: signal.definition,
     };
     final metadata = <String>[
-      '# telltale_telemetry_csv_version=1',
+      '# telltale_telemetry_csv_version=2',
       '# source=${session.header.source.wireName}',
       '# transport=${session.header.transport.name}',
       '# protocol=${_safeMetadata(session.header.protocol)}',
@@ -51,6 +57,8 @@ abstract final class TelemetryExportCodec {
       '# preview=預覽已抽樣；匯出保留完整已記錄事件',
       '# privacy_exclusions=VIN;GPS;account;vehicle_profile;adapter_address;raw_diagnostic_traffic',
       '# json_disclosure=JSON may include user-authored PID labels, units, equations, and full frozen definitions',
+      '# mixed_evidence_upgrade=never',
+      '# usability_r2=labels_follow_datum',
     ];
     for (final signal in session.header.signals) {
       metadata.add(
@@ -64,21 +72,7 @@ abstract final class TelemetryExportCodec {
     for (final event in session.events) {
       final definition = definitions[event.pidId]!;
       final row = _csv.encode([
-        <Object?>[
-          event.observedAtUtc.toIso8601String(),
-          event.kind == TelemetryEventKind.value
-              ? event.sourceTimestampUtc!.toIso8601String()
-              : '',
-          event.elapsedUs / 1000,
-          protectCsvCell(definition.id),
-          protectCsvCell(definition.name),
-          event.kind.name,
-          event.kind == TelemetryEventKind.value ? event.value : '',
-          event.kind == TelemetryEventKind.value
-              ? protectCsvCell(definition.unit)
-              : '',
-          event.kind == TelemetryEventKind.status ? event.status!.wireName : '',
-        ],
+        csvCells(event, definition, source: session.header.source),
       ]);
       yield Uint8List.fromList(utf8.encode('$row\r\n'));
     }
@@ -94,6 +88,10 @@ abstract final class TelemetryExportCodec {
 
   static Iterable<Uint8List> encodeJsonChunks(TelemetrySession session) sync* {
     session = _validated(session);
+    final definitions = {
+      for (final signal in session.header.signals)
+        signal.definition.id: signal.definition,
+    };
     final preamble = <String, Object?>{
       'exportVersion': 1,
       'privacyExclusions': const <String>[
@@ -120,7 +118,21 @@ abstract final class TelemetryExportCodec {
         yield Uint8List.fromList(const [0x2c]);
       }
       first = false;
-      yield _withoutLf(TelemetrySessionCodec.encodeEventLine(event));
+      final definition = definitions[event.pidId];
+      if (definition == null) {
+        throw const TelemetryValidationException('unknownPid');
+      }
+      yield Uint8List.fromList(
+        utf8.encode(
+          jsonEncode(
+            jsonEventObject(
+              event,
+              definition,
+              source: session.header.source,
+            ),
+          ),
+        ),
+      );
     }
     yield Uint8List.fromList(utf8.encode('],"footer":'));
     yield _withoutLf(TelemetrySessionCodec.encodeFooterLine(session.footer));
@@ -129,6 +141,64 @@ abstract final class TelemetryExportCodec {
 
   static Uint8List _withoutLf(Uint8List line) =>
       Uint8List.sublistView(line, 0, line.length - 1);
+
+  static Map<String, Object?> jsonEventObject(
+    TelemetryEvent event,
+    TelemetrySignalDefinition definition, {
+    TelemetrySource? source,
+  }) {
+    final status = AvailabilityPolicy.forRecordedEvent(
+      definition: definition,
+      event: event,
+      source: source,
+    );
+    return <String, Object?>{
+      'type': event.kind.name,
+      'observedAtUtc': event.observedAtUtc.toIso8601String(),
+      if (event.kind == TelemetryEventKind.value)
+        'sourceTimestampUtc': event.sourceTimestampUtc!.toIso8601String(),
+      'elapsedUs': event.elapsedUs,
+      'pidId': event.pidId,
+      if (event.kind == TelemetryEventKind.value) 'value': event.value,
+      if (event.kind == TelemetryEventKind.status)
+        'status': event.status!.wireName,
+      if (event.quality != null && event.quality != TelemetryQuality.valid)
+        'quality': event.quality!.wireName,
+      ...status.exportFields,
+    };
+  }
+
+  static List<Object?> csvCells(
+    TelemetryEvent event,
+    TelemetrySignalDefinition definition, {
+    TelemetrySource? source,
+  }) {
+    final status = AvailabilityPolicy.forRecordedEvent(
+      definition: definition,
+      event: event,
+      source: source,
+    );
+    return <Object?>[
+      event.observedAtUtc.toIso8601String(),
+      event.kind == TelemetryEventKind.value
+          ? event.sourceTimestampUtc!.toIso8601String()
+          : '',
+      event.elapsedUs / 1000,
+      protectCsvCell(definition.id),
+      protectCsvCell(definition.name),
+      event.kind.name,
+      event.kind == TelemetryEventKind.value ? event.value : '',
+      event.kind == TelemetryEventKind.value
+          ? protectCsvCell(definition.unit)
+          : '',
+      event.kind == TelemetryEventKind.status ? event.status!.wireName : '',
+      status.availability.name,
+      status.origin.name,
+      status.evidence.name,
+      status.quality.name,
+      status.operationRisk.name,
+    ];
+  }
 
   static String protectCsvCell(String value) {
     if (value.isEmpty) return value;

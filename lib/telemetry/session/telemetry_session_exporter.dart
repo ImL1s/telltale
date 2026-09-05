@@ -176,15 +176,32 @@ final class TelemetrySessionExporter {
           if (definition == null) {
             throw const TelemetryExportException('unknownPid');
           }
-          await _emit(channel, _csvEvent(event, definition));
+          await _emit(
+            channel,
+            _csvEvent(event, definition, source: trusted.header.source),
+          );
         } else {
           if (!firstJsonEvent) {
             await _emit(channel, Uint8List.fromList(const [0x2c]));
           }
           firstJsonEvent = false;
+          final definition = definitions[event.pidId];
+          if (definition == null) {
+            throw const TelemetryExportException('unknownPid');
+          }
           await _emit(
             channel,
-            _withoutLf(TelemetrySessionCodec.encodeEventLine(event)),
+            Uint8List.fromList(
+              utf8.encode(
+                jsonEncode(
+                  TelemetryExportCodec.jsonEventObject(
+                    event,
+                    definition,
+                    source: trusted.header.source,
+                  ),
+                ),
+              ),
+            ),
           );
         }
       },
@@ -254,7 +271,7 @@ Iterable<Uint8List> _csvPreamble(
   TelemetrySessionFooter footer,
 ) sync* {
   final metadata = <String>[
-    '# telltale_telemetry_csv_version=1',
+    '# telltale_telemetry_csv_version=2',
     '# source=${header.source.wireName}',
     '# transport=${header.transport.name}',
     '# protocol=${_safeMetadata(header.protocol)}',
@@ -267,6 +284,8 @@ Iterable<Uint8List> _csvPreamble(
     '# preview=預覽已抽樣；匯出保留完整已記錄事件',
     '# privacy_exclusions=VIN;GPS;account;vehicle_profile;adapter_address;raw_diagnostic_traffic',
     '# json_disclosure=JSON may include user-authored PID labels, units, equations, and full frozen definitions',
+    '# mixed_evidence_upgrade=never',
+    '# usability_r2=labels_follow_datum',
     for (final signal in header.signals)
       '# frozen_definition=${_safeMetadata(signal.definition.id)}:${signal.fingerprint}',
   ];
@@ -280,24 +299,11 @@ Iterable<Uint8List> _csvPreamble(
 
 Uint8List _csvEvent(
   TelemetryEvent event,
-  TelemetrySignalDefinition definition,
-) {
+  TelemetrySignalDefinition definition, {
+  TelemetrySource? source,
+}) {
   final row = _csv.encode([
-    <Object?>[
-      event.observedAtUtc.toIso8601String(),
-      event.kind == TelemetryEventKind.value
-          ? event.sourceTimestampUtc!.toIso8601String()
-          : '',
-      event.elapsedUs / 1000,
-      TelemetryExportCodec.protectCsvCell(definition.id),
-      TelemetryExportCodec.protectCsvCell(definition.name),
-      event.kind.name,
-      event.kind == TelemetryEventKind.value ? event.value : '',
-      event.kind == TelemetryEventKind.value
-          ? TelemetryExportCodec.protectCsvCell(definition.unit)
-          : '',
-      event.kind == TelemetryEventKind.status ? event.status!.wireName : '',
-    ],
+    TelemetryExportCodec.csvCells(event, definition, source: source),
   ]);
   return Uint8List.fromList(utf8.encode('$row\r\n'));
 }

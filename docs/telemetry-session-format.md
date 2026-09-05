@@ -82,13 +82,21 @@ Both event kinds contain `observedAtUtc`, a nondecreasing monotonic
 
 | Type | Additional fields | Meaning |
 | --- | --- | --- |
-| `value` | `sourceTimestampUtc`, finite numeric `value` | A fresh value whose frozen PID definition still matches Start |
+| `value` | `sourceTimestampUtc`, finite numeric `value`, optional `quality` | A fresh value whose frozen PID definition still matches Start |
 | `status` | `status` | The signal is unavailable for the named reason |
 
 The status wire values are `stale`, `unsupported`, `noAnswer`, `formulaError`,
 `busError`, `headerMismatch`, and `unsafeServiceRefusal`. Repeated identical
 status events are suppressed. A `gap` is counted only when a signal that had
 an available value becomes unavailable; initial unavailability is not a gap.
+
+`quality` on a value event is omitted when `valid` so existing recordings
+round-trip. `outOfReferenceRange` keeps the finite number and labels it 異常;
+it is not a reason to drop the sample or to mark the whole file 已驗證.
+
+CSV export version 2 adds `availability`, `origin`, `evidence`, `quality`, and
+`operation_risk` columns from the same USABILITY-R2 policy the live UI uses.
+Mixed evidence is never upgraded to `fieldVerified`.
 
 `observedAtUtc` is when the recorder inspected the snapshot.
 `sourceTimestampUtc` is the timestamp carried by the accepted reading.

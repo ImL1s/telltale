@@ -227,4 +227,58 @@ void main() {
 
     expect(result.failure, TelemetryReplayFailure.damaged);
   });
+
+  test('replay keeps out-of-range quality on the selected datum', () async {
+    final documents = await Directory.systemTemp.createTemp('replay-quality');
+    addTearDown(() => documents.delete(recursive: true));
+    const id = '10000000000000000000000000000004';
+    final started = DateTime.utc(2026, 8, 30, 3);
+    final definition = freezePidDefinition(PidLibrary.coolantTemp);
+    final header = TelemetrySessionHeader(
+      sessionId: id,
+      startedAtUtc: started,
+      source: TelemetrySource.demo,
+      transport: TransportKind.demo,
+      protocol: 'AUTO',
+      signals: [definition],
+    );
+    final events = [
+      TelemetryEvent.value(
+        observedAtUtc: started,
+        sourceTimestampUtc: started,
+        elapsedUs: 0,
+        pidId: definition.definition.id,
+        value: 999,
+        quality: TelemetryQuality.outOfReferenceRange,
+      ),
+    ];
+    final prefix = TelemetrySessionCodec.encodePrefix(header, events);
+    final root = Directory('${documents.path}/telltale-telemetry');
+    await root.create(recursive: true);
+    await File('${root.path}/$id.ndjson').writeAsBytes(
+      TelemetrySessionCodec.encode(
+        TelemetrySession(
+          header: header,
+          events: events,
+          footer: TelemetrySessionFooter(
+            endedAtUtc: started.add(const Duration(seconds: 1)),
+            terminalReason: TelemetryTerminalReason.user,
+            valueCount: 1,
+            statusCount: 0,
+            gapCount: 0,
+            bytesBeforeFooter: prefix.length,
+          ),
+        ),
+      ),
+    );
+
+    final result = await TelemetrySessionLibraryService(
+      documentsDirectory: () async => documents,
+    ).replay(id);
+
+    final primitive = result.replay!.lanes.single.primitives.single;
+    expect(primitive.kind, TelemetryReplayPrimitiveKind.value);
+    expect(primitive.value, 999);
+    expect(primitive.quality, 'outOfReferenceRange');
+  });
 }

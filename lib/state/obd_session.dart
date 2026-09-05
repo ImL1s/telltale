@@ -902,10 +902,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     // /dev/rfcomm* identifiers and can mislead as "supported".
     if (sppSerialHostSupported) {
       return _connect(
-        SerialTransport(
-          portName: device.id,
-          displayLabel: device.name,
-        ),
+        SerialTransport(portName: device.id, displayLabel: device.name),
         TransportKind.bluetoothClassic,
       );
     }
@@ -1479,7 +1476,7 @@ class ObdSession extends Notifier<ObdConnectionState> {
     );
     _engine?.setActivePids(
       filtered,
-      includeProfileDerivedInputs: ref.read(vehicleProfileProvider).isConfirmed,
+      includeProfileDerivedInputs: true,
       authorizedProfilePidIds: {
         for (final pid in filtered)
           if (pid.ownerProfileId != null) pid.id,

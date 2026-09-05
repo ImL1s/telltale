@@ -452,6 +452,8 @@ abstract final class TelemetrySessionCodec {
           'elapsedUs': event.elapsedUs,
           'pidId': event.pidId,
           'value': event.value,
+          if (event.quality != null && event.quality != TelemetryQuality.valid)
+            'quality': event.quality!.wireName,
         },
         TelemetryEventKind.status => <String, Object?>{
           'type': 'status',
@@ -541,6 +543,9 @@ abstract final class TelemetrySessionCodec {
     variant: _string(map, 'variant'),
     priority: _integer(map, 'priority'),
     equation: _string(map, 'equation'),
+    evidenceKind: map['evidenceKind'] is String
+        ? _string(map, 'evidenceKind')
+        : null,
   );
 
   static TelemetryEvent _decodeEvent(Map<String, Object?> map) =>
@@ -551,6 +556,9 @@ abstract final class TelemetrySessionCodec {
           elapsedUs: _integer(map, 'elapsedUs'),
           pidId: _string(map, 'pidId'),
           value: _number(map, 'value'),
+          quality: map.containsKey('quality')
+              ? _enumValue(TelemetryQuality.values, _string(map, 'quality'))
+              : TelemetryQuality.valid,
         ),
         'status' => TelemetryEvent.status(
           observedAtUtc: _utc(map, 'observedAtUtc'),

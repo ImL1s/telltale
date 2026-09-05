@@ -1,0 +1,8 @@
+{
+  "softwarePass": true,
+  "softwareSkipped": false,
+  "fieldArtifacts": [],
+  "unknownTransactionMarkedSuccess": false,
+  "badPacketAsNumber": false,
+  "labels": ["unverified", "partial", "estimated"]
+}

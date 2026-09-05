@@ -53,6 +53,9 @@ class Pid {
   final int? dataLengthBytes;
   final int? responseDataLengthBytes;
 
+  /// Catalog evidence tier for USABILITY-R2 labels (`community`, `experimental`).
+  final String? evidenceKind;
+
   const Pid({
     required this.name,
     required this.shortName,
@@ -73,6 +76,7 @@ class Pid {
     this.dataOffsetBytes,
     this.dataLengthBytes,
     this.responseDataLengthBytes,
+    this.evidenceKind,
   });
 
   /// Distinguishes two definitions of the same signal that are not the same
@@ -227,6 +231,7 @@ class Pid {
     int? dataOffsetBytes,
     int? dataLengthBytes,
     int? responseDataLengthBytes,
+    String? evidenceKind,
   }) {
     return Pid(
       name: name ?? this.name,
@@ -249,6 +254,7 @@ class Pid {
       dataLengthBytes: dataLengthBytes ?? this.dataLengthBytes,
       responseDataLengthBytes:
           responseDataLengthBytes ?? this.responseDataLengthBytes,
+      evidenceKind: evidenceKind ?? this.evidenceKind,
     );
   }
 
@@ -272,6 +278,7 @@ class Pid {
     'dataOffsetBytes': dataOffsetBytes,
     'dataLengthBytes': dataLengthBytes,
     'responseDataLengthBytes': responseDataLengthBytes,
+    if (evidenceKind != null) 'evidenceKind': evidenceKind,
   };
 
   factory Pid.fromJson(Map<String, dynamic> json) => Pid(
@@ -306,6 +313,7 @@ class Pid {
     dataOffsetBytes: (json['dataOffsetBytes'] as num?)?.toInt(),
     dataLengthBytes: (json['dataLengthBytes'] as num?)?.toInt(),
     responseDataLengthBytes: (json['responseDataLengthBytes'] as num?)?.toInt(),
+    evidenceKind: json['evidenceKind'] as String?,
   );
 
   static String? _optionalHeader(Object? value) {

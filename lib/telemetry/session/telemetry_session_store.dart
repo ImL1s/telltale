@@ -136,6 +136,7 @@ final class TelemetryRecoveryInspectionItem {
   final int valueCount;
   final int statusCount;
   final int gapCount;
+
   /// Present for recover-and-install plans so recovery can clamp footer end
   /// times that would otherwise precede the durable header start.
   final DateTime? startedAtUtc;
@@ -867,7 +868,8 @@ final class TelemetrySessionStore {
           valueCount: parsed.valueCount,
           statusCount: parsed.statusCount,
           gapCount: parsed.gapCount,
-          startedAtUtc: classification ==
+          startedAtUtc:
+              classification ==
                   TelemetryRecoveryClassification.recoverAndInstall
               ? parsed.sessionHeader?.startedAtUtc
               : null,

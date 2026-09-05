@@ -304,26 +304,32 @@ class _ReplayLanePanel extends StatelessWidget {
     );
     final elapsedUs = (durationUs * position).round();
     double? currentValue;
+    String? currentQuality;
     for (final primitive in lane.primitives) {
       if (primitive.elapsedUs > elapsedUs) break;
       if (primitive.kind == TelemetryReplayPrimitiveKind.value) {
         currentValue = primitive.value;
+        currentQuality = primitive.quality;
       } else {
         currentValue = null;
+        currentQuality = null;
       }
     }
+    final outlier = currentQuality == 'outOfReferenceRange';
+    final valueLabel = currentValue?.toStringAsFixed(1) ?? '--';
     return Semantics(
       key: ValueKey('telemetry-replay-lane-${lane.pidId}'),
       label:
-          '${lane.name}，${currentValue?.toStringAsFixed(1) ?? '無資料'} ${lane.unit}，'
+          '${lane.name}，$valueLabel ${lane.unit}'
+          '${outlier ? '，異常' : ''}，'
           '${lane.primitives.length} 個抽樣節點，$gaps 個中斷',
       child: Panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${lane.name} · '
-              '${currentValue?.toStringAsFixed(1) ?? '--'} ${lane.unit}',
+              '${lane.name} · $valueLabel ${lane.unit}'
+              '${outlier ? ' · 異常' : ''}',
               style: context.texts.titleMedium,
             ),
             const SizedBox(height: Spacing.sm),

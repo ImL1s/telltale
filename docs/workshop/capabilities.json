@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "policy": "USABILITY-R2",
+  "notes": "Counts are software availability, not field-verified coverage. Catalog row counts are not 已驗證 coverage.",
+  "capabilities": [
+    {
+      "id": "generic-obd-mode01",
+      "task": "generic-obd-read",
+      "availability": "usableWithNotice",
+      "origin": "ecuReported",
+      "evidence": "notTested",
+      "compatibility": "unknown",
+      "quality": "valid",
+      "operationRisk": "boundedRead",
+      "requiresVin": false,
+      "requiresCatalog": false,
+      "requiresFieldArtifact": false
+    },
+    {
+      "id": "user-pid-import",
+      "task": "custom-pid",
+      "availability": "usableWithNotice",
+      "origin": "userEntered",
+      "evidence": "userSupplied",
+      "compatibility": "userSelected",
+      "quality": "valid",
+      "operationRisk": "boundedRead",
+      "requiresVin": false,
+      "requiresCatalog": false,
+      "requiresFieldArtifact": false
+    },
+    {
+      "id": "physics-estimates",
+      "task": "horsepower-fuel-estimate",
+      "availability": "usableWithNotice",
+      "origin": "calculated",
+      "evidence": "notTested",
+      "compatibility": "userSelected",
+      "quality": "valid",
+      "operationRisk": "display",
+      "requiresVin": false,
+      "requiresCatalog": false,
+      "requiresFieldArtifact": false
+    },
+    {
+      "id": "community-battery-read",
+      "task": "bms-read",
+      "availability": "usableWithNotice",
+      "origin": "ecuReported",
+      "evidence": "community",
+      "compatibility": "candidate",
+      "quality": "valid",
+      "operationRisk": "boundedRead",
+      "requiresVin": false,
+      "requiresCatalog": false,
+      "requiresFieldArtifact": false
+    },
+    {
+      "id": "experimental-mode22-battery-read",
+      "task": "bms-read",
+      "availability": "usableWithNotice",
+      "origin": "ecuReported",
+      "evidence": "experimental",
+      "compatibility": "candidate",
+      "quality": "valid",
+      "operationRisk": "boundedRead",
+      "requiresVin": false,
+      "requiresCatalog": false,
+      "requiresFieldArtifact": false
+    },
+    {
+      "id": "mode21-one-shot",
+      "task": "experimental-probe",
+      "availability": "usableWithNotice",
+      "origin": "ecuReported",
+      "evidence": "experimental",
+      "compatibility": "candidate",
+      "quality": "valid",
+      "operationRisk": "boundedRead",
+      "requiresVin": false,
+      "requiresCatalog": false,
+      "requiresFieldArtifact": false,
+      "polling": false,
+      "oneShotOnly": true
+    },
+    {
+      "id": "dtc-clear",
+      "task": "clear-codes",
+      "availability": "unavailable",
+      "origin": "ecuReported",
+      "evidence": "notTested",
+      "compatibility": "unknown",
+      "quality": "valid",
+      "operationRisk": "clear",
+      "requiresVin": false,
+      "requiresCatalog": false,
+      "requiresFieldArtifact": false,
+      "requiresClearSnapshot": true,
+      "requiresUserConfirm": true
+    }
+  ]
+}

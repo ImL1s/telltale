@@ -249,8 +249,20 @@ void main() {
         PowertrainBatteryProfile.fromJson(experimentalJson),
       );
       expect(experimental.issues, isEmpty);
-      expect(experimental.canInstall, isFalse);
+      expect(experimental.canInstall, isTrue);
       expect(experimental.canProbe, isTrue);
+
+      final mode21Community = validator.validateProfile(
+        PowertrainBatteryProfile.fromJson(
+          _profile(status: 'community')
+            ..['commands'] = [_command(mode: '21', identifier: '61')],
+        ),
+      );
+      expect(
+        mode21Community.issues.map((issue) => issue.code),
+        contains('unpollable_service'),
+      );
+      expect(mode21Community.canInstall, isFalse);
     });
 
     test('validates inclusive model-year ranges', () {
@@ -325,7 +337,9 @@ void main() {
       // instead of installing a permanently dark gauge.
       final installable = validator.validateProfile(
         PowertrainBatteryProfile.fromJson(
-          _profile(commands: [_command(mode: '22', identifier: 'B041')]),
+          _profile(
+            commands: [_command(mode: '22', identifier: 'B041')],
+          ),
         ),
       );
       expect(installable.issues, isEmpty);
@@ -334,7 +348,9 @@ void main() {
 
       final probeOnly = validator.validateProfile(
         PowertrainBatteryProfile.fromJson(
-          _profile(commands: [_command(mode: '21', identifier: '5B')]),
+          _profile(
+            commands: [_command(mode: '21', identifier: '5B')],
+          ),
         ),
       );
       expect(probeOnly.canInstall, isFalse);
@@ -352,6 +368,7 @@ void main() {
         PowertrainBatteryProfile.fromJson(experimental21),
       );
       expect(probeResult.issues, isEmpty);
+      expect(probeResult.canInstall, isFalse);
       expect(probeResult.canProbe, isTrue);
 
       for (final denied in [

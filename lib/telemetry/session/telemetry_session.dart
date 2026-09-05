@@ -64,6 +64,17 @@ enum TelemetryStatus {
   String get wireName => name;
 }
 
+/// Quality of a structurally valid finite value. Missing on old recordings
+/// means [valid]. Out-of-range is still a value, never a numeric success
+/// upgrade, and never a reason to drop the sample.
+enum TelemetryQuality {
+  valid,
+  outOfReferenceRange,
+  tentativeDecode;
+
+  String get wireName => name;
+}
+
 enum TelemetryTerminalReason {
   user,
   disconnect,
@@ -95,6 +106,7 @@ final class TelemetrySignalDefinition {
     required this.variant,
     required this.priority,
     required this.equation,
+    this.evidenceKind,
   });
 
   final String id;
@@ -111,21 +123,31 @@ final class TelemetrySignalDefinition {
   final int priority;
   final String equation;
 
-  Map<String, Object?> toCanonicalJson() => <String, Object?>{
-    'id': id,
-    'name': name,
-    'shortName': shortName,
-    'request': request,
-    'header': header,
-    'unit': unit,
-    'unitProvenance': unitProvenance.wireName,
-    'minimum': minimum,
-    'maximum': maximum,
-    'isCustom': isCustom,
-    'variant': variant,
-    'priority': priority,
-    'equation': equation,
-  };
+  /// USABILITY-R2 evidence tier. Omitted from canonical JSON when null so
+  /// existing recordings keep their fingerprints.
+  final String? evidenceKind;
+
+  Map<String, Object?> toCanonicalJson() {
+    final json = <String, Object?>{
+      'id': id,
+      'name': name,
+      'shortName': shortName,
+      'request': request,
+      'header': header,
+      'unit': unit,
+      'unitProvenance': unitProvenance.wireName,
+      'minimum': minimum,
+      'maximum': maximum,
+      'isCustom': isCustom,
+      'variant': variant,
+      'priority': priority,
+      'equation': equation,
+    };
+    if (evidenceKind != null && evidenceKind!.isNotEmpty) {
+      json['evidenceKind'] = evidenceKind;
+    }
+    return json;
+  }
 }
 
 final class FrozenPidDefinition {
@@ -344,6 +366,7 @@ final class TelemetryEvent {
     this.value,
     this.sourceTimestampUtc,
     this.status,
+    this.quality,
   }) {
     _requireUtc(observedAtUtc, 'observedAtUtc');
     if (elapsedUs < 0) {
@@ -371,7 +394,10 @@ final class TelemetryEvent {
       if (status != null) {
         throw const TelemetryValidationException('mixedEvent');
       }
-    } else if (status == null || value != null || sourceTimestampUtc != null) {
+    } else if (status == null ||
+        value != null ||
+        sourceTimestampUtc != null ||
+        quality != null) {
       throw const TelemetryValidationException('invalidStatusEvent');
     }
   }
@@ -382,6 +408,7 @@ final class TelemetryEvent {
     required int elapsedUs,
     required String pidId,
     required double value,
+    TelemetryQuality quality = TelemetryQuality.valid,
   }) => TelemetryEvent._(
     kind: TelemetryEventKind.value,
     observedAtUtc: observedAtUtc,
@@ -389,6 +416,7 @@ final class TelemetryEvent {
     elapsedUs: elapsedUs,
     pidId: pidId,
     value: value,
+    quality: quality,
   );
 
   factory TelemetryEvent.status({
@@ -411,6 +439,7 @@ final class TelemetryEvent {
   final double? value;
   final DateTime? sourceTimestampUtc;
   final TelemetryStatus? status;
+  final TelemetryQuality? quality;
 }
 
 final class TelemetrySessionFooter {

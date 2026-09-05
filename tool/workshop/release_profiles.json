@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "core-obd-available": {
+      "exit": "A",
+      "requiresFieldArtifacts": false,
+      "requiresSoftwarePass": true,
+      "description": "Generic OBD, labelled unverified reads, estimates, partial results."
+    },
+    "field-qualified": {
+      "exit": "B",
+      "requiresFieldArtifacts": true,
+      "requiresSoftwarePass": true,
+      "description": "Same software plus per-vehicle field artifact hashes for 已驗證."
+    },
+    "shop-mvp-available": {
+      "exit": "A",
+      "deferred": true,
+      "reason": "not-implemented"
+    },
+    "oem-program": {
+      "exit": "recipe",
+      "deferred": true,
+      "reason": "not-implemented"
+    }
+  }
+}

@@ -217,81 +217,84 @@ void main() {
       expect(engine.current.faults[temp.id], isNull);
     });
 
-    test('a 59-byte multi-frame E-GMP payload reassembles and slices', () async {
-      // The Hyundai/Kia 220101 block answers across nine ISO-TP frames. The
-      // engine must reassemble the full payload before slicing, or every
-      // window past byte 3 reads the wrong frame's bytes.
-      final payload = List<int>.filled(59, 0);
-      payload[4] = 0x8E; // soc_bms: 142 / 2 = 71 %
-      payload[12] = 0x1D; // pack_voltage: 0x1D3E / 10 = 748.6 V
-      payload[13] = 0x3E;
-      const soc = Pid(
-        name: 'BMS state of charge',
-        shortName: 'SOC',
-        modeAndPid: '220101',
-        equation: 'A/2',
-        minValue: 0,
-        maxValue: 100,
-        units: '%',
-        header: '7E4',
-        ownerProfileId: 'hyundai-ioniq5-egmp-2021-2024-community',
-        sourceSignalId: 'soc_bms',
-        sourceRevision: '587a91d7',
-        expectedResponseId: '7EC',
-        dataOffsetBytes: 4,
-        dataLengthBytes: 1,
-        responseDataLengthBytes: 59,
-      );
-      final volts = soc.copyWith(
-        name: 'Battery pack voltage',
-        shortName: 'Pack V',
-        equation: '(A*256+B)/10',
-        minValue: 400,
-        maxValue: 810,
-        units: 'V',
-        sourceSignalId: 'pack_voltage',
-        dataOffsetBytes: 12,
-        dataLengthBytes: 2,
-      );
-      final transport = _transport([
-        FakeEcu(
-          name: 'E-GMP BMS',
-          requestId: '7E4',
-          responseId: '7EC',
-          responses: {
-            '220101': [0x62, 0x01, 0x01, ...payload],
-          },
-        ),
-      ]);
-      final client = Elm327Client(
-        transport,
-        commandTimeout: const Duration(milliseconds: 200),
-      );
-      expect(await client.connect(), isTrue);
-      final engine = PollingEngine(client)
-        ..setActivePids(
-          [soc, volts],
-          includeProfileDerivedInputs: false,
-          authorizedProfilePidIds: {soc.id, volts.id},
-        )
-        ..start();
-      addTearDown(engine.dispose);
+    test(
+      'a 59-byte multi-frame E-GMP payload reassembles and slices',
+      () async {
+        // The Hyundai/Kia 220101 block answers across nine ISO-TP frames. The
+        // engine must reassemble the full payload before slicing, or every
+        // window past byte 3 reads the wrong frame's bytes.
+        final payload = List<int>.filled(59, 0);
+        payload[4] = 0x8E; // soc_bms: 142 / 2 = 71 %
+        payload[12] = 0x1D; // pack_voltage: 0x1D3E / 10 = 748.6 V
+        payload[13] = 0x3E;
+        const soc = Pid(
+          name: 'BMS state of charge',
+          shortName: 'SOC',
+          modeAndPid: '220101',
+          equation: 'A/2',
+          minValue: 0,
+          maxValue: 100,
+          units: '%',
+          header: '7E4',
+          ownerProfileId: 'hyundai-ioniq5-egmp-2021-2024-community',
+          sourceSignalId: 'soc_bms',
+          sourceRevision: '587a91d7',
+          expectedResponseId: '7EC',
+          dataOffsetBytes: 4,
+          dataLengthBytes: 1,
+          responseDataLengthBytes: 59,
+        );
+        final volts = soc.copyWith(
+          name: 'Battery pack voltage',
+          shortName: 'Pack V',
+          equation: '(A*256+B)/10',
+          minValue: 400,
+          maxValue: 810,
+          units: 'V',
+          sourceSignalId: 'pack_voltage',
+          dataOffsetBytes: 12,
+          dataLengthBytes: 2,
+        );
+        final transport = _transport([
+          FakeEcu(
+            name: 'E-GMP BMS',
+            requestId: '7E4',
+            responseId: '7EC',
+            responses: {
+              '220101': [0x62, 0x01, 0x01, ...payload],
+            },
+          ),
+        ]);
+        final client = Elm327Client(
+          transport,
+          commandTimeout: const Duration(milliseconds: 200),
+        );
+        expect(await client.connect(), isTrue);
+        final engine = PollingEngine(client)
+          ..setActivePids(
+            [soc, volts],
+            includeProfileDerivedInputs: false,
+            authorizedProfilePidIds: {soc.id, volts.id},
+          )
+          ..start();
+        addTearDown(engine.dispose);
 
-      final deadline = DateTime.now().add(const Duration(seconds: 3));
-      while (DateTime.now().isBefore(deadline) &&
-          (!engine.current.readings.containsKey(soc.id) ||
-              !engine.current.readings.containsKey(volts.id)) &&
-          !engine.current.faults.containsKey(soc.id) &&
-          !engine.current.faults.containsKey(volts.id)) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
-      await engine.stop();
+        final deadline = DateTime.now().add(const Duration(seconds: 3));
+        while (DateTime.now().isBefore(deadline) &&
+            (!engine.current.readings.containsKey(soc.id) ||
+                !engine.current.readings.containsKey(volts.id)) &&
+            !engine.current.faults.containsKey(soc.id) &&
+            !engine.current.faults.containsKey(volts.id)) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        await engine.stop();
 
-      expect(engine.current.faults[soc.id], isNull);
-      expect(engine.current.faults[volts.id], isNull);
-      expect(engine.current.readings[soc.id]?.value, 71.0);
-      expect(engine.current.readings[volts.id]?.value, 748.6);
-    });
+        expect(engine.current.faults[soc.id], isNull);
+        expect(engine.current.faults[volts.id], isNull);
+        expect(engine.current.readings[soc.id]?.value, 71.0);
+        expect(engine.current.readings[volts.id]?.value, 748.6);
+      },
+    );
 
     test('a wrong responder is refused, not decoded', () async {
       final pid = _profilePid(
@@ -303,10 +306,7 @@ void main() {
         maxValue: 100,
       );
       final transport = _transport([
-        _ecu(
-          responseId: '78A',
-          payload: const [0x62, 0xB0, 0x46, 0x01, 0xF4],
-        ),
+        _ecu(responseId: '78A', payload: const [0x62, 0xB0, 0x46, 0x01, 0xF4]),
       ]);
       final client = Elm327Client(
         transport,
@@ -333,7 +333,7 @@ void main() {
       expect(engine.current.faults[pid.id], isNotNull);
     });
 
-    test('a source-impossible value is a fault, not telemetry', () async {
+    test('a source-range outlier is kept as a reading, not dropped', () async {
       final pid = _profilePid(
         signal: 'raw-soc',
         equation: '(A*256+B)/10',
@@ -343,7 +343,8 @@ void main() {
         maxValue: 100,
       );
       // 0x07D0 → 200% state of charge: correctly attributed, correctly
-      // framed, and impossible under the source's documented range.
+      // framed, and outside the source's documented range. USABILITY-R2
+      // keeps the finite value so the outlier is visible.
       final transport = _transport([
         _ecu(payload: const [0x62, 0xB0, 0x46, 0x07, 0xD0]),
       ]);
@@ -363,13 +364,14 @@ void main() {
 
       final deadline = DateTime.now().add(const Duration(seconds: 2));
       while (DateTime.now().isBefore(deadline) &&
-          !engine.current.faults.containsKey(pid.id)) {
+          engine.current.readings[pid.id] == null) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
       await engine.stop();
 
-      expect(engine.current.readings[pid.id], isNull);
-      expect(engine.current.faults[pid.id], PidFault.formulaError);
+      expect(engine.current.faults[pid.id], isNull);
+      expect(engine.current.readings[pid.id], isNotNull);
+      expect(engine.current.readings[pid.id]!.value, closeTo(200, 0.01));
     });
   });
 

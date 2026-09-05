@@ -27,6 +27,10 @@ import 'package:torque_obd/obd/telemetry.dart';
 
 import 'support/dashboard_harness.dart';
 
+Finder _onScreen(String text) => find.textContaining(text, skipOffstage: false);
+
+Finder _label(String text) => find.text(text, skipOffstage: false);
+
 /// 2000 rpm at 60 km/h, with acceleration supplied or withheld.
 TelemetrySnapshot _snapshot({
   double? accel,
@@ -59,7 +63,6 @@ TelemetrySnapshot _snapshot({
 final _activePids = [PidLibrary.engineRpm];
 
 const _waiting = '等待引擎轉速與車速資料';
-const _confirmProfile = '先到設定確認車輛資料';
 const _confirmedProfile = VehicleProfile(isConfirmed: true);
 
 void main() {
@@ -78,11 +81,11 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(find.textContaining(_waiting), findsOneWidget);
-      expect(find.text('引擎馬力'), findsNothing);
-      expect(find.text('hp'), findsNothing);
-      expect(find.text('扭力'), findsNothing);
-      expect(find.text('N·m'), findsNothing);
+      expect(_onScreen(_waiting), findsOneWidget);
+      expect(_label('引擎馬力'), findsNothing);
+      expect(_label('hp'), findsNothing);
+      expect(_label('扭力'), findsNothing);
+      expect(_label('N·m'), findsNothing);
     });
 
     testWidgets('no engine speed means no derived figures', (tester) async {
@@ -93,8 +96,8 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(find.textContaining(_waiting), findsOneWidget);
-      expect(find.text('hp'), findsNothing);
+      expect(_onScreen(_waiting), findsOneWidget);
+      expect(_label('hp'), findsNothing);
     });
 
     testWidgets('no road speed means no derived figures', (tester) async {
@@ -105,8 +108,8 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(find.textContaining(_waiting), findsOneWidget);
-      expect(find.text('hp'), findsNothing);
+      expect(_onScreen(_waiting), findsOneWidget);
+      expect(_label('hp'), findsNothing);
     });
   });
 
@@ -123,12 +126,12 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(find.textContaining(_waiting), findsNothing);
-      expect(find.text('推算數值'), findsOneWidget);
-      expect(find.text('引擎馬力'), findsOneWidget);
-      expect(find.text('hp'), findsOneWidget);
-      expect(find.text('扭力'), findsOneWidget);
-      expect(find.text('N·m'), findsOneWidget);
+      expect(_onScreen(_waiting), findsNothing);
+      expect(_label('推算數值'), findsOneWidget);
+      expect(_label('引擎馬力'), findsOneWidget);
+      expect(_label('hp'), findsOneWidget);
+      expect(_label('扭力'), findsOneWidget);
+      expect(_label('N·m'), findsOneWidget);
     });
 
     testWidgets('a measured zero acceleration is a measurement, not a gap', (
@@ -145,12 +148,12 @@ void main() {
         profile: _confirmedProfile,
       );
 
-      expect(find.textContaining(_waiting), findsNothing);
-      expect(find.text('hp'), findsOneWidget);
+      expect(_onScreen(_waiting), findsNothing);
+      expect(_label('hp'), findsOneWidget);
     });
   });
 
-  testWidgets('valid live inputs stay hidden until the profile is confirmed', (
+  testWidgets('valid live inputs show as 估算 before the profile is confirmed', (
     tester,
   ) async {
     await pumpDashboard(
@@ -159,11 +162,11 @@ void main() {
       activePids: _activePids,
     );
 
-    expect(find.textContaining(_confirmProfile), findsOneWidget);
-    expect(find.text('引擎馬力'), findsNothing);
-    expect(find.text('hp'), findsNothing);
-    expect(find.text('扭力'), findsNothing);
-    expect(find.text('N·m'), findsNothing);
+    expect(_label('引擎馬力'), findsOneWidget);
+    expect(_label('hp'), findsOneWidget);
+    expect(_label('扭力'), findsOneWidget);
+    expect(_onScreen('估算'), findsWidgets);
+    expect(_onScreen('實測'), findsNothing);
   });
 
   testWidgets('unconfirmed profile preserves the ECU measured fuel path', (
@@ -175,13 +178,12 @@ void main() {
       activePids: _activePids,
     );
 
-    expect(find.text('ECU 油耗資料'), findsOneWidget);
-    expect(find.text('ECU 回報'), findsOneWidget);
-    expect(find.text('油耗'), findsOneWidget);
-    expect(find.text('10.0'), findsOneWidget);
-    expect(find.text('L/100km'), findsOneWidget);
-    expect(find.textContaining(_confirmProfile), findsNothing);
-    expect(find.text('引擎馬力'), findsNothing);
-    expect(find.text('扭力'), findsNothing);
+    expect(_label('ECU 油耗資料'), findsOneWidget);
+    expect(_label('ECU 回報'), findsOneWidget);
+    expect(_label('油耗'), findsOneWidget);
+    expect(_label('10.0'), findsOneWidget);
+    expect(_label('L/100km'), findsOneWidget);
+    expect(_label('引擎馬力'), findsNothing);
+    expect(_label('扭力'), findsNothing);
   });
 }
